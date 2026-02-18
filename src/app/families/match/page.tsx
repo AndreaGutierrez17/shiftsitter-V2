@@ -21,6 +21,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 
+const isRoleCompatible = (
+  currentRole: UserProfile['role'] | undefined,
+  candidateRole: UserProfile['role'] | undefined
+) => {
+  if (!currentRole || !candidateRole) return false;
+  if (currentRole === 'parent') return candidateRole === 'sitter' || candidateRole === 'reciprocal';
+  if (currentRole === 'sitter') return candidateRole === 'parent' || candidateRole === 'reciprocal';
+  return candidateRole === 'parent' || candidateRole === 'sitter' || candidateRole === 'reciprocal';
+};
+
 const SwipeCard = ({ userProfile, onSwipe }: { userProfile: UserProfile, onSwipe: (id: string, direction: 'left' | 'right') => void }) => {
   return (
     <motion.div
@@ -132,37 +142,48 @@ export default function MatchPage() {
     const fetchProfiles = async () => {
       setLoading(true);
       setNoProfilesMessage(null);
-      
-      const mySwipesQuery = query(collection(db, 'swipes'), where('swiperId', '==', user.uid));
-      const swipesSnapshot = await getDocs(mySwipesQuery);
-      const swipedUserIds = swipesSnapshot.docs.map(doc => doc.data().swipedId);
-      swipedUserIds.push(user.uid); // Also exclude self
 
-      let roleToShow: 'parent' | 'sitter' | 'reciprocal';
-      if (currentUserProfile.role === 'parent') {
-          roleToShow = 'sitter';
-      } else if (currentUserProfile.role === 'sitter') {
-          roleToShow = 'parent';
-      } else {
-          roleToShow = 'reciprocal';
-      }
+      try {
+        const mySwipesQuery = query(collection(db, 'swipes'), where('swiperId', '==', user.uid));
+        const swipesSnapshot = await getDocs(mySwipesQuery);
+        const swipedIds = new Set<string>(
+          swipesSnapshot.docs.map(swipeDoc => swipeDoc.data().swipedId).filter(Boolean)
+        );
+        swipedIds.add(user.uid);
 
-      let usersQuery;
-      // Firestore 'not-in' queries are limited to 30 elements. 
-      // If you expect more swipes, this logic needs pagination or a different approach.
-      const queryableSwipedIds = swipedUserIds.length > 0 ? swipedUserIds.slice(0, 30) : [' ']; // 'not-in' requires a non-empty array
-
-       usersQuery = query(
+        const activeUsersQuery = query(
           collection(db, 'users'),
           where('profileComplete', '==', true),
-          where('role', '==', roleToShow),
-          where('id', 'not-in', queryableSwipedIds),
-          limit(10)
-      );
-      
-      try {
-        const usersSnapshot = await getDocs(usersQuery);
-        const fetchedProfiles = usersSnapshot.docs.map(doc => doc.data() as UserProfile);
+          limit(80)
+        );
+        const activeUsersSnapshot = await getDocs(activeUsersQuery);
+
+        let fetchedProfiles = activeUsersSnapshot.docs
+          .map(userDoc => {
+            const data = userDoc.data() as UserProfile;
+            return { ...data, id: data.id || userDoc.id };
+          })
+          .filter(profile => {
+            if (!profile.id || swipedIds.has(profile.id)) return false;
+            return isRoleCompatible(currentUserProfile.role, profile.role);
+          })
+          .slice(0, 10);
+
+        if (fetchedProfiles.length === 0) {
+          const demoUsersQuery = query(
+            collection(db, 'users'),
+            where('isDemo', '==', true),
+            limit(60)
+          );
+          const demoUsersSnapshot = await getDocs(demoUsersQuery);
+          fetchedProfiles = demoUsersSnapshot.docs
+            .map(userDoc => {
+              const data = userDoc.data() as UserProfile;
+              return { ...data, id: data.id || userDoc.id };
+            })
+            .filter(profile => !!profile.id && !swipedIds.has(profile.id))
+            .slice(0, 10);
+        }
 
         if (fetchedProfiles.length === 0) {
             setNoProfilesMessage({
@@ -287,7 +308,8 @@ export default function MatchPage() {
 
   return (
     <AuthGuard>
-      <div className="container mx-auto p-4 flex flex-col h-[calc(100vh-64px)] max-w-lg">
+      <div className="match-shell">
+        <div className="match-inner">
         {lastMatch && (
            <MatchModal
               open={showMatchModal}
@@ -297,54 +319,55 @@ export default function MatchPage() {
               conversationId={lastMatch.conversationId}
           />
         )}
-        <div className="flex-grow relative flex items-center justify-center">
+        <div className="relative flex items-center justify-center" style={{ minHeight: '640px' }}>
           <AnimatePresence>
               {currentProfile ? (
                   <SwipeCard key={currentProfile.id} userProfile={currentProfile} onSwipe={handleSwipe} />
               ) : (
                   !loading && noProfilesMessage && (
-                      <Card className="w-full h-full flex flex-col items-center justify-center bg-card">
-                      <CardContent className="text-center">
-                          <h3 className="text-xl font-semibold text-foreground">{noProfilesMessage.title}</h3>
+                      <Card className="match-card w-full">
+                      <CardContent className="match-foot text-center">
+                          <h3 className="match-title">{noProfilesMessage.title}</h3>
                           <p className="text-muted-foreground mt-2">{noProfilesMessage.description}</p>
-                          <Button variant="secondary" className="mt-6" onClick={refreshProfiles}>
-                          <RotateCcw className="mr-2 h-4 w-4" />
-                          Try Again
-                          </Button>
+                          <button type="button" className="match-btn ghost mt-3" onClick={refreshProfiles}>
+                            <RotateCcw className="h-4 w-4" />
+                            Try Again
+                          </button>
                       </CardContent>
                       </Card>
                   )
               )}
           </AnimatePresence>
         </div>
-        <div className="flex justify-center items-center gap-4 py-6">
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="w-16 h-16 rounded-full bg-white shadow-lg border-2 border-red-200 hover:bg-red-50"
+        <div className="match-actions">
+          <button
+            type="button"
+            className="match-btn"
             onClick={() => currentProfile && handleSwipe(currentProfile.id, 'left')}
             disabled={!currentProfile || loading || isSwiping}
           >
-            <X className="h-8 w-8 text-red-500" />
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="w-16 h-16 rounded-full bg-white shadow-lg border-2 border-amber-300 hover:bg-amber-50"
+            <X className="h-5 w-5" />
+            Pass
+          </button>
+          <button
+            type="button"
+            className="match-btn ghost"
             onClick={handleRewind}
             disabled={loading || !lastSwiped || isSwiping}
           >
-            <RotateCcw className="h-8 w-8 text-amber-500" />
-          </Button>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="w-16 h-16 rounded-full bg-white shadow-lg border-2 border-green-200 hover:bg-green-50"
+            <RotateCcw className="h-5 w-5" />
+            Rewind
+          </button>
+          <button
+            type="button"
+            className="match-btn primary"
             onClick={() => currentProfile && handleSwipe(currentProfile.id, 'right')}
             disabled={!currentProfile || loading || isSwiping}
           >
-            <Heart className="h-8 w-8 text-green-500" fill="currentColor" />
-          </Button>
+            <Heart className="h-5 w-5" />
+            Like
+          </button>
+        </div>
         </div>
       </div>
     </AuthGuard>

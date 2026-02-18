@@ -1,13 +1,13 @@
-// =======================================================================
-// SHIFTSITTER - Cloud Functions para Produccion
+// ═══════════════════════════════════════════════════════════════════════
+// SHIFTSITTER — Cloud Functions para Producción
 // functions/index.js
 //
-// INSTALACION:
+// INSTALACIÓN:
 //   npm install firebase-functions@latest firebase-admin@latest
 //
 // DEPLOY:
 //   firebase deploy --only functions
-// =======================================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
@@ -15,10 +15,10 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
-// -----------------------------------------------------------------------
-// FUNCION 1: Detectar Match Reciproco
-// Se dispara automaticamente cuando alguien guarda un swipe de "like"
-// -----------------------------------------------------------------------
+// ───────────────────────────────────────────────────────────────────────
+// FUNCIÓN 1: Detectar Match Recíproco
+// Se dispara automáticamente cuando alguien guarda un swipe de "like"
+// ───────────────────────────────────────────────────────────────────────
 
 exports.checkMutualMatch = functions.firestore
   .document('swipes/{uid}/decisions/{targetUid}')
@@ -46,7 +46,7 @@ exports.checkMutualMatch = functions.firestore
       return null;
     }
 
-    // Verificar si el target tambien dio like
+    // Verificar si el target también dio like
     const reciprocalSwipe = await db
       .collection('swipes')
       .doc(targetUid)
@@ -68,7 +68,7 @@ exports.checkMutualMatch = functions.firestore
     // ES UN MATCH - Crear el documento de match
     console.log(`MATCH detectado entre ${uid} y ${targetUid}`);
 
-    // Ordenar UIDs alfabeticamente para consistencia
+    // Ordenar UIDs alfabéticamente para consistencia
     const matchId = [uid, targetUid].sort().join('_');
 
     const matchRef = db.collection('matches').doc(matchId);
@@ -89,7 +89,7 @@ exports.checkMutualMatch = functions.firestore
       lastInteraction: now,
     });
 
-    // Crear chat room automaticamente
+    // Crear chat room automáticamente
     const chatRef = db.collection('chats').doc(matchId);
     await chatRef.set({
       matchId: matchId,
@@ -116,9 +116,9 @@ exports.checkMutualMatch = functions.firestore
     return null;
   });
 
-// -----------------------------------------------------------------------
-// FUNCION 2: Enviar Notificaciones de Match
-// -----------------------------------------------------------------------
+// ───────────────────────────────────────────────────────────────────────
+// FUNCIÓN 2: Enviar Notificaciones de Match
+// ───────────────────────────────────────────────────────────────────────
 
 async function sendMatchNotifications(uid1, uid2, matchId) {
   try {
@@ -132,7 +132,7 @@ async function sendMatchNotifications(uid1, uid2, matchId) {
 
     const now = admin.firestore.Timestamp.now();
 
-    // Notificacion para usuario 1
+    // Notificación para usuario 1
     if (user1?.fcmToken) {
       await admin.messaging().send({
         token: user1.fcmToken,
@@ -161,7 +161,7 @@ async function sendMatchNotifications(uid1, uid2, matchId) {
         });
     }
 
-    // Notificacion para usuario 2
+    // Notificación para usuario 2
     if (user2?.fcmToken) {
       await admin.messaging().send({
         token: user2.fcmToken,
@@ -196,9 +196,9 @@ async function sendMatchNotifications(uid1, uid2, matchId) {
   }
 }
 
-// -----------------------------------------------------------------------
-// FUNCION 3: Notificacion de Like Recibido (sin revelar identidad)
-// -----------------------------------------------------------------------
+// ───────────────────────────────────────────────────────────────────────
+// FUNCIÓN 3: Notificación de Like Recibido (sin revelar identidad)
+// ───────────────────────────────────────────────────────────────────────
 
 exports.notifyLikeReceived = functions.firestore
   .document('swipes/{uid}/decisions/{targetUid}')
@@ -226,7 +226,7 @@ exports.notifyLikeReceived = functions.firestore
     const targetUser = targetDoc.data();
     const now = admin.firestore.Timestamp.now();
 
-    // Enviar notificacion SIN revelar quien dio like
+    // Enviar notificación SIN revelar quién dio like
     if (targetUser?.fcmToken) {
       await admin.messaging().send({
         token: targetUser.fcmToken,
@@ -256,9 +256,9 @@ exports.notifyLikeReceived = functions.firestore
     return null;
   });
 
-// -----------------------------------------------------------------------
-// FUNCION 4: Notificacion de Nuevo Mensaje
-// -----------------------------------------------------------------------
+// ───────────────────────────────────────────────────────────────────────
+// FUNCIÓN 4: Notificación de Nuevo Mensaje
+// ───────────────────────────────────────────────────────────────────────
 
 exports.notifyNewMessage = functions.firestore
   .document('chats/{matchId}/messages/{messageId}')
@@ -269,7 +269,7 @@ exports.notifyNewMessage = functions.firestore
     // No notificar mensajes del sistema
     if (message.senderId === 'system') return null;
 
-    // Obtener match para saber quien es el receptor
+    // Obtener match para saber quién es el receptor
     const matchDoc = await db.collection('matches').doc(matchId).get();
     if (!matchDoc.exists) return null;
 
@@ -318,9 +318,9 @@ exports.notifyNewMessage = functions.firestore
     return null;
   });
 
-// -----------------------------------------------------------------------
-// FUNCION 5: Actualizar lastSeen del usuario
-// -----------------------------------------------------------------------
+// ───────────────────────────────────────────────────────────────────────
+// FUNCIÓN 5: Actualizar lastSeen del usuario
+// ───────────────────────────────────────────────────────────────────────
 
 exports.updateLastSeen = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -334,3 +334,5 @@ exports.updateLastSeen = functions.https.onCall(async (data, context) => {
 
   return { success: true };
 });
+
+
