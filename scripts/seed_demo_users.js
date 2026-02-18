@@ -1,19 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════
-// SHIFTSITTER — seed_demo_users.js
-// Script para crear cuentas de demostración en Firebase
-//
-// CÓMO EJECUTAR:
-//   npm run db:seed
-//
-// REQUIERE:
-//   - Tener el archivo serviceAccountKey.json en la carpeta `scripts`
-//     (Descárgalo: Firebase Console > Configuración > Cuentas de servicio)
-//
-// ⚠️  IMPORTANTE: Este script NO rompe producción.
-//     - Las cuentas demo tienen isDemo: true
-//     - No tienen fcmToken real → no reciben notificaciones push reales
-// ═══════════════════════════════════════════════════════════════════════
-
 const admin = require('firebase-admin');
 const fs = require('fs');
 

@@ -934,6 +934,42 @@ button {
 }
 .muted{color:var(--ink-2)}
 .auth-card-head .muted{margin:.35rem 0 0}
+.auth-card [role="tablist"]{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0;
+  padding:0;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,246,239,.55);
+  overflow:hidden;
+}
+.auth-card [role="tab"]{
+  appearance:none;
+  border:none;
+  border-right:1px solid var(--border);
+  background:transparent;
+  color:var(--navy);
+  font-weight:800;
+  font-size:1.02rem;
+  padding:.7rem .9rem;
+  transition:background .16s ease,color .16s ease,box-shadow .16s ease;
+}
+.auth-card [role="tab"]:last-child{
+  border-right:none;
+}
+.auth-card [role="tab"][data-state="active"]{
+  background:#fff;
+  color:#111827;
+  box-shadow:inset 0 -2px 0 var(--teal);
+}
+.auth-card [role="tab"]:hover{
+  background:rgba(255,255,255,.65);
+}
+.auth-card [role="tab"]:focus-visible{
+  outline:2px solid rgba(47,196,182,.45);
+  outline-offset:-2px;
+}
 .oauth-row{
   display:grid;
   gap:.6rem;
@@ -1135,7 +1171,7 @@ button {
   padding: 6px;
   line-height: 1;
   cursor: pointer;
- hookup: none;
+  outline: none;
   opacity: 0.85;
 }
 

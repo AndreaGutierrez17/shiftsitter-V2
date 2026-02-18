@@ -1,11 +1,5 @@
 'use server';
-/**
- * @fileOverview A Genkit flow for a general-purpose AI assistant for the app.
- *
- * - faqAssistant - A function that answers user questions based on their profile and app context.
- * - FaqAssistantInput - The input type for the faqAssistant function.
- * - FaqAssistantOutput - The return type for the faqAssistant function.
- */
+
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';

@@ -273,8 +273,7 @@ export default function MatchPage() {
   const currentProfile = useMemo(() => profiles[profiles.length - 1], [profiles]);
   
   const refreshProfiles = () => {
-     // A simple page reload is a blunt but effective way to re-trigger the fetch logic.
-     // A more sophisticated approach might involve a dedicated state management solution.
+    
      window.location.reload();
   }
 

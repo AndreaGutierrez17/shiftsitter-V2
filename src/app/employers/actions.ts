@@ -15,6 +15,7 @@ type State = {
     success: boolean;
 }
 
+
 export async function submitEmployerInterest(prevState: State, formData: FormData): Promise<State> {
   const validatedFields = employerInterestSchema.safeParse({
     companyName: formData.get('companyName'),

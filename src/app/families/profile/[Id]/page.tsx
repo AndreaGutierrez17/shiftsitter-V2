@@ -46,8 +46,8 @@ const ReviewCard = ({ review, reviewer }: { review: Review, reviewer?: UserProfi
 export default function ProfilePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const params = useParams();
-  const profileId = params.id as string;
+  const params = useParams<{ Id?: string; id?: string }>();
+  const profileId = params.Id ?? params.id ?? '';
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -243,3 +243,4 @@ export default function ProfilePage() {
     </AuthGuard>
   );
 }
+

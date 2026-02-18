@@ -1,11 +1,5 @@
 'use server';
-/**
- * @fileOverview A Genkit flow for generating personalized icebreaker messages and tips for newly matched users.
- *
- * - aiIcebreakerSuggestion - A function that handles the generation of icebreaker suggestions.
- * - AiIcebreakerSuggestionInput - The input type for the aiIcebreakerSuggestion function.
- * - AiIcebreakerSuggestionOutput - The return type for the aiIcebreakerSuggestion function.
- */
+
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';

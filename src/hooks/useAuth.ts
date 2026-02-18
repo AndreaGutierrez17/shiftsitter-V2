@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  return React.createElement(AuthContext.Provider, { value: { user, loading }, children });
+  return React.createElement(AuthContext.Provider, { value: { user, loading } }, children);
 };
 
 export const useAuth = () => {

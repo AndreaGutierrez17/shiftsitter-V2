@@ -24,3 +24,4 @@ export function SubmitButton({ children, pendingText, className }: SubmitButtonP
     </button>
   );
 }
+

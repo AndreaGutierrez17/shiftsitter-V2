@@ -7,8 +7,9 @@ import {
   signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signOut,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -75,7 +76,11 @@ export default function FamiliesPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-        ensureFamilyDocAndRedirect(user.uid);
+        ensureFamilyDocAndRedirect(user.uid).catch((error) => {
+          console.error("Failed to ensure user profile", error);
+          setMsg("No pudimos validar tu perfil en Firebase. Revisa reglas/permisos y vuelve a intentar.");
+          signOut(auth).catch(() => {});
+        });
     }
   }, [user, authLoading, router]);
   
@@ -102,12 +107,15 @@ export default function FamiliesPage() {
     const docSnap = await getDoc(userDocRef);
 
     if (!docSnap.exists()) {
-        const newUserPayload: Partial<UserProfile> = {
+        const newUserPayload = {
+            uid: uid,
             id: uid,
             email: auth.currentUser?.email,
             photoURLs: auth.currentUser?.photoURL ? [auth.currentUser.photoURL] : [],
             name: auth.currentUser?.displayName || '',
             profileComplete: false,
+            isActive: true,
+            createdAt: serverTimestamp(),
         };
         await setDoc(userDocRef, newUserPayload, { merge: true });
         router.push("/families/onboarding");

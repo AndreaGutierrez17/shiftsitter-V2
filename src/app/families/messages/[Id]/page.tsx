@@ -26,7 +26,7 @@ import { AuthGuard } from '@/components/AuthGuard';
 
 
 export default function ChatPage() {
-  const params = useParams();
+  const params = useParams<{ Id?: string; id?: string }>();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,7 +38,7 @@ export default function ChatPage() {
   const [conversation, setConversation] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const conversationId = params.id as string;
+  const conversationId = params.Id ?? params.id ?? '';
 
   useEffect(() => {
     if (!user) return;
@@ -254,3 +254,4 @@ export default function ChatPage() {
     </AuthGuard>
   );
 }
+

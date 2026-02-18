@@ -343,3 +343,4 @@ export default function OnboardingPage() {
         </AuthGuard>
     )
 }
+

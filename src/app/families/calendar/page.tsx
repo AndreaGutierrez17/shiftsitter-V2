@@ -602,3 +602,4 @@ export default function CalendarPage() {
     </AuthGuard>
   );
 }
+

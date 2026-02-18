@@ -267,9 +267,7 @@ export async function submitReview(prevState: ReviewState, formData: FormData): 
     }
 
     try {
-        // This is a simplified action. A Cloud Function should listen for new reviews 
-        // to securely update user ratings and karma scores, as a user cannot have permission
-        // to write to another user's profile document.
+        
         const shiftRef = doc(db, 'shifts', shiftId);
         const shiftDoc = await getDoc(shiftRef);
         if (!shiftDoc.exists() || !shiftDoc.data().userIds.includes(user.uid)) {

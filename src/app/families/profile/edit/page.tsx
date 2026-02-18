@@ -137,24 +137,35 @@ export default function EditProfilePage() {
     
     const fetchProfile = async () => {
       setPageLoading(true);
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const profile = userDoc.data() as UserProfile;
-        form.reset({
-          name: profile.name,
-          age: profile.age,
-          location: profile.location,
-          workplace: profile.workplace || '',
-          availability: profile.availability || '',
-          numberOfChildren: profile.numberOfChildren ?? undefined,
-          childAge: profile.childAge ?? undefined,
-          needs: profile.needs || '',
-          interests: profile.interests?.join(', ') || '',
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const profile = userDoc.data() as UserProfile;
+          form.reset({
+            name: profile.name,
+            age: profile.age,
+            location: profile.location,
+            workplace: profile.workplace || '',
+            availability: profile.availability || '',
+            numberOfChildren: profile.numberOfChildren ?? undefined,
+            childAge: profile.childAge ?? undefined,
+            needs: profile.needs || '',
+            interests: profile.interests?.join(', ') || '',
+          });
+          const validPhotos = (profile.photoURLs || []).filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+          setPhotos(validPhotos);
+          setCvUrl(profile.cvUrl || null);
+          setUserRole(profile.role);
+        }
+      } catch (error: any) {
+        console.error("Profile fetch error:", error);
+        toast({
+          variant: 'destructive',
+          title: 'Permission error',
+          description: error?.message || 'No se pudo cargar el perfil desde Firebase.',
+          duration: 9000,
         });
-        setPhotos(profile.photoURLs || []);
-        setCvUrl(profile.cvUrl || null);
-        setUserRole(profile.role);
       }
       setPageLoading(false);
     };
