@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import { AuthProvider } from "@/hooks/useAuth";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "ShiftSitter - Smart, verified childcare for shift-working families",
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="ss-main">{children}</main>
           <Toaster />
         </AuthProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
