@@ -53,6 +53,7 @@ const DEMO_USERS = [
     uid: 'demo_user_002',
     email: 'marcus.firefighter@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Marcus T.',
     profile: {
       name: 'Marcus T.',
@@ -77,6 +78,7 @@ const DEMO_USERS = [
     uid: 'demo_user_003',
     email: 'natalie.teacher@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Natalie F.',
     profile: {
       name: 'Natalie F.',
@@ -101,6 +103,7 @@ const DEMO_USERS = [
     uid: 'demo_user_004',
     email: 'elena.pharmacist@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Elena R.',
     profile: {
       name: 'Elena R.',
@@ -125,6 +128,7 @@ const DEMO_USERS = [
     uid: 'demo_user_005',
     email: 'derek.security@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Derek V.',
     profile: {
       name: 'Derek V.',
@@ -149,6 +153,7 @@ const DEMO_USERS = [
     uid: 'demo_user_006',
     email: 'samantha.driver@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Samantha G.',
     profile: {
       name: 'Samantha G.',
@@ -172,6 +177,7 @@ const DEMO_USERS = [
   {
     uid: 'demo_user_007',
     email: 'jason.banker@shiftsitter.demo',
+    emailVerified: true,
     password: 'Demo2024!!',
     displayName: 'Jason H.',
     profile: {
@@ -196,6 +202,7 @@ const DEMO_USERS = [
   {
     uid: 'demo_user_008',
     email: 'mia.dispatch@shiftsitter.demo',
+    emailVerified: true,
     password: 'Demo2024!!',
     displayName: 'Mia C.',
     profile: {
@@ -220,6 +227,7 @@ const DEMO_USERS = [
   {
     uid: 'demo_user_009',
     email: 'rachel.chef@shiftsitter.demo',
+    emailVerified: true,
     password: 'Demo2024!!',
     displayName: 'Rachel P.',
     profile: {
@@ -245,6 +253,7 @@ const DEMO_USERS = [
     uid: 'demo_user_010',
     email: 'andrew.paramedic@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Andrew L.',
     profile: {
       name: 'Andrew L.',
