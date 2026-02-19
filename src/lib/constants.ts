@@ -1,12 +1,10 @@
-import { Home, MessageSquare, Calendar, User, Heart, Sparkles } from 'lucide-react';
+import { MessageSquare, User, Heart } from 'lucide-react';
 
 export const APP_NAME = 'ShiftSitter Pro';
 
 export const NAV_LINKS = [
   { href: '/families/match', label: 'Match', icon: Heart },
   { href: '/families/messages', label: 'Messages', icon: MessageSquare },
-  { href: '/families/calendar', label: 'Calendar', icon: Calendar },
-  { href: '/families/assistant', label: 'Assistant', icon: Sparkles },
   { href: '/families/profile', label: 'Profile', icon: User },
 ];
 

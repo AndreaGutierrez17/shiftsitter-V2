@@ -1,7 +1,10 @@
 
+import BootstrapAssets from "@/components/BootstrapAssets";
+
 export default function HomePage() {
   return (
     <>
+      <BootstrapAssets includeJs />
       <section className="hero-split">
         <img
           className="hero-split-media"

@@ -42,6 +42,7 @@ const profileSchema = z.object({
   workplace: z.string().optional(),
   numberOfChildren: z.coerce.number().optional(),
   childAge: z.coerce.number().optional(),
+  childrenAgesText: z.string().optional(),
   availability: z.string().min(10, 'Please describe your availability.'),
   needs: z.string().min(10, 'Please describe your needs or what you offer.'),
   interests: z.string().min(3, 'Please list at least one interest.'),
@@ -102,7 +103,6 @@ export default function EditProfilePage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | undefined>(undefined);
-  const [notificationStatus, setNotificationStatus] = useState<'default' | 'granted' | 'denied'>('default');
 
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -123,14 +123,9 @@ export default function EditProfilePage() {
       interests: '',
       numberOfChildren: undefined,
       childAge: undefined,
+      childrenAgesText: '',
     },
   });
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationStatus(Notification.permission);
-    }
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -150,6 +145,7 @@ export default function EditProfilePage() {
             availability: profile.availability || '',
             numberOfChildren: profile.numberOfChildren ?? undefined,
             childAge: profile.childAge ?? undefined,
+            childrenAgesText: profile.childrenAgesText || '',
             needs: profile.needs || '',
             interests: profile.interests?.join(', ') || '',
           });
@@ -208,10 +204,11 @@ export default function EditProfilePage() {
 
     try {
       const downloadURL = await handleFileUpload(file, 'user_photos');
-      const updatedPhotos = [...photos, downloadURL];
+      // New upload becomes primary so users can change profile photo immediately.
+      const updatedPhotos = [downloadURL, ...photos.filter((url) => url !== downloadURL)];
       await updateDoc(doc(db, 'users', user.uid), { photoURLs: updatedPhotos });
       setPhotos(updatedPhotos);
-      toast({ title: 'Photo uploaded successfully!' });
+      toast({ title: 'Photo uploaded successfully!', description: 'Your new photo is now the main profile photo.' });
     } catch (error: any) {
       console.error("Photo Upload Error:", error);
       toast({
@@ -275,6 +272,28 @@ export default function EditProfilePage() {
     }
   }
 
+  const handleSetPrimaryPhoto = async (urlToSetPrimary: string) => {
+    if (!user || photos.length === 0) return;
+    if (photos[0] === urlToSetPrimary) return;
+
+    const reordered = [urlToSetPrimary, ...photos.filter((url) => url !== urlToSetPrimary)];
+    const original = photos;
+    setPhotos(reordered);
+
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { photoURLs: reordered });
+      toast({ title: 'Main photo updated' });
+    } catch (error: any) {
+      console.error('Set primary photo error:', error);
+      setPhotos(original);
+      toast({
+        variant: 'destructive',
+        title: 'Could not update main photo',
+        description: error?.message || 'Please try again.',
+      });
+    }
+  };
+
   const handleCvDelete = async () => {
     if (!user || !cvUrl) return;
     const oldCvUrl = cvUrl;
@@ -300,6 +319,7 @@ export default function EditProfilePage() {
       interests: values.interests.split(',').map(i => i.trim()),
       numberOfChildren: values.numberOfChildren || null,
       childAge: values.childAge || null,
+      childrenAgesText: values.childrenAgesText?.trim() || '',
       workplace: values.workplace || '',
     };
       
@@ -365,54 +385,10 @@ export default function EditProfilePage() {
   }
 
   const handleEnableNotifications = async () => {
-    setIsHandlingNotifications(true);
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
-      toast({ variant: 'destructive', title: 'Unsupported', description: 'This browser does not support push notifications.' });
-      setIsHandlingNotifications(false);
-      return;
-    }
-
-    if (notificationStatus === 'granted') {
-      toast({ title: 'Already Enabled', description: 'Notifications are already enabled.' });
-      setIsHandlingNotifications(false);
-      return;
-    }
-
-    if (notificationStatus === 'denied') {
-      toast({ variant: 'destructive', title: 'Permission Denied', description: 'Please enable notifications in your browser settings to continue.' });
-      setIsHandlingNotifications(false);
-      return;
-    }
-
-    try {
-      const permission = await Notification.requestPermission();
-      setNotificationStatus(permission);
-
-      if (permission === 'granted' && user) {
-        const { getToken } = await import('firebase/messaging');
-        const { messaging } = await import('@/lib/firebase/client');
-
-        if (!messaging) {
-          throw new Error("Firebase Messaging is not initialized.");
-        }
-
-        const currentToken = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY });
-        
-        if (currentToken) {
-          await updateDoc(doc(db, 'users', user.uid), { fcmToken: currentToken });
-          toast({ title: 'Success!', description: 'Push notifications have been enabled.' });
-        } else {
-          throw new Error("Could not get notification token.");
-        }
-      } else {
-         toast({ variant: 'destructive', title: 'Permission Not Granted', description: 'You did not grant permission for notifications.' });
-      }
-    } catch (error: any) {
-      console.error('An error occurred while handling notifications: ', error);
-      toast({ variant: 'destructive', title: 'Error', description: error.message || 'An error occurred while enabling notifications.' });
-    } finally {
-      setIsHandlingNotifications(false);
-    }
+    toast({
+      title: 'Coming soon',
+      description: 'Push notifications are temporarily disabled for MVP stability.',
+    });
   };
 
   if (pageLoading || authLoading) {
@@ -461,8 +437,23 @@ export default function EditProfilePage() {
                           {photos.map((url, index) => (
                           <div key={url} className="relative group/photo aspect-square rounded-lg overflow-hidden border">
                               <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover" />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
+                              {index !== 0 ? (
+                                <Button type="button" variant="secondary" size="sm" onClick={() => handleSetPrimaryPhoto(url)}>
+                                  Set main
+                                </Button>
+                              ) : null}
                               <Button type="button" variant="destructive" size="icon" onClick={() => handlePhotoDelete(url)}><Trash2 className="h-4 w-4" /></Button>
+                              </div>
+                              <div className="absolute top-2 right-2 flex gap-2 md:hidden">
+                                {index !== 0 ? (
+                                  <Button type="button" variant="secondary" size="sm" onClick={() => handleSetPrimaryPhoto(url)}>
+                                    Set main
+                                  </Button>
+                                ) : null}
+                                <Button type="button" variant="destructive" size="icon" onClick={() => handlePhotoDelete(url)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
                               {index === 0 && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Primary</div>}
                           </div>
@@ -570,6 +561,15 @@ export default function EditProfilePage() {
                             </FormItem>
                           )} />
                       </div>
+                      <FormField control={form.control} name="childrenAgesText" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Ages of children (manual, optional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., 2, 5, 9" {...field} value={field.value ?? ''} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
                       <FormField control={form.control} name="needs" render={({ field }) => (
                           <FormItem><FormLabel>About Me / My Needs</FormLabel><FormControl><Textarea placeholder="Describe your family's needs, or what you offer as a sitter..." rows={4} {...field} /></FormControl><FormMessage /></FormItem>
                         )} />
@@ -606,21 +606,17 @@ export default function EditProfilePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {notificationStatus === 'granted' ? (
-              <p className="text-sm text-green-700 font-medium">Push notifications are enabled on this device.</p>
-            ) : notificationStatus === 'denied' ? (
-              <p className="text-sm text-destructive font-medium">Push notifications are blocked. Please enable them in your browser settings.</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">You are not currently receiving push notifications.</p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Push notifications are temporarily disabled for MVP stabilization.
+            </p>
           </CardContent>
           <CardFooter className="bg-slate-50 pt-4 pb-4">
             <Button
               onClick={handleEnableNotifications}
-              disabled={isBusy || notificationStatus !== 'default'}
+              disabled
             >
               {isHandlingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {notificationStatus === 'granted' ? 'Notifications Enabled' : 'Enable Notifications'}
+              Coming Soon
             </Button>
           </CardFooter>
         </Card>

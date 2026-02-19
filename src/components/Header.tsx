@@ -51,7 +51,7 @@ export default function Header() {
       <div className="ss-header-inner">
         <Link href={user ? "/families/match" : "/"} className="ss-brand" onClick={handleNavClick}>
           <div className="ss-brand-logo">
-            <img src="/logo.svg" alt="ShiftSitter logo" />
+            <img src="/logo-shiftsitter.png" alt="ShiftSitter logo" />
           </div>
           <span className="ss-brand-text">ShiftSitter</span>
         </Link>
@@ -66,9 +66,11 @@ export default function Header() {
 
         <div className="ss-header-actions ss-nav-desktop">
           {user ? (
-             <button onClick={handleSignOut} className="ss-btn-outline ss-nav-btn">
-              Log out
-            </button>
+             <>
+              <button onClick={handleSignOut} className="ss-btn-outline ss-nav-btn">
+                Log out
+              </button>
+             </>
           ) : (
             <>
               <Link href="/families" className="ss-btn-outline ss-nav-btn">
@@ -108,9 +110,11 @@ export default function Header() {
 
         <div className="ss-mobile-actions">
            {user ? (
-             <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
-              Log out
-            </button>
+             <>
+              <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
+                Log out
+              </button>
+             </>
           ) : (
             <>
               <Link href="/families" className="ss-btn-outline ss-nav-btn" onClick={handleNavClick}>

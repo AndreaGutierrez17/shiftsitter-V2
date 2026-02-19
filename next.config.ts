@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  serverExternalPackages: ["firebase-admin", "firebase-functions"],
   images: {
     remotePatterns: [
       {
@@ -17,6 +18,18 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "storage.googleapis.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
+      },
+      {
+        protocol: "https",
+        hostname: "picsum.photos",
+      },
+      {
+        protocol: "https",
+        hostname: "i.pravatar.cc",
       },
     ],
   },

@@ -71,7 +71,13 @@ service cloud.firestore {
         && request.resource.data.swiperId == request.auth.uid
         && request.resource.data.swiperId != request.resource.data.swipedId
         && request.resource.data.direction in ['left', 'right'];
-      allow update: if false;
+      allow update: if isAuthenticated()
+        && resource.data.swiperId == request.auth.uid
+        && request.resource.data.keys().hasAll(['swiperId', 'swipedId', 'direction', 'timestamp'])
+        && request.resource.data.swiperId == resource.data.swiperId
+        && request.resource.data.swipedId == resource.data.swipedId
+        && request.resource.data.swiperId == request.auth.uid
+        && request.resource.data.direction in ['left', 'right'];
       allow delete: if isAuthenticated() && resource.data.swiperId == request.auth.uid;
     }
 

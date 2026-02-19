@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "node scripts/seed_demo_users.js",
+    "seed:clean": "node scripts/seed_demo_users.js --clean"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",

@@ -9,7 +9,7 @@ export function PublicHeader() {
       <div className="container flex h-14 max-w-screen-2xl items-center">
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center space-x-2">
-            <Image src="/logo.svg" alt="ShiftSitter Pro Logo" width={32} height={32} />
+            <Image src="/logo-shiftsitter.png" alt="ShiftSitter Pro Logo" width={32} height={32} />
             <span className="font-bold font-headline sm:inline-block">
               {APP_NAME}
             </span>

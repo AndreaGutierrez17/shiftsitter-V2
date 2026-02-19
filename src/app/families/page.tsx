@@ -76,9 +76,14 @@ export default function FamiliesPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-        ensureFamilyDocAndRedirect(user.uid).catch((error) => {
+        ensureFamilyDocAndRedirect(user.uid).catch((error: unknown) => {
+          const firestoreError = error as { code?: string; message?: string };
           console.error("Failed to ensure user profile", error);
-          setMsg("No pudimos validar tu perfil en Firebase. Revisa reglas/permisos y vuelve a intentar.");
+          if (firestoreError.code === "permission-denied") {
+            setMsg("Firebase rejected the profile write (permission-denied). Check Firestore rules and try again.");
+          } else {
+            setMsg("We could not validate your profile in Firebase. Check rules/permissions and try again.");
+          }
           signOut(auth).catch(() => {});
         });
     }
@@ -135,8 +140,7 @@ export default function FamiliesPage() {
     setBusy(true);
     try {
       const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
-      await ensureFamilyDocAndRedirect(cred.user.uid);
+      await signInWithPopup(auth, provider);
     } catch (e: any) {
       const code = e?.code as string | undefined;
       if (code === "auth/popup-closed-by-user") {
@@ -160,8 +164,7 @@ export default function FamiliesPage() {
         if (!email || !password) {
             throw new Error("Please enter your email and password.");
         }
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        await ensureFamilyDocAndRedirect(cred.user.uid);
+        await signInWithEmailAndPassword(auth, email, password);
     } catch(e: any) {
        const code = e?.code as string | undefined;
        if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
@@ -186,8 +189,7 @@ export default function FamiliesPage() {
       if (!pwdRules.isValid) {
         throw new Error(passwordHelpText());
       }
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await ensureFamilyDocAndRedirect(cred.user.uid);
+      await createUserWithEmailAndPassword(auth, email, password);
     } catch (e: any) {
       const code = e?.code as string | undefined;
       if (code === "auth/email-already-in-use") {
@@ -211,8 +213,9 @@ export default function FamiliesPage() {
   }
 
   return (
-    <main className="auth-split">
-      <section className="auth-left">
+    <>
+      <main className="auth-split">
+        <section className="auth-left">
         <div className="auth-left-inner">
           <p className="eyebrow">
             <i className="bi bi-people-fill me-2" />
@@ -232,9 +235,9 @@ export default function FamiliesPage() {
             <li><i className="bi bi-arrow-repeat" /> Parents supporting parents — with agreements</li>
           </ul>
         </div>
-      </section>
+        </section>
 
-      <section className="auth-right">
+        <section className="auth-right">
         <div className="auth-card">
           <Tabs value={mode} onValueChange={onTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -302,8 +305,9 @@ export default function FamiliesPage() {
           <p className="auth-footnote">By continuing, you agree to ShiftSitter’s Terms & Privacy Policy.</p>
           {busy && <div className="auth-loader" />}
         </div>
-      </section>
-    </main>
+        </section>
+      </main>
+    </>
   );
 }
 

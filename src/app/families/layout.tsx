@@ -3,6 +3,6 @@ export default function FamiliesLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return <div className="families-app">{children}</div>;
 }
 

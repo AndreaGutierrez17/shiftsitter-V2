@@ -2,24 +2,18 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, RotateCcw, MessageCircle, Info, MapPin } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Heart, X, RotateCcw, MapPin, ArrowRight, CalendarDays, Baby } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
 import { db } from '@/lib/firebase/client';
 import { collection, query, where, getDocs, doc, setDoc, addDoc, serverTimestamp, getDoc, deleteDoc, onSnapshot, limit } from 'firebase/firestore';
-import Image from 'next/image';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-} from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
+import { useRouter } from 'next/navigation';
+import MatchModal from '@/components/MatchModal';
+
+type FirestoreError = { message?: string };
 
 const isRoleCompatible = (
   currentRole: UserProfile['role'] | undefined,
@@ -31,7 +25,26 @@ const isRoleCompatible = (
   return candidateRole === 'parent' || candidateRole === 'sitter' || candidateRole === 'reciprocal';
 };
 
-const SwipeCard = ({ userProfile, onSwipe }: { userProfile: UserProfile, onSwipe: (id: string, direction: 'left' | 'right') => void }) => {
+const SwipeCard = ({
+  userProfile,
+  onSwipe,
+  onOpenProfile,
+}: {
+  userProfile: UserProfile,
+  onSwipe: (id: string, direction: 'left' | 'right') => void,
+  onOpenProfile: (id: string) => void,
+}) => {
+  const primaryPhoto = userProfile.photoURLs?.[0] || '';
+  const fallbackPhoto = '/ShiftSitter.jpeg';
+  const avatarLikePhoto = /dicebear|ui-avatars|robohash|avatar|initial|placeholder|profile-default|\\.svg/i.test(primaryPhoto);
+  const preferredPhoto = primaryPhoto && !avatarLikePhoto ? primaryPhoto : fallbackPhoto;
+  const [imageSrc, setImageSrc] = useState(preferredPhoto);
+  const needsText = userProfile.needs || userProfile.workplace || 'Open to coordinate care schedules.';
+
+  useEffect(() => {
+    setImageSrc(preferredPhoto);
+  }, [preferredPhoto]);
+
   return (
     <motion.div
       key={userProfile.id}
@@ -50,70 +63,59 @@ const SwipeCard = ({ userProfile, onSwipe }: { userProfile: UserProfile, onSwipe
       transition={{ ease: "easeInOut" }}
       className="absolute w-full h-full"
     >
-      <Card className="relative w-full h-full rounded-2xl overflow-hidden shadow-lg">
-        <Image 
-          src={userProfile.photoURLs[0] || `https://picsum.photos/seed/${userProfile.id}/600/800`}
-          alt={userProfile.name || 'Profile picture'} 
-          fill 
-          className="object-cover"
-          data-ai-hint="person portrait"
+      <Card
+        className="relative w-full h-full rounded-2xl overflow-hidden shadow-lg cursor-pointer"
+        onClick={() => onOpenProfile(userProfile.id)}
+      >
+        <img
+          src={imageSrc}
+          alt={userProfile.name || 'Profile picture'}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => {
+            if (imageSrc !== fallbackPhoto) setImageSrc(fallbackPhoto);
+          }}
         />
-        <div className="absolute bottom-0 left-0 w-full h-2/5 bg-gradient-to-t from-black/90 to-transparent p-6 flex flex-col justify-end">
-            <div className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-3xl font-bold text-white font-headline">{userProfile.name}, {userProfile.age}</h2>
-                    <p className="text-white/90 flex items-center gap-2"><MapPin size={16}/> {userProfile.location}</p>
-                </div>
-                 <Link href={`/families/profile/${userProfile.id}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="secondary" size="icon"><Info className="h-5 w-5"/></Button>
-                </Link>
+        <div className="absolute inset-0 match-hero-overlay p-5">
+            <div className="match-hero-top">
+              <button type="button" className="match-hero-icon ghost" onClick={(e) => e.stopPropagation()}>
+                <MapPin className="h-5 w-5" />
+              </button>
+              <Link
+                href={`/families/profile/${userProfile.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="match-hero-icon"
+              >
+                <ArrowRight className="h-5 w-5"/>
+              </Link>
             </div>
-            <p className="text-white/90 mt-2 line-clamp-2">{userProfile.needs || userProfile.workplace}</p>
+            <div className="match-hero-content">
+              <h2 className="match-hero-name">{userProfile.name}, {userProfile.age}</h2>
+              <p className="match-hero-location"><MapPin size={16}/> {userProfile.location}</p>
+              <div className="match-hero-meta">
+                {typeof userProfile.childAge === 'number' && (
+                  <p><Baby size={16} /> <span>Child&apos;s Age</span> {userProfile.childAge} years old</p>
+                )}
+                {userProfile.availability && (
+                  <p><CalendarDays size={16} /> <span>Availability</span> {userProfile.availability}</p>
+                )}
+                <p><Heart size={16} /> <span>Needs</span> {needsText}</p>
+              </div>
+              {Array.isArray(userProfile.interests) && userProfile.interests.length > 0 && (
+                <div className="match-chip-row">
+                  {userProfile.interests.slice(0, 3).map((interest) => (
+                    <span key={interest} className="match-chip">{interest}</span>
+                  ))}
+                </div>
+              )}
+            </div>
         </div>
       </Card>
     </motion.div>
   );
 };
 
-const MatchModal = ({ open, onOpenChange, currentUser, matchedUser, conversationId }: { open: boolean, onOpenChange: (open: boolean) => void, currentUser: UserProfile | null, matchedUser: UserProfile | null, conversationId: string | null }) => {
-    if (!currentUser || !matchedUser) return null;
-
-    return (
-        <AlertDialog open={open} onOpenChange={onOpenChange}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle className="text-center font-headline text-3xl">It's a Match!</AlertDialogTitle>
-                    <AlertDialogDescription className="text-center text-base">
-                        You and {matchedUser.name} liked each other!
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="flex justify-center items-center gap-4 my-4">
-                    <Avatar className="h-24 w-24 border-4 border-primary shadow-lg">
-                        <AvatarImage src={currentUser.photoURLs[0]} />
-                        <AvatarFallback>{currentUser.name?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <Avatar className="h-24 w-24 border-4 border-secondary shadow-lg">
-                         <AvatarImage src={matchedUser.photoURLs[0]} />
-                        <AvatarFallback>{matchedUser.name?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                </div>
-                <div className="flex flex-col gap-4">
-                    <Button asChild size="lg">
-                        <Link href={`/families/messages/${conversationId}`}>
-                            <MessageCircle className="mr-2" /> Send a Message
-                        </Link>
-                    </Button>
-                    <Button variant="outline" size="lg" onClick={() => onOpenChange(false)}>
-                        Keep Swiping
-                    </Button>
-                </div>
-            </AlertDialogContent>
-        </AlertDialog>
-    );
-};
-
-
 export default function MatchPage() {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +125,29 @@ export default function MatchPage() {
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [noProfilesMessage, setNoProfilesMessage] = useState<{title: string, description: string} | null>(null);
   const [lastSwiped, setLastSwiped] = useState<{ profile: UserProfile, direction: 'left' | 'right' } | null>(null);
+
+  const hasShownMatch = (matchId: string) => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const raw = localStorage.getItem('shownMatches');
+      const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+      return !!parsed[matchId];
+    } catch {
+      return false;
+    }
+  };
+
+  const markMatchShown = (matchId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('shownMatches');
+      const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+      parsed[matchId] = true;
+      localStorage.setItem('shownMatches', JSON.stringify(parsed));
+    } catch {
+      // no-op for corrupted localStorage values
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -193,8 +218,9 @@ export default function MatchPage() {
         }
         
         setProfiles(fetchedProfiles);
-      } catch (error) {
-          console.error("Error fetching profiles. This might be a Firestore index issue.", error);
+      } catch (error: unknown) {
+          const firestoreError = error as FirestoreError;
+          console.error("Error fetching profiles. This might be a Firestore index issue.", firestoreError.message ?? error);
           setNoProfilesMessage({
               title: "Error loading profiles",
               description: "We couldn't load new profiles. This might be due to a database configuration issue. Check the developer console for a link to create a Firestore index."
@@ -265,12 +291,17 @@ export default function MatchPage() {
                     }
                 });
                 
-                setLastMatch({ matchedUser: swipedProfile, conversationId: conversationRef.id });
-                setShowMatchModal(true);
+                const matchState = { matchedUser: swipedProfile, conversationId: conversationRef.id };
+                setLastMatch(matchState);
+                if (!hasShownMatch(conversationRef.id)) {
+                  setShowMatchModal(true);
+                  markMatchShown(conversationRef.id);
+                }
             }
         }
-    } catch(err) {
-        console.error("Error during swipe:", err);
+    } catch(error: unknown) {
+        const firestoreError = error as FirestoreError;
+        console.error("Error during swipe:", firestoreError.message ?? error);
     } finally {
         setIsSwiping(false);
     }
@@ -298,6 +329,10 @@ export default function MatchPage() {
      window.location.reload();
   }
 
+  const handleOpenProfile = (profileId: string) => {
+    router.push(`/families/profile/${profileId}`);
+  };
+
   if (loading || authLoading) {
       return (
         <div className="flex items-center justify-center h-[calc(100vh-64px)]">
@@ -319,10 +354,15 @@ export default function MatchPage() {
               conversationId={lastMatch.conversationId}
           />
         )}
-        <div className="relative flex items-center justify-center" style={{ minHeight: '640px' }}>
+        <div className="match-deck-wrap">
           <AnimatePresence>
               {currentProfile ? (
-                  <SwipeCard key={currentProfile.id} userProfile={currentProfile} onSwipe={handleSwipe} />
+                  <SwipeCard
+                    key={currentProfile.id}
+                    userProfile={currentProfile}
+                    onSwipe={handleSwipe}
+                    onOpenProfile={handleOpenProfile}
+                  />
               ) : (
                   !loading && noProfilesMessage && (
                       <Card className="match-card w-full">
@@ -339,33 +379,30 @@ export default function MatchPage() {
               )}
           </AnimatePresence>
         </div>
-        <div className="match-actions">
+        <div className="match-action-row">
           <button
             type="button"
-            className="match-btn"
-            onClick={() => currentProfile && handleSwipe(currentProfile.id, 'left')}
-            disabled={!currentProfile || loading || isSwiping}
-          >
-            <X className="h-5 w-5" />
-            Pass
-          </button>
-          <button
-            type="button"
-            className="match-btn ghost"
+            className="match-action-btn rewind"
             onClick={handleRewind}
             disabled={loading || !lastSwiped || isSwiping}
           >
-            <RotateCcw className="h-5 w-5" />
-            Rewind
+            <RotateCcw className="h-8 w-8" />
           </button>
           <button
             type="button"
-            className="match-btn primary"
+            className="match-action-btn pass"
+            onClick={() => currentProfile && handleSwipe(currentProfile.id, 'left')}
+            disabled={!currentProfile || loading || isSwiping}
+          >
+            <X className="h-8 w-8" />
+          </button>
+          <button
+            type="button"
+            className="match-action-btn like"
             onClick={() => currentProfile && handleSwipe(currentProfile.id, 'right')}
             disabled={!currentProfile || loading || isSwiping}
           >
-            <Heart className="h-5 w-5" />
-            Like
+            <Heart className="h-8 w-8" />
           </button>
         </div>
         </div>

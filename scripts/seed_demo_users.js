@@ -1,284 +1,278 @@
+// ShiftSitter demo data seed (Maryland, English)
+// Run: node scripts/seed_demo_users.js
+
 const admin = require('firebase-admin');
 const fs = require('fs');
 
 const serviceAccountPath = './scripts/serviceAccountKey.json';
 
 if (!fs.existsSync(serviceAccountPath)) {
-    console.error('\n❌ ¡Casi! Falta un paso manual que solo tú puedes hacer.');
-    console.error('-----------------------------------------------------------------');
-    console.error('Error: No se encontró el archivo `serviceAccountKey.json`.');
-    console.error('\nEste archivo es una "llave" de seguridad para tu proyecto.');
-    console.error('Por tu propia seguridad, yo no puedo crearlo por ti.');
-    console.error('\nSigue estos pasos para generarlo:');
-    console.error('  1. Abre tu proyecto en la Consola de Firebase.');
-    console.error('  2. Ve a "Configuración del proyecto" > "Cuentas de servicio".');
-    console.error('  3. Haz clic en "Generar nueva clave privada".');
-    console.error('  4. Renombra el archivo descargado a `serviceAccountKey.json`.');
-    console.error('  5. Arrástralo a la carpeta `scripts` que ves a la izquierda en el explorador de archivos.');
-    console.error('-----------------------------------------------------------------');
-    console.error('Una vez hecho, ejecuta `npm run seed` de nuevo.');
-    process.exit(1);
+  console.error('\nMissing scripts/serviceAccountKey.json');
+  console.error('Download it from Firebase Console > Project Settings > Service accounts.\n');
+  process.exit(1);
 }
 
 const serviceAccount = require('./serviceAccountKey.json');
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
 const auth = admin.auth();
 
-// ───────────────────────────────────────────
-// DATOS DE LAS 10 CUENTAS DEMO
-// ───────────────────────────────────────────
+
 
 const DEMO_USERS = [
   {
     uid: 'demo_user_001',
-    email: 'sofia.enfermera@shiftsitter.demo',
+    email: 'olivia.nurse@shiftsitter.demo',
     password: 'Demo2024!!',
-    displayName: 'Sofía M.',
+    displayName: 'Olivia M.',
     profile: {
-      name: 'Sofía M.',
+      name: 'Olivia M.',
       age: 32,
-      needs: 'Enfermera en turno nocturno 🏥 Mamá de Diego (4 años). Busco intercambio de cuidado para noches y fines de semana.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=sofia&backgroundColor=b6e3f4'],
-      workplace: 'Enfermera — IMSS (Noches 10pm–6am)',
-      location: 'Colonia del Valle, CDMX',
-      latitude: 19.4326,
-      longitude: -99.1332,
+      needs: 'Night-shift nurse and mom of one 4-year-old. Looking for reliable reciprocal care on weekdays.',
+      photoURLs: ['https://i.pravatar.cc/600?img=32'],
+      workplace: 'Registered Nurse - Johns Hopkins Hospital',
+      location: 'Baltimore, MD',
+      latitude: 39.2904,
+      longitude: -76.6122,
       numberOfChildren: 1,
       childAge: 4,
+      childrenAgesText: '4',
       averageRating: 4.9,
-      ratingCount: 8,
+      ratingCount: 9,
       backgroundCheckStatus: 'completed',
-      interests: ['Salud', 'Lectura', 'Familia'],
-      availability: 'Lunes, Miércoles, Viernes (6:30-14:00), Sábados (8:00-18:00)',
-    }
+      interests: ['Family Time', 'Reading', 'Meal Prep'],
+      availability: 'Mon, Wed, Fri 6:30 AM-2:00 PM; Sat 8:00 AM-6:00 PM',
+    },
   },
   {
     uid: 'demo_user_002',
-    email: 'carlos.policia@shiftsitter.demo',
+    email: 'marcus.firefighter@shiftsitter.demo',
     password: 'Demo2024!!',
-    displayName: 'Carlos R.',
+    displayName: 'Marcus T.',
     profile: {
-      name: 'Carlos R.',
-      age: 35,
-      needs: 'Policía federal con turnos 24x48. Papá de Valentina (6) y Mateo (3). Muy comprometido con el cuidado recíproco 💪',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=carlos&backgroundColor=ffdfbf'],
-      workplace: 'Policía Federal (24 horas activo / 48 horas libre)',
-      location: 'Narvarte, CDMX',
-      latitude: 19.4280,
-      longitude: -99.1276,
+      name: 'Marcus T.',
+      age: 38,
+      needs: '24/72 firefighter schedule. Dad of two kids and open to long reciprocal blocks.',
+      photoURLs: ['https://i.pravatar.cc/600?img=12'],
+      workplace: 'Baltimore City Fire Department',
+      location: 'Towson, MD',
+      latitude: 39.4015,
+      longitude: -76.6019,
       numberOfChildren: 2,
-      childAge: 3,
-      averageRating: 5.0,
-      ratingCount: 15,
+      childAge: 5,
+      childrenAgesText: '7, 5',
+      averageRating: 4.8,
+      ratingCount: 21,
       backgroundCheckStatus: 'completed',
-      interests: ['Deporte', 'Seguridad', 'Cine'],
-      availability: 'Lunes, Martes, Viernes, Sábados (8:00-20:00)',
-    }
+      interests: ['Community', 'Sports', 'Cooking'],
+      availability: 'Tue, Thu 7:00 AM-7:00 PM; Sun 10:00 AM-6:00 PM',
+    },
   },
   {
     uid: 'demo_user_003',
-    email: 'ana.fabrica@shiftsitter.demo',
+    email: 'natalie.teacher@shiftsitter.demo',
     password: 'Demo2024!!',
-    displayName: 'Ana L.',
+    displayName: 'Natalie F.',
     profile: {
-      name: 'Ana L.',
-      age: 28,
-      needs: 'Trabajo en línea de producción turno matutino 🏭 Mamá soltera de Luisa (2 años). Necesito apoyo para las mañanas entre semana.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=ana&backgroundColor=c0aede'],
-      workplace: 'Operadora de producción (Lun–Vie 5am–1pm)',
-      location: 'Iztapalapa, CDMX',
-      latitude: 19.4500,
-      longitude: -99.1000,
-      numberOfChildren: 1,
-      childAge: 2,
-      averageRating: 4.8,
-      ratingCount: 3,
-      backgroundCheckStatus: 'completed',
-      interests: ['Música', 'Baile', 'Familia'],
-      availability: 'Sábados y Domingos (9:00-17:00)',
-    }
-  },
-    {
-    uid: 'demo_user_004',
-    email: 'miguel.bombero@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Miguel T.',
-    profile: {
-      name: 'Miguel T.',
-      age: 38,
-      needs: 'Bombero 🚒 Turno 24x72. Papá de Emilio (7) y Clara (5). Mi esposa también trabaja turnos. Nos organizamos bien en grupo.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=miguel&backgroundColor=ffd5dc'],
-      workplace: 'Bombero (24 horas activo / 72 horas libre)',
-      location: 'Benito Juárez, CDMX',
-      latitude: 19.4100,
-      longitude: -99.1600,
-      numberOfChildren: 2,
-      childAge: 5,
-      averageRating: 4.7,
-      ratingCount: 22,
-      backgroundCheckStatus: 'completed',
-      interests: ['Ayuda comunitaria', 'Deportes', 'Asados'],
-      availability: 'Lunes, Martes, Miércoles (7:00-19:00), Domingos (10:00-18:00)',
-    }
-  },
-  {
-    uid: 'demo_user_005',
-    email: 'lucia.doctora@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Lucía P.',
-    profile: {
-      name: 'Lucía P.',
-      age: 34,
-      needs: 'Médica residente 👩‍⚕️ guardias de 36 horas. Mamá de Andrés (3). Busco ShiftSitter de confianza para las guardias largas.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=lucia&backgroundColor=d1f4d1'],
-      workplace: 'Médica Residente — Hospital General (Guardias 36h cada 4 días)',
-      location: 'Roma Norte, CDMX',
-      latitude: 19.4200,
-      longitude: -99.1450,
-      numberOfChildren: 1,
-      childAge: 3,
-      averageRating: 4.9,
-      ratingCount: 5,
-      backgroundCheckStatus: 'completed',
-      interests: ['Medicina', 'Ciencia', 'Yoga'],
-      availability: 'Lunes, Miércoles, Viernes (8:00-20:00), Sábados (10:00-18:00)',
-    }
-  },
-  {
-    uid: 'demo_user_006',
-    email: 'roberto.seguridad@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Roberto V.',
-    profile: {
-      name: 'Roberto V.',
-      age: 30,
-      needs: 'Guardia de seguridad turno nocturno 🔦 Papá de Jimena (5). Mi esposa trabaja en el día, juntos necesitamos apoyo en la transición de turnos.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=roberto&backgroundColor=ffeaa7'],
-      workplace: 'Guardia de Seguridad Privada (Noches Vie–Lun 10pm–6am)',
-      location: 'Condesa, CDMX',
-      latitude: 19.4380,
-      longitude: -99.1600,
-      numberOfChildren: 1,
-      childAge: 5,
-      averageRating: 4.6,
-      ratingCount: 9,
-      backgroundCheckStatus: 'completed',
-      interests: ['Películas', 'Tecnología', 'Caminar'],
-      availability: 'Martes, Miércoles, Jueves (7:00-18:00)',
-    }
-  },
-    {
-    uid: 'demo_user_007',
-    email: 'patricia.chofer@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Patricia G.',
-    profile: {
-      name: 'Patricia G.',
-      age: 36,
-      needs: 'Chofer de transporte escolar 🚌 Mamá de Rodrigo (8) y Fernanda (4). Trabajo madrugadas. Puedo cuidar en las tardes a cambio.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=patricia&backgroundColor=fab1a0'],
-      workplace: 'Chofer Transporte Escolar (Madrugada 4am–8am y 2pm–5pm)',
-      location: 'Xochimilco, CDMX',
-      latitude: 19.3950,
-      longitude: -99.1600,
-      numberOfChildren: 2,
-      childAge: 4,
-      averageRating: 4.8,
-      ratingCount: 11,
-      backgroundCheckStatus: 'completed',
-      interests: ['Manualidades', 'Cocina', 'Aire libre'],
-      availability: 'Lunes a Viernes (8:30-14:00), Sábados y Domingos (10:00-20:00)',
-    }
-  },
-  {
-    uid: 'demo_user_008',
-    email: 'jorge.cajero@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Jorge H.',
-    profile: {
-      name: 'Jorge H.',
-      age: 27,
-      needs: 'Cajero en banco, turno mixto 🏦 Papá de Tomás (1 año). Mi pareja trabaja en turno matutino. Buscamos intercambio vespertino y nocturno.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=jorge&backgroundColor=dfe6e9'],
-      workplace: 'Cajero Bancario (Mixto: 2pm–10pm variable)',
-      location: 'Doctores, CDMX',
-      latitude: 19.4450,
-      longitude: -99.1200,
-      numberOfChildren: 1,
-      childAge: 1,
-      averageRating: 4.7,
-      ratingCount: 2,
-      backgroundCheckStatus: 'not_started',
-      interests: ['Videojuegos', 'Finanzas', 'Series'],
-      availability: 'Lunes a Viernes (7:00-13:00), Domingos (9:00-16:00)',
-    }
-  },
-  {
-    uid: 'demo_user_009',
-    email: 'daniela.maestra@shiftsitter.demo',
-    password: 'Demo2024!!',
-    displayName: 'Daniela F.',
-    profile: {
-      name: 'Daniela F.',
+      name: 'Natalie F.',
       age: 31,
-      needs: 'Maestra de primaria 📚 Mamá de Isabella (6) y Samuel (4). Disponible tardes entre semana y fines de semana. ¡Amo cuidar niños!',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=daniela&backgroundColor=a29bfe'],
-      workplace: 'Docente de Primaria (Lun–Vie 7am–1pm)',
-      location: 'Tacubaya, CDMX',
-      latitude: 19.4300,
-      longitude: -99.1700,
+      needs: 'Elementary teacher with two kids. Needs occasional evening coverage and weekend support.',
+      photoURLs: ['https://i.pravatar.cc/600?img=47'],
+      workplace: 'Howard County Public Schools',
+      location: 'Columbia, MD',
+      latitude: 39.2037,
+      longitude: -76.8610,
       numberOfChildren: 2,
       childAge: 4,
+      childrenAgesText: '6, 4',
       averageRating: 5.0,
       ratingCount: 18,
       backgroundCheckStatus: 'completed',
-      interests: ['Educación', 'Arte', 'Naturaleza'],
-      availability: 'Lunes a Viernes (14:00-21:00), Sábados (9:00-20:00), Domingos (9:00-18:00)',
-    }
+      interests: ['Education', 'Art', 'Parks'],
+      availability: 'Weekdays 2:00 PM-9:00 PM; Sat-Sun 9:00 AM-7:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_004',
+    email: 'elena.pharmacist@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Elena R.',
+    profile: {
+      name: 'Elena R.',
+      age: 34,
+      needs: 'Hospital pharmacist with rotating weekends. Looking for recurring reciprocal agreements.',
+      photoURLs: ['https://i.pravatar.cc/600?img=5'],
+      workplace: 'University of Maryland Medical Center',
+      location: 'Glen Burnie, MD',
+      latitude: 39.1626,
+      longitude: -76.6247,
+      numberOfChildren: 1,
+      childAge: 3,
+      childrenAgesText: '3',
+      averageRating: 4.9,
+      ratingCount: 7,
+      backgroundCheckStatus: 'completed',
+      interests: ['Science', 'Yoga', 'Coffee'],
+      availability: 'Mon, Wed, Fri 8:00 AM-8:00 PM; Sat 10:00 AM-6:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_005',
+    email: 'derek.security@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Derek V.',
+    profile: {
+      name: 'Derek V.',
+      age: 30,
+      needs: 'Overnight security schedule. Dad of one and needs support during daytime transition hours.',
+      photoURLs: ['https://i.pravatar.cc/600?img=15'],
+      workplace: 'Private Security - Downtown Baltimore',
+      location: 'Dundalk, MD',
+      latitude: 39.2507,
+      longitude: -76.5205,
+      numberOfChildren: 1,
+      childAge: 5,
+      childrenAgesText: '5',
+      averageRating: 4.6,
+      ratingCount: 10,
+      backgroundCheckStatus: 'completed',
+      interests: ['Movies', 'Walking', 'Tech'],
+      availability: 'Tue, Wed, Thu 7:00 AM-6:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_006',
+    email: 'samantha.driver@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Samantha G.',
+    profile: {
+      name: 'Samantha G.',
+      age: 36,
+      needs: 'School bus driver with split shifts. Can offer afternoons in exchange for early morning help.',
+      photoURLs: ['https://i.pravatar.cc/600?img=31'],
+      workplace: 'Baltimore County Public Schools Transportation',
+      location: 'Parkville, MD',
+      latitude: 39.3773,
+      longitude: -76.5394,
+      numberOfChildren: 2,
+      childAge: 4,
+      childrenAgesText: '8, 4',
+      averageRating: 4.8,
+      ratingCount: 12,
+      backgroundCheckStatus: 'completed',
+      interests: ['Cooking', 'Crafts', 'Outdoors'],
+      availability: 'Mon-Fri 8:30 AM-2:00 PM; Sat-Sun 10:00 AM-8:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_007',
+    email: 'jason.banker@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Jason H.',
+    profile: {
+      name: 'Jason H.',
+      age: 27,
+      needs: 'Bank associate on mixed shifts. New parent looking for trusted local reciprocal care.',
+      photoURLs: ['https://i.pravatar.cc/600?img=18'],
+      workplace: 'M&T Bank',
+      location: 'Catonsville, MD',
+      latitude: 39.2721,
+      longitude: -76.7319,
+      numberOfChildren: 1,
+      childAge: 1,
+      childrenAgesText: '1',
+      averageRating: 4.7,
+      ratingCount: 3,
+      backgroundCheckStatus: 'not_started',
+      interests: ['Finance', 'Gaming', 'Fitness'],
+      availability: 'Mon-Fri 7:00 AM-1:00 PM; Sun 9:00 AM-4:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_008',
+    email: 'mia.dispatch@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Mia C.',
+    profile: {
+      name: 'Mia C.',
+      age: 29,
+      needs: '911 dispatcher with rotating nights. Looking for dependable weekday backup.',
+      photoURLs: ['https://i.pravatar.cc/600?img=48'],
+      workplace: 'Baltimore County Emergency Communications',
+      location: 'Owings Mills, MD',
+      latitude: 39.4195,
+      longitude: -76.7803,
+      numberOfChildren: 1,
+      childAge: 2,
+      childrenAgesText: '2',
+      averageRating: 4.8,
+      ratingCount: 5,
+      backgroundCheckStatus: 'completed',
+      interests: ['Music', 'Dance', 'Family'],
+      availability: 'Sat-Sun 9:00 AM-5:00 PM',
+    },
+  },
+  {
+    uid: 'demo_user_009',
+    email: 'rachel.chef@shiftsitter.demo',
+    password: 'Demo2024!!',
+    displayName: 'Rachel P.',
+    profile: {
+      name: 'Rachel P.',
+      age: 33,
+      needs: 'Restaurant chef with heavy weekend shifts. Offers weekday coverage in return.',
+      photoURLs: ['https://i.pravatar.cc/600?img=25'],
+      workplace: 'Inner Harbor Restaurant Group',
+      location: 'Federal Hill, Baltimore, MD',
+      latitude: 39.2750,
+      longitude: -76.6130,
+      numberOfChildren: 1,
+      childAge: 5,
+      childrenAgesText: '5',
+      averageRating: 4.8,
+      ratingCount: 11,
+      backgroundCheckStatus: 'completed',
+      interests: ['Food', 'Travel', 'Community'],
+      availability: 'Mon-Wed 9:00 AM-5:00 PM',
+    },
   },
   {
     uid: 'demo_user_010',
-    email: 'fernando.cocinero@shiftsitter.demo',
+    email: 'andrew.paramedic@shiftsitter.demo',
     password: 'Demo2024!!',
-    displayName: 'Fernando C.',
+    displayName: 'Andrew L.',
     profile: {
-      name: 'Fernando C.',
-      age: 33,
-      needs: 'Chef en restaurante 👨‍🍳 Turno de noche y fines de semana. Papá de Renata (5). Busco apoyo para fines de semana. A cambio cuido entre semana.',
-      photoURLs: ['https://api.dicebear.com/7.x/personas/svg?seed=fernando&backgroundColor=fdcb6e'],
-      workplace: 'Chef de Cocina — Restaurante (Noches Jue–Dom 5pm–1am)',
-      location: 'Polanco, CDMX',
-      latitude: 19.4350,
-      longitude: -99.1400,
-      numberOfChildren: 1,
-      childAge: 5,
-      averageRating: 4.8,
-      ratingCount: 10,
+      name: 'Andrew L.',
+      age: 35,
+      needs: 'Paramedic on 12-hour shifts. Looking for reciprocal support with another shift-based family.',
+      photoURLs: ['https://i.pravatar.cc/600?img=54'],
+      workplace: 'Anne Arundel EMS',
+      location: 'Annapolis, MD',
+      latitude: 38.9784,
+      longitude: -76.4922,
+      numberOfChildren: 2,
+      childAge: 3,
+      childrenAgesText: '6, 3',
+      averageRating: 4.9,
+      ratingCount: 14,
       backgroundCheckStatus: 'completed',
-      interests: ['Gastronomía', 'Vino', 'Viajes'],
-      availability: 'Lunes, Martes, Miércoles (9:00-17:00)',
-    }
-  }
+      interests: ['Health', 'Running', 'Family Activities'],
+      availability: 'Mon, Tue, Fri, Sat 8:00 AM-8:00 PM',
+    },
+  },
 ];
 
-// ───────────────────────────────────────────
-// FUNCIÓN PRINCIPAL — Crea las cuentas demo
-// ───────────────────────────────────────────
-
 async function seedDemoUsers() {
-  console.log('\n🍼  ShiftSitter — Creando usuarios de demostración...\n');
-  console.log('═══════════════════════════════════════════════════════');
+  console.log('\nShiftSitter - Creating Maryland demo accounts...\n');
 
   for (const user of DEMO_USERS) {
     try {
-      console.log(`\n▶ Procesando: ${user.displayName} (${user.uid})`);
+      console.log(`Processing: ${user.displayName} (${user.uid})`);
 
-      // 1. Crear o actualizar cuenta en Firebase Auth
       try {
         await auth.createUser({
           uid: user.uid,
@@ -289,89 +283,59 @@ async function seedDemoUsers() {
           emailVerified: true,
           disabled: false,
         });
-        console.log(`   ✅ Auth creado: ${user.uid}`);
       } catch (e) {
         if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
-          console.log(`   ℹ️  Auth ya existe, actualizando...`);
           await auth.updateUser(user.uid, {
             email: user.email,
             password: user.password,
             displayName: user.displayName,
             photoURL: user.profile.photoURLs[0],
+            emailVerified: true,
           });
-        } else throw e;
+        } else {
+          throw e;
+        }
       }
 
-      // 2. Preparar el documento de perfil para Firestore
-      // Este documento ahora es compatible con la estructura de la app Next.js
       const userDoc = {
         id: user.uid,
+        uid: user.uid,
         email: user.email,
-        role: 'reciprocal', // Asumimos 'reciprocal' para todos los demos.
+        role: 'reciprocal',
         profileComplete: true,
         isDemo: true,
+        isActive: true,
+        fcmToken: '',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-        // Mapeo de campos del script original a la estructura de la app
-        name: user.profile.name,
-        age: user.profile.age,
-        needs: user.profile.needs,
-        photoURLs: user.profile.photoURLs,
-        workplace: user.profile.workplace,
-        location: user.profile.location,
-        latitude: user.profile.latitude,
-        longitude: user.profile.longitude,
-        numberOfChildren: user.profile.numberOfChildren,
-        childAge: user.profile.childAge,
-        averageRating: user.profile.averageRating,
-        ratingCount: user.profile.ratingCount,
-        backgroundCheckStatus: user.profile.backgroundCheckStatus,
-        interests: user.profile.interests,
-        availability: user.profile.availability,
+        ...user.profile,
       };
-      
-      // 3. Escribir el documento en Firestore
-      const userRef = db.collection('users').doc(user.uid);
-      await userRef.set(userDoc, { merge: true });
-      
-      console.log(`   ✅ Perfil de Firestore escrito para ${user.displayName}`);
 
+      await db.collection('users').doc(user.uid).set(userDoc, { merge: true });
+      console.log(`OK: ${user.displayName}`);
     } catch (error) {
-      console.error(`   ❌ Error con ${user.displayName}:`, error.message);
+      console.error(`ERROR: ${user.displayName}:`, error.message);
     }
   }
 
-  console.log('\n═══════════════════════════════════════════════════════');
-  console.log('✅  ¡Seed completado! 10 usuarios de demostración están listos.');
-  console.log('\n📋  Resumen de cuentas creadas:');
-  DEMO_USERS.forEach(u => {
-    console.log(`   • ${u.displayName.padEnd(15)} ${u.email}`);
-  });
-  console.log('\n');
-
+  console.log('\nSeed completed. 10 Maryland demo accounts are ready.\n');
   process.exit(0);
 }
 
-// ───────────────────────────────────────────
-// FUNCIÓN DE LIMPIEZA — Elimina cuentas demo
-// Úsala solo si quieres resetear el seed
-// node seed_demo_users.js --clean
-// ───────────────────────────────────────────
-
 async function cleanDemoUsers() {
-  console.log('\n🗑️   Eliminando cuentas demo...\n');
+  console.log('\nDeleting Maryland demo accounts...\n');
   for (const user of DEMO_USERS) {
     try {
       await auth.deleteUser(user.uid);
       await db.collection('users').doc(user.uid).delete();
-      console.log(`   ✅ Eliminado Auth y Firestore para: ${user.displayName}`);
+      console.log(`Removed: ${user.displayName}`);
     } catch (e) {
-      console.log(`   ℹ️  ${user.displayName}: ${e.message}`);
+      console.log(`Skip: ${user.displayName}: ${e.message}`);
     }
   }
-  console.log('\n✅  Limpieza completada.\n');
+  console.log('\nCleanup completed.\n');
   process.exit(0);
 }
-
 
 if (process.argv.includes('--clean')) {
   cleanDemoUsers();
