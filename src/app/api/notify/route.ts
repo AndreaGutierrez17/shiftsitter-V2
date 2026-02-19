@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminAuth, adminDb, adminMessaging } from '@/lib/firebase/admin';
-import type { DocumentData } from 'firebase-admin/firestore';
+import type { firestore } from 'firebase-admin';
 
 export const runtime = 'nodejs';
 
@@ -65,14 +65,16 @@ export async function POST(request: Request) {
     );
 
     const tokenSet = new Set<string>();
-    tokenDocs.forEach((snap: FirebaseFirestore.DocumentSnapshot<DocumentData>) => {
+
+    tokenDocs.forEach((snap: firestore.DocumentSnapshot) => {
       if (!snap.exists) return;
       const data = snap.data() as { tokens?: string[] } | undefined;
       if (Array.isArray(data?.tokens)) {
         data.tokens.filter(Boolean).forEach((token) => tokenSet.add(token));
       }
     });
-    userDocs.forEach((snap: FirebaseFirestore.DocumentSnapshot<DocumentData>) => {
+
+    userDocs.forEach((snap: firestore.DocumentSnapshot) => {
       if (!snap.exists) return;
       const data = snap.data() as { fcmToken?: string } | undefined;
       if (typeof data?.fcmToken === 'string' && data.fcmToken.trim()) {
@@ -85,9 +87,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
 
-    const title = body.title || (body.type === 'message' ? 'New message' : body.type === 'match' ? "It's a Match!" : 'Shift update');
-    const notifBody = body.body || (body.type === 'message' ? 'You received a new message.' : body.type === 'match' ? 'You have a new match.' : 'A shift has been updated.');
-    const link = body.link || (body.conversationId ? `/families/messages/${body.conversationId}` : '/families/messages');
+    const title =
+      body.title ||
+      (body.type === 'message' ? 'New message' : body.type === 'match' ? "It's a Match!" : 'Shift update');
+
+    const notifBody =
+      body.body ||
+      (body.type === 'message'
+        ? 'You received a new message.'
+        : body.type === 'match'
+          ? 'You have a new match.'
+          : 'A shift has been updated.');
+
+    const link =
+      body.link ||
+      (body.conversationId ? `/families/messages/${body.conversationId}` : '/families/messages');
 
     const response = await adminMessaging().sendEachForMulticast({
       tokens,
