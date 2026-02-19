@@ -8,7 +8,7 @@ export default function HomePage() {
       <section className="hero-split">
         <img
           className="hero-split-media"
-          src="/hero-main.jpeg"
+          src="/hero-shiftsitter.jpeg"
           alt="A caregiver joyfully playing with a child in a bright, welcoming room"
         />
 

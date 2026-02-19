@@ -28,6 +28,7 @@ const DEMO_USERS = [
     uid: 'demo_user_001',
     email: 'olivia.nurse@shiftsitter.demo',
     password: 'Demo2024!!',
+    emailVerified: true,
     displayName: 'Olivia M.',
     profile: {
       name: 'Olivia M.',
