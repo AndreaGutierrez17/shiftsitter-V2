@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminAuth, adminDb, adminMessaging } from '@/lib/firebase/admin';
+import type { DocumentData } from 'firebase-admin/firestore';
 
 export const runtime = 'nodejs';
 
@@ -64,14 +65,14 @@ export async function POST(request: Request) {
     );
 
     const tokenSet = new Set<string>();
-    tokenDocs.forEach((snap) => {
+    tokenDocs.forEach((snap: FirebaseFirestore.DocumentSnapshot<DocumentData>) => {
       if (!snap.exists) return;
       const data = snap.data() as { tokens?: string[] } | undefined;
       if (Array.isArray(data?.tokens)) {
         data.tokens.filter(Boolean).forEach((token) => tokenSet.add(token));
       }
     });
-    userDocs.forEach((snap) => {
+    userDocs.forEach((snap: FirebaseFirestore.DocumentSnapshot<DocumentData>) => {
       if (!snap.exists) return;
       const data = snap.data() as { fcmToken?: string } | undefined;
       if (typeof data?.fcmToken === 'string' && data.fcmToken.trim()) {
