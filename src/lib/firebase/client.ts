@@ -16,6 +16,8 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+console.log("AUTH DOMAIN:", firebaseConfig.authDomain);
+
 
 const auth = getAuth(app);
 const db = getFirestore(app);
