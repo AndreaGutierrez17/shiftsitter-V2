@@ -659,7 +659,7 @@ export default function EditProfilePage() {
                             <div>
                               <h3 className="text-lg font-semibold text-foreground">Identity Verification (Required for Match)</h3>
                               <p className="text-sm text-muted-foreground mb-4">
-                                Upload one government ID (front only) and one selfie. In beta, verification is marked automatically after both files upload.
+                                Upload one government ID (front only) and one selfie to enable matching and build trust with other families.
                               </p>
                             </div>
                             <span
@@ -794,22 +794,6 @@ export default function EditProfilePage() {
                                 <FormMessage />
                             </FormItem>
                         )} />
-                         <FormField control={form.control} name="childAge" render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Age of youngest child (Optional)</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  name={field.name}
-                                  onBlur={field.onBlur}
-                                  ref={field.ref}
-                                  value={typeof field.value === 'number' ? field.value : ''}
-                                  onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )} />
                       </div>
                       <FormField control={form.control} name="childrenAgesText" render={({ field }) => (
                         <FormItem>

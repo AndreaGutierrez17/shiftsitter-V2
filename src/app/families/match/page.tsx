@@ -452,7 +452,7 @@ export default function MatchPage() {
               <CardContent className="match-foot text-center">
                 <h3 className="match-title">Verification Required</h3>
                 <p className="text-muted-foreground mt-2">
-                  Upload your government ID (front) and a selfie to access matching. During beta, your profile is verified automatically after both uploads.
+                  Upload your government ID (front) and a selfie to access matching. This helps keep the community safe and trusted.
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-3">
                   <button type="button" className="match-btn" onClick={() => router.push('/families/profile/edit')}>
