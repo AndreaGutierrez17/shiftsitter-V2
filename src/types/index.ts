@@ -22,7 +22,23 @@ export interface UserProfile {
   references?: string;
   backgroundCheckStatus: "not_started" | "in_progress" | "completed";
   cvUrl?: string;
+  verificationStatus?: "unverified" | "pending" | "verified" | "rejected";
+  idFrontUrl?: string;
+  selfieUrl?: string;
+  verificationSubmittedAt?: Timestamp;
+  verificationReviewedAt?: Timestamp;
+  verificationReviewNotes?: string;
   profileComplete: boolean;
+  avgRating?: number;
+  reviewCount?: number;
+  ratingBreakdown?: {
+    1?: number;
+    2?: number;
+    3?: number;
+    4?: number;
+    5?: number;
+  };
+  lastReviewAt?: Timestamp;
   averageRating?: number;
   ratingCount?: number;
   fcmToken?: string;
@@ -56,6 +72,10 @@ export interface Message {
   senderId: string;
   text: string;
   createdAt: Timestamp;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: string;
+  attachmentSizeBytes?: number;
 }
 
 export interface Shift {
@@ -66,8 +86,18 @@ export interface Shift {
   date: string;
   startTime: string;
   endTime: string;
-  status: "proposed" | "accepted" | "rejected" | "completed" | "swap_proposed";
+  status: "proposed" | "accepted" | "rejected" | "completed" | "swap_proposed" | "cancelled";
   createdAt: Timestamp;
+  startAt?: Timestamp;
+  endAt?: Timestamp;
+  cancelledAt?: Timestamp;
+  cancelledByUid?: string;
+  cancelReasonCode?: "illness" | "emergency" | "schedule_change" | "transportation_issue" | "other";
+  cancelReasonText?: string;
+  cancellationWindowHours?: number;
+  startReminderSent?: boolean;
+  startReminderSentAt?: Timestamp;
+  completedAt?: Timestamp;
   swapDetails?: {
     proposerId: string;
     newDate: string;
@@ -79,11 +109,19 @@ export interface Shift {
 export interface Review {
   id: string;
   shiftId: string;
+  reviewerUid?: string;
+  revieweeUid?: string;
   reviewerId: string;
   revieweeId: string;
   rating: number;
-  comment: string;
+  comment: string | null;
   createdAt: Timestamp;
+  roleContext?: UserRole;
+  visibility?: 'public';
+  metadata?: {
+    startAt?: string | null;
+    endAt?: string | null;
+  };
   tags?: {
     kidsSafe?: boolean;
     punctual?: boolean;
@@ -95,10 +133,15 @@ export interface Review {
 export interface Notification {
   id: string;
   userId: string;
-  type: "match" | "message" | "shift" | "system";
+  toUid?: string;
+  type: "match" | "message" | "shift" | "system" | "new_match" | "shift_cancelled" | "shift_starting_soon" | "shift_completed_review";
   title: string;
   body: string;
   read: boolean;
+  readAt?: Timestamp | null;
   createdAt: Timestamp;
+  href?: string | null;
+  deepLink?: string | null;
+  data?: Record<string, string | number | boolean | null>;
   metadata?: Record<string, string | number | boolean | null>;
 }

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Trash2, Upload, Loader2, FileText, AlertTriangle, BellRing, Users } from 'lucide-react';
+import { Trash2, Upload, Loader2, FileText, AlertTriangle, BellRing, Users, BadgeCheck, IdCard, Camera } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { auth, db, storage } from '@/lib/firebase/client';
@@ -54,6 +54,9 @@ type ProfileFormValues = z.input<typeof profileSchema>;
 const compressImageFile = async (file: File): Promise<File> => {
   if (typeof window === 'undefined' || !file.type.startsWith('image/')) {
     return file;
+  }
+  if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) {
+    throw new Error('HEIC/HEIF photos are not reliably supported in mobile browsers yet. Please upload JPG/PNG or change iPhone Camera format to "Most Compatible".');
   }
 
   const maxDimension = 800;
@@ -104,12 +107,17 @@ export default function EditProfilePage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | undefined>(undefined);
+  const [verificationStatus, setVerificationStatus] = useState<UserProfile['verificationStatus']>('unverified');
+  const [idFrontUrl, setIdFrontUrl] = useState<string | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
 
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [replacingPhotoUrl, setReplacingPhotoUrl] = useState<string | null>(null);
   const [isUploadingCv, setIsUploadingCv] = useState(false);
+  const [isUploadingIdFront, setIsUploadingIdFront] = useState(false);
+  const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isHandlingNotifications, setIsHandlingNotifications] = useState(false);
 
@@ -155,6 +163,9 @@ export default function EditProfilePage() {
           setPhotos(validPhotos);
           setCvUrl(profile.cvUrl || null);
           setUserRole(profile.role);
+          setVerificationStatus(profile.verificationStatus ?? 'unverified');
+          setIdFrontUrl(profile.idFrontUrl || null);
+          setSelfieUrl(profile.selfieUrl || null);
         }
       } catch (error: any) {
         console.error("Profile fetch error:", error);
@@ -170,13 +181,13 @@ export default function EditProfilePage() {
     fetchProfile();
   }, [user, form]);
 
-  const handleFileUpload = async (file: File, path: 'user_photos' | 'cvs'): Promise<string> => {
+  const handleFileUpload = async (file: File, path: 'user_photos' | 'cvs' | 'verification_docs'): Promise<string> => {
     if (!user) throw new Error("User not authenticated.");
     
     let fileToUpload = file;
 
     // Compress images before uploading
-    if (path === 'user_photos' && file.type.startsWith('image/')) {
+    if ((path === 'user_photos' || path === 'verification_docs') && file.type.startsWith('image/')) {
         try {
             const compressedFile = await compressImageFile(file);
             fileToUpload = compressedFile;
@@ -188,7 +199,7 @@ export default function EditProfilePage() {
                 description: 'Could not compress image. Uploading original file instead.',
             });
         }
-    } else if (file.size > 5 * 1024 * 1024) { // 5MB limit for other files like CVs
+    } else if (file.size > 5 * 1024 * 1024) { // 5MB limit for other files like CVs/docs
       throw new Error("File is too large. The limit is 5MB.");
     }
 
@@ -349,6 +360,59 @@ export default function EditProfilePage() {
     }
   }
 
+  const upsertVerificationAfterUpload = async (partial: { idFrontUrl?: string; selfieUrl?: string }) => {
+    if (!user) return;
+    const nextIdFront = partial.idFrontUrl ?? idFrontUrl ?? undefined;
+    const nextSelfie = partial.selfieUrl ?? selfieUrl ?? undefined;
+    const hasBoth = !!nextIdFront && !!nextSelfie;
+
+    const nextStatus: UserProfile['verificationStatus'] = hasBoth ? 'verified' : 'unverified';
+    const payload: Record<string, unknown> = {
+      ...partial,
+      verificationStatus: nextStatus,
+      verificationSubmittedAt: hasBoth ? new Date() : null,
+    };
+
+    await updateDoc(doc(db, 'users', user.uid), payload);
+    if (typeof partial.idFrontUrl === 'string') setIdFrontUrl(partial.idFrontUrl);
+    if (typeof partial.selfieUrl === 'string') setSelfieUrl(partial.selfieUrl);
+    setVerificationStatus(nextStatus);
+  };
+
+  const handleVerificationUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: 'idFront' | 'selfie'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!user || !file) return;
+
+    const setLoading = kind === 'idFront' ? setIsUploadingIdFront : setIsUploadingSelfie;
+    setLoading(true);
+
+    try {
+      const url = await handleFileUpload(file, 'verification_docs');
+      if (kind === 'idFront') {
+        await upsertVerificationAfterUpload({ idFrontUrl: url });
+      } else {
+        await upsertVerificationAfterUpload({ selfieUrl: url });
+      }
+      toast({
+        title: kind === 'idFront' ? 'ID uploaded successfully' : 'Selfie uploaded successfully',
+        description: 'Verification file saved. Upload both files to unlock match access.',
+      });
+    } catch (error: any) {
+      console.error('Verification upload error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Upload Failed',
+        description: error?.message || 'Could not upload verification document.',
+      });
+    } finally {
+      setLoading(false);
+      e.target.value = '';
+    }
+  };
+
   async function onSubmit(values: ProfileFormValues) {
     if (!user) return;
     setIsSaving(true);
@@ -466,7 +530,14 @@ export default function EditProfilePage() {
     );
   }
 
-  const isBusy = isSaving || isUploadingPhoto || isUploadingCv || isDeleting || isHandlingNotifications;
+  const isBusy =
+    isSaving ||
+    isUploadingPhoto ||
+    isUploadingCv ||
+    isUploadingIdFront ||
+    isUploadingSelfie ||
+    isDeleting ||
+    isHandlingNotifications;
   const isSitter = userRole === 'sitter';
 
   return (
@@ -503,7 +574,8 @@ export default function EditProfilePage() {
                                   type="file"
                                   className="sr-only"
                                   onChange={(e) => handlePhotoReplace(url, e)}
-                                  accept="image/png, image/jpeg, image/webp"
+                                  accept="image/*"
+                                  capture="environment"
                                   disabled={isUploadingPhoto}
                                 />
                                 <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
@@ -520,13 +592,14 @@ export default function EditProfilePage() {
                                 ) : null}
                                 <label className="inline-flex">
                                   <span className="sr-only">Replace photo</span>
-                                  <input
-                                    type="file"
-                                    className="sr-only"
-                                    onChange={(e) => handlePhotoReplace(url, e)}
-                                    accept="image/png, image/jpeg, image/webp"
-                                    disabled={isUploadingPhoto}
-                                  />
+                                <input
+                                  type="file"
+                                  className="sr-only"
+                                  onChange={(e) => handlePhotoReplace(url, e)}
+                                  accept="image/*"
+                                  capture="environment"
+                                  disabled={isUploadingPhoto}
+                                />
                                   <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
                                     <span>{replacingPhotoUrl === url ? 'Replacing...' : 'Replace'}</span>
                                   </Button>
@@ -542,7 +615,7 @@ export default function EditProfilePage() {
                           <label className={cn("aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center hover:bg-accent relative", isUploadingPhoto ? "cursor-not-allowed" : "cursor-pointer")}>
                               {isUploadingPhoto ? <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
                               <span className="text-xs text-muted-foreground mt-1">{isUploadingPhoto ? 'Uploading...' : 'Upload'}</span>
-                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/png, image/jpeg" disabled={isUploadingPhoto}/>
+                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/*" capture="environment" disabled={isUploadingPhoto}/>
                           </label>
                           )}
                       </div>
@@ -578,6 +651,99 @@ export default function EditProfilePage() {
                       </CardContent>
                       </Card>
                     )}
+
+                    <Card className="shadow-md">
+                      <CardContent className="p-5">
+                        <div>
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <h3 className="text-lg font-semibold text-foreground">Identity Verification (Required for Match)</h3>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Upload one government ID (front only) and one selfie. In beta, verification is marked automatically after both files upload.
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium',
+                                verificationStatus === 'verified' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                                verificationStatus === 'rejected' && 'border-red-200 bg-red-50 text-red-700',
+                                (verificationStatus === 'pending' || verificationStatus === 'unverified' || !verificationStatus) &&
+                                  'border-amber-200 bg-amber-50 text-amber-700'
+                              )}
+                            >
+                              <BadgeCheck className="h-4 w-4" />
+                              {verificationStatus === 'verified'
+                                ? 'Verified'
+                                : verificationStatus === 'pending'
+                                  ? 'Pending'
+                                  : verificationStatus === 'rejected'
+                                    ? 'Rejected'
+                                    : 'Unverified'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="rounded-lg border p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <IdCard className="h-5 w-5 text-primary" />
+                                <h4 className="font-medium">Government ID (Front)</h4>
+                              </div>
+                              {idFrontUrl ? (
+                                <div className="space-y-2">
+                                  <p className="text-sm text-muted-foreground">Uploaded</p>
+                                  <a href={idFrontUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}>
+                                    View file
+                                  </a>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground mb-3">Required</p>
+                              )}
+                              <label className={cn("mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
+                                {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                {isUploadingIdFront ? 'Uploading...' : (idFrontUrl ? 'Replace ID Front' : 'Upload ID Front')}
+                                <input
+                                  type="file"
+                                  className="sr-only"
+                                  accept="image/*,application/pdf"
+                                  capture="environment"
+                                  onChange={(e) => handleVerificationUpload(e, 'idFront')}
+                                  disabled={isUploadingIdFront}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="rounded-lg border p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Camera className="h-5 w-5 text-primary" />
+                                <h4 className="font-medium">Selfie</h4>
+                              </div>
+                              {selfieUrl ? (
+                                <div className="space-y-2">
+                                  <p className="text-sm text-muted-foreground">Uploaded</p>
+                                  <a href={selfieUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}>
+                                    View file
+                                  </a>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground mb-3">Required</p>
+                              )}
+                              <label className={cn("mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
+                                {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                {isUploadingSelfie ? 'Uploading...' : (selfieUrl ? 'Replace Selfie' : 'Upload Selfie')}
+                                <input
+                                  type="file"
+                                  className="sr-only"
+                                  accept="image/*"
+                                  capture="user"
+                                  onChange={(e) => handleVerificationUpload(e, 'selfie')}
+                                  disabled={isUploadingSelfie}
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
 
                     <Card className="shadow-md">
                     <CardContent className="p-5">

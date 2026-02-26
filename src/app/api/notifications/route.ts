@@ -21,8 +21,7 @@ export async function GET(request: Request) {
     const snap = await db
       .collection('notifications')
       .where('userId', '==', uid)
-      .orderBy('createdAt', 'desc')
-      .limit(20)
+      .limit(50)
       .get();
 
     const items = snap.docs.map((doc) => {
@@ -35,13 +34,18 @@ export async function GET(request: Request) {
         body: String(data.body || ''),
         href: typeof data.href === 'string' ? data.href : null,
         createdAt: data.createdAt ?? null,
+        read: Boolean(data.read),
         readAt: data.readAt ?? null,
       };
-    });
+    }).sort((a, b) => {
+      const aSecs = typeof (a.createdAt as { _seconds?: number })?._seconds === 'number' ? (a.createdAt as { _seconds: number })._seconds : 0;
+      const bSecs = typeof (b.createdAt as { _seconds?: number })?._seconds === 'number' ? (b.createdAt as { _seconds: number })._seconds : 0;
+      return bSecs - aSecs;
+    }).slice(0, 20);
 
     return NextResponse.json({
       items,
-      unreadCount: items.filter((item) => !item.readAt).length,
+      unreadCount: items.filter((item) => !item.readAt && !item.read).length,
     });
   } catch (error) {
     console.error('notifications GET error:', error);
@@ -61,11 +65,13 @@ export async function PATCH(request: Request) {
       const snap = await db
         .collection('notifications')
         .where('userId', '==', uid)
-        .where('readAt', '==', null)
         .get();
       const batch = db.batch();
       snap.docs.forEach((doc) => {
-        batch.update(doc.ref, { readAt: FieldValue.serverTimestamp() });
+        const data = doc.data() as { userId?: string; read?: boolean; readAt?: unknown } | undefined;
+        if (data?.userId === uid && !data?.read && !data?.readAt) {
+          batch.update(doc.ref, { read: true, readAt: FieldValue.serverTimestamp() });
+        }
       });
       await batch.commit();
       return NextResponse.json({ ok: true });
@@ -81,7 +87,7 @@ export async function PATCH(request: Request) {
     const data = snap.data() as { userId?: string } | undefined;
     if (data?.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    await ref.set({ readAt: FieldValue.serverTimestamp() }, { merge: true });
+    await ref.set({ read: true, readAt: FieldValue.serverTimestamp() }, { merge: true });
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('notifications PATCH error:', error);

@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Conversation, Message, UserProfile } from '@/lib/types';
+import Link from 'next/link';
+import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, Sparkles, MoreVertical, Paperclip, FileText, ImageIcon, CalendarDays, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
@@ -18,10 +19,19 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { db } from '@/lib/firebase/client';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { db, storage } from '@/lib/firebase/client';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where } from 'firebase/firestore';
 import type { Timestamp } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
+import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 
 type FirestoreError = { message?: string };
 type AiIcebreakerSuggestionOutput = {
@@ -29,6 +39,28 @@ type AiIcebreakerSuggestionOutput = {
   tips: string[];
 };
 const MAX_MESSAGE_LENGTH = 500;
+const MAX_ATTACHMENT_MB = 8;
+const BLOCKED_DOC_KEYWORDS = ['license', 'licencia', 'id', 'identification', 'passport', 'driver'];
+
+const validateChatAttachment = (file: File) => {
+  const lowerName = file.name.toLowerCase();
+  if (BLOCKED_DOC_KEYWORDS.some((token) => lowerName.includes(token))) {
+    return { ok: false, reason: 'ID/licence documents cannot be sent in chat.' };
+  }
+
+  const allowedMime = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+  ];
+  const mimeOk = file.type.startsWith('image/') || allowedMime.includes(file.type);
+  if (!mimeOk) return { ok: false, reason: 'Only images, PDF, DOC, DOCX, or TXT files are allowed.' };
+  if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+    return { ok: false, reason: `Max file size is ${MAX_ATTACHMENT_MB}MB.` };
+  }
+  return { ok: true as const };
+};
 
 const localIcebreakerFallback = (name: string): AiIcebreakerSuggestionOutput => ({
   icebreakerMessages: [
@@ -55,8 +87,20 @@ export default function ChatPage() {
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [showDetails, setShowDetails] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [relatedShifts, setRelatedShifts] = useState<Shift[]>([]);
+  const [fullProfiles, setFullProfiles] = useState<{ current: UserProfile | null; other: UserProfile | null }>({
+    current: null,
+    other: null,
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const conversationId =
     (typeof params.id === 'string' ? params.id : '') ||
@@ -69,6 +113,22 @@ export default function ChatPage() {
     }
     router.push('/families/messages');
   };
+
+  useEffect(() => {
+    if (!user) return;
+    const listQuery = query(collection(db, 'conversations'), where('userIds', 'array-contains', user.uid));
+    const unsubscribe = onSnapshot(listQuery, (snapshot) => {
+      const convs = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Conversation))
+        .sort((a, b) => {
+          const aTime = typeof (a.lastMessageAt as Timestamp)?.toMillis === 'function' ? (a.lastMessageAt as Timestamp).toMillis() : 0;
+          const bTime = typeof (b.lastMessageAt as Timestamp)?.toMillis === 'function' ? (b.lastMessageAt as Timestamp).toMillis() : 0;
+          return bTime - aTime;
+        });
+      setConversations(convs);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     if (!user || !conversationId) return;
@@ -117,29 +177,75 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const otherUserId = conversation?.userIds?.find((id: string) => id !== user?.uid);
+  const otherUserProfile = otherUserId ? conversation?.userProfiles?.[otherUserId] : null;
+  const currentUserProfile = user?.uid ? conversation?.userProfiles?.[user.uid] : null;
+
+  useEffect(() => {
+    if (!user || !otherUserId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [meDoc, otherDoc] = await Promise.all([
+          getDoc(doc(db, 'users', user.uid)),
+          getDoc(doc(db, 'users', otherUserId)),
+        ]);
+        if (cancelled) return;
+        setFullProfiles({
+          current: meDoc.exists() ? ({ id: meDoc.id, ...meDoc.data() } as UserProfile) : null,
+          other: otherDoc.exists() ? ({ id: otherDoc.id, ...otherDoc.data() } as UserProfile) : null,
+        });
+      } catch (error) {
+        console.error('Error loading chat profile details:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, otherUserId]);
+
+  useEffect(() => {
+    if (!user || !otherUserId) {
+      setRelatedShifts([]);
+      return;
+    }
+    const qShifts = query(collection(db, 'shifts'), where('userIds', 'array-contains', user.uid));
+    const unsubscribe = onSnapshot(qShifts, (snapshot) => {
+      const rows = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Shift))
+        .filter((shift) => Array.isArray(shift.userIds) && shift.userIds.includes(otherUserId));
+      setRelatedShifts(rows);
+    });
+    return () => unsubscribe();
+  }, [user, otherUserId]);
+
+  const compatibility = useMemo(
+    () => calculateCompatibility(fullProfiles.current ?? undefined, fullProfiles.other ?? undefined),
+    [fullProfiles.current, fullProfiles.other]
+  );
+
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedMessage = newMessage.trim();
     if (!user || trimmedMessage === '' || trimmedMessage.length > MAX_MESSAGE_LENGTH) return;
 
+    setIsSending(true);
+    setSendError(null);
     const msgText = trimmedMessage;
     setNewMessage('');
-    
-    await addDoc(collection(db, 'conversations', conversationId, 'messages'), {
-      conversationId: conversationId,
-      senderId: user.uid,
-      text: msgText,
-      createdAt: serverTimestamp(),
-    });
-
-    await updateDoc(doc(db, 'conversations', conversationId), {
-        lastMessage: msgText,
-        lastMessageAt: serverTimestamp(),
-        lastMessageSenderId: user.uid,
-    });
-
     try {
+      await addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+        conversationId: conversationId,
+        senderId: user.uid,
+        text: msgText,
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, 'conversations', conversationId), {
+          lastMessage: msgText,
+          lastMessageAt: serverTimestamp(),
+          lastMessageSenderId: user.uid,
+      });
+
       const idToken = await user.getIdToken();
       await fetch('/api/notify', {
         method: 'POST',
@@ -157,7 +263,59 @@ export default function ChatPage() {
       });
     } catch (error: unknown) {
       const notifyError = error as FirestoreError;
-      console.error('Notification add-on failed:', notifyError.message ?? error);
+      console.error('Message send failed:', notifyError.message ?? error);
+      setSendError('Could not send message. Please try again.');
+      setNewMessage(msgText);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAttachmentPick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAttachmentSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user || !conversationId) return;
+
+    const validation = validateChatAttachment(file);
+    if (!validation.ok) {
+      setSendError(validation.reason);
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    setSendError(null);
+    try {
+      const safeName = file.name.replace(/[^\w.\- ]+/g, '_');
+      const storageRef = ref(storage, `message-attachments/${conversationId}/${Date.now()}-${safeName}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const attachmentUrl = await getDownloadURL(snapshot.ref);
+      const summary = file.type.startsWith('image/') ? 'Shared an image attachment' : `Shared document: ${file.name}`;
+
+      await addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+        conversationId,
+        senderId: user.uid,
+        text: '',
+        attachmentUrl,
+        attachmentName: file.name,
+        attachmentType: file.type || 'application/octet-stream',
+        attachmentSizeBytes: file.size,
+        createdAt: serverTimestamp(),
+      });
+
+      await updateDoc(doc(db, 'conversations', conversationId), {
+        lastMessage: summary,
+        lastMessageAt: serverTimestamp(),
+        lastMessageSenderId: user.uid,
+      });
+    } catch (error) {
+      console.error('Attachment upload failed:', error);
+      setSendError('Could not upload attachment. Please try again.');
+    } finally {
+      setIsUploadingAttachment(false);
     }
   };
   
@@ -235,10 +393,6 @@ export default function ChatPage() {
       </div>
     );
   }
-  const otherUserId = conversation?.userIds?.find((id: string) => id !== user?.uid);
-  const otherUserProfile = otherUserId ? conversation?.userProfiles?.[otherUserId] : null;
-  const currentUserProfile = user?.uid ? conversation?.userProfiles?.[user.uid] : null;
-
   if (!otherUserProfile || !currentUserProfile) {
     return <div className="flex items-center justify-center h-screen">Loading chat...</div>;
   }
@@ -247,26 +401,94 @@ export default function ChatPage() {
     <AuthGuard>
       <div className="ss-page-shell">
       <div className="messages-shell-wrap">
-      <div className="chat-shell">
-        {/* Header */}
-        <div className="chat-head">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mr-2 ss-pill-btn-outline"
-            onClick={handleBack}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <Avatar className="chat-user-avatar">
-            <AvatarImage src={otherUserProfile.photoURLs[0]} className="object-cover" />
-            <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <h2 className="font-semibold text-lg text-[var(--navy)]">{otherUserProfile.name}</h2>
+      <div className={cn('chat-workspace', showDetails && 'chat-workspace--details')}>
+      <aside className="chat-sidebar">
+        <div className="chat-sidebar-top">
+          <div>
+            <h3 className="font-headline chat-sidebar-title">Chats</h3>
+            <p className="chat-sidebar-subtitle">Matches and conversations</p>
+          </div>
         </div>
+        <div className="chat-sidebar-list">
+          {conversations.map((conv) => {
+            const listOtherId = conv.userIds.find((id) => id !== user?.uid);
+            const listOther = listOtherId ? conv.userProfiles?.[listOtherId] : null;
+            if (!listOther) return null;
+            return (
+              <Link
+                key={conv.id}
+                href={`/families/messages/${conv.id}`}
+                className={cn('chat-sidebar-item', conv.id === conversationId && 'active')}
+              >
+                <Avatar className="chat-sidebar-avatar">
+                  <AvatarImage src={listOther.photoURLs?.[0]} />
+                  <AvatarFallback>{(listOther.name || 'U').charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="chat-sidebar-item-head">
+                    <p className="chat-sidebar-item-name">{listOther.name || 'Unknown user'}</p>
+                    <span className="chat-sidebar-item-time">
+                      {conv.lastMessageAt && typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
+                        ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
+                        : ''}
+                    </span>
+                  </div>
+                  <p className="chat-sidebar-item-preview">
+                    {conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}{conv.lastMessage || 'No messages yet.'}
+                  </p>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </aside>
+      <div className="chat-shell chat-shell--workspace">
+        {/* Header */}
+        <div className="chat-head chat-head--workspace">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="mr-1 ss-pill-btn-outline md:hidden"
+              onClick={handleBack}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <Avatar className="chat-user-avatar">
+              <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
+              <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-lg text-[var(--navy)] truncate">{otherUserProfile.name}</h2>
+              <p className="text-xs text-muted-foreground">Secure chat</p>
+            </div>
+          </div>
+          <div className="chat-toolbar">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="chat-icon-btn" title="More"><MoreVertical className="h-4 w-4" /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                  <Info className="mr-2 h-4 w-4" />
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMuted(v => !v)}>
+                  {muted ? 'Unmute Notifications' : 'Mute Notifications'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/families/calendar')} className="text-destructive focus:text-destructive">
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  View Calendar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <div className="chat-security-banner">Messages are private to this conversation.</div>
 
         {/* Messages */}
-        <div className="chat-messages">
+        <div className="chat-messages chat-messages--workspace">
           {messages.length === 0 && (
               <div className="text-center my-4">
                   <Button variant="outline" className="ss-pill-btn-outline" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
@@ -287,8 +509,14 @@ export default function ChatPage() {
                     <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                 )}
-                <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
-                  <p className="text-sm">{message.text}</p>
+                  <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
+                  {message.attachmentUrl && (
+                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-attachment-link">
+                      {(message.attachmentType || '').startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                      <span className="truncate">{message.attachmentName || 'Attachment'}</span>
+                    </a>
+                  )}
+                  {message.text ? <p className="text-sm">{message.text}</p> : null}
                    {message.createdAt && (
                       <p className="text-xs text-right mt-1 opacity-70">
                         {format((message.createdAt as Timestamp).toDate(), 'p')}
@@ -309,16 +537,22 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="chat-input-wrap">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+          {sendError && <p className="mb-2 text-xs text-destructive">{sendError}</p>}
+          <form onSubmit={handleSendMessage} className="chat-input-form">
+            <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={handleAttachmentSelected} />
+            <button type="button" className="chat-attach-btn" onClick={handleAttachmentPick} disabled={isUploadingAttachment} title="Attach CV or document">
+              <Paperclip className="h-5 w-5" />
+            </button>
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message... 😊"
+              placeholder={isUploadingAttachment ? 'Uploading attachment...' : 'Type a message...'}
               maxLength={MAX_MESSAGE_LENGTH}
               className="flex-1 chat-input"
               autoComplete="off"
+              disabled={isUploadingAttachment}
             />
-            <Button type="submit" size="icon" className="ss-pill-btn" disabled={!newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
+            <Button type="submit" size="icon" className="ss-pill-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
               <Send className="h-5 w-5" />
             </Button>
           </form>
@@ -368,6 +602,59 @@ export default function ChatPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </div>
+      <aside className={cn('chat-details-panel', !showDetails && 'chat-details-panel--hidden')}>
+        <div className="chat-details-head">
+          <h3>Information</h3>
+          <button type="button" className="chat-icon-btn" onClick={() => setShowDetails(false)}>
+            <ArrowLeft className="h-4 w-4 rotate-180" />
+          </button>
+        </div>
+        <div className="chat-details-card">
+          <Avatar className="chat-details-avatar">
+            <AvatarImage src={otherUserProfile.photoURLs?.[0]} />
+            <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
+          </Avatar>
+          <h4>{otherUserProfile.name}</h4>
+          <p>{fullProfiles.other?.location || 'Location unavailable'}</p>
+          <Link href={`/families/profile/${otherUserId}`} className="chat-details-link">View profile</Link>
+        </div>
+        <div className="chat-details-section">
+          <div className="chat-details-row-head">
+            <h4>Compatibility</h4>
+            <span className="chat-details-score">{compatibility.totalScore}%</span>
+          </div>
+          {[
+            ['Distance / Travel', compatibility.breakdown.distance],
+            ['Schedule Overlap', compatibility.breakdown.schedule],
+            ['Safety Alignment', compatibility.breakdown.safety],
+            ['Kids Capacity', compatibility.breakdown.kids],
+            ['Handoff / Pickup', compatibility.breakdown.handoff],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="chat-details-bar-row">
+              <div className="flex items-center justify-between text-xs">
+                <span>{label}</span>
+                <span>{value}%</span>
+              </div>
+              <div className="chat-details-bar-track">
+                <div className="chat-details-bar-fill" style={{ width: `${Math.max(0, Math.min(100, Number(value)))}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="chat-details-section">
+          <div className="chat-details-row-head">
+            <h4>Calendar</h4>
+            <button type="button" className="chat-mini-link" onClick={() => router.push('/families/calendar')}>Open</button>
+          </div>
+          <p className="text-sm text-muted-foreground">Shared shifts: {relatedShifts.length}</p>
+          <p className="text-sm text-muted-foreground">Accepted: {relatedShifts.filter(s => s.status === 'accepted').length}</p>
+          <p className="text-sm text-muted-foreground">Completed: {relatedShifts.filter(s => s.status === 'completed').length}</p>
+          <button type="button" className="chat-details-danger-link" onClick={() => router.push('/families/calendar')}>
+            View Calendar
+          </button>
+        </div>
+      </aside>
       </div>
       </div>
       </div>

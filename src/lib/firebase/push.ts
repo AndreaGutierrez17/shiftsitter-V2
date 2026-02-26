@@ -16,6 +16,17 @@ export async function enableWebPush(uid: string) {
   if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
     throw new Error('This browser does not support push notifications.');
   }
+  const isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
+  const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  if (!isSecure) {
+    throw new Error('Push notifications require HTTPS. Please open ShiftSitter from the secure deployed site.');
+  }
+
+  if (isIOS && !isStandalone) {
+    throw new Error('On iPhone/iPad, add ShiftSitter to your Home Screen and open it from there to enable notifications.');
+  }
 
   if (!process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
     throw new Error('NEXT_PUBLIC_FIREBASE_VAPID_KEY is missing.');

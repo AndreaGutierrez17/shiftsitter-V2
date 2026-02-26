@@ -453,71 +453,54 @@ function OnboardingForm() {
                       <p className="text-sm text-muted-foreground">Add the practical details we should use for matching and scheduling.</p>
 
                       {(selectedRole === 'parent' || selectedRole === 'reciprocal') && (
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <FormField
-                            control={form.control}
-                            name="numberOfChildren"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Number of children</FormLabel>
-                                <Select value={typeof field.value === 'number' ? String(field.value) : undefined} onValueChange={(value) => field.onChange(Number(value))}>
-                                  <FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl>
-                                  <SelectContent>
-                                    {CHILD_COUNT_OPTIONS.map((option) => (
-                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                        <>
+                          <div className="grid gap-4 sm:grid-cols-1">
+                            <FormField
+                              control={form.control}
+                              name="numberOfChildren"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Number of children</FormLabel>
+                                  <Select
+                                    value={typeof field.value === 'number' ? String(field.value) : undefined}
+                                    onValueChange={(value) => field.onChange(Number(value))}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {CHILD_COUNT_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
 
                           <FormField
                             control={form.control}
-                            name="childAge"
+                            name="childrenAgesText"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Edad del nino mas pequeno (opcional)</FormLabel>
+                                <FormLabel>Children&apos;s ages (optional)</FormLabel>
                                 <FormControl>
-                                  <Input
-                                    type="text"
-                                    inputMode="numeric"
-                                    placeholder="Ej. 3"
-                                    name={field.name}
-                                    onBlur={field.onBlur}
-                                    ref={field.ref}
-                                    value={typeof field.value === 'number' ? field.value : ''}
-                                    onChange={(e) => {
-                                      const next = e.target.value.replace(/\D/g, '');
-                                      field.onChange(next === '' ? undefined : Number(next));
-                                    }}
-                                  />
+                                  <Input placeholder="e.g., 2, 5, 8" {...field} />
                                 </FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                  You can enter one or multiple ages separated by commas (e.g., 2, 5, 8).
+                                </p>
                                 <FormMessage />
                               </FormItem>
                             )}
                           />
-                        </div>
-                      )}
-
-                      {(selectedRole === 'parent' || selectedRole === 'reciprocal') && (
-                        <FormField
-                          control={form.control}
-                          name="childrenAgesText"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Edades de los ninos (opcional)</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Ej. 2, 5, 8" {...field} />
-                              </FormControl>
-                              <p className="text-xs text-muted-foreground">
-                                Puedes escribir una o varias edades separadas por coma (ej. 2, 5, 8).
-                              </p>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        </>
                       )}
 
                       <FormField

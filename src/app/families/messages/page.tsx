@@ -18,7 +18,10 @@ export default function MessagesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      if (!authLoading) setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setLoadError(null);
@@ -52,7 +55,7 @@ export default function MessagesPage() {
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, authLoading]);
 
   const getOtherUser = (conv: Conversation) => {
     if (!user) return null;

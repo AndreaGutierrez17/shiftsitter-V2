@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload } from 'lucide-react';
+import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { db, storage } from '@/lib/firebase/client';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import type { UserProfile } from '@/lib/types';
+import type { Review, UserProfile } from '@/lib/types';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,6 +28,7 @@ export default function ProfilePage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUploadingMainPhoto, setIsUploadingMainPhoto] = useState(false);
+  const [recentReviews, setRecentReviews] = useState<Review[]>([]);
 
   const isOwnProfile = user?.uid === profileId;
 
@@ -97,6 +98,23 @@ export default function ProfilePage() {
       return () => unsub();
   }, [profileId, user, router]);
 
+  useEffect(() => {
+    if (!profileId) return;
+    const reviewsQuery = query(collection(db, 'reviews'), where('revieweeId', '==', profileId));
+    const unsub = onSnapshot(reviewsQuery, (snapshot) => {
+      const reviews = snapshot.docs
+        .map((snap) => ({ id: snap.id, ...snap.data() } as Review))
+        .sort((a, b) => {
+          const aMs = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : 0;
+          const bMs = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : 0;
+          return bMs - aMs;
+        })
+        .slice(0, 3);
+      setRecentReviews(reviews);
+    });
+    return () => unsub();
+  }, [profileId]);
+
   if (loading || authLoading) {
     return (
         <div className="flex items-center justify-center h-screen">
@@ -120,6 +138,18 @@ export default function ProfilePage() {
   const photos = (userProfile.photoURLs || []).filter(Boolean);
   const mainPhoto = photos[0] || '/ShiftSitter.jpeg';
   const gallerySlots = Array.from({ length: 5 }, (_, index) => photos[index] || null);
+  const avgRating = userProfile.avgRating ?? userProfile.averageRating ?? 0;
+  const reviewCount = userProfile.reviewCount ?? userProfile.ratingCount ?? 0;
+  const renderStars = (value: number) => (
+    <div className="flex items-center gap-1">
+      {Array.from({ length: 5 }, (_, idx) => {
+        const active = idx + 1 <= Math.round(value);
+        return (
+          <Star key={idx} className={`h-4 w-4 ${active ? 'fill-amber-400 text-amber-500' : 'text-slate-300'}`} />
+        );
+      })}
+    </div>
+  );
 
   return (
     <AuthGuard>
@@ -198,6 +228,11 @@ export default function ProfilePage() {
                     {userProfile.backgroundCheckStatus === 'completed' ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Verified</span>
                     ) : null}
+                    {userProfile.verificationStatus === 'verified' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> ID Verified</span>
+                    ) : userProfile.verificationStatus === 'pending' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"><CheckCircle2 className="h-4 w-4" /> Verification Pending</span>
+                    ) : null}
                   </div>
                 </div>
               </CardContent>
@@ -219,6 +254,50 @@ export default function ProfilePage() {
                     {(userProfile.interests || []).length === 0 ? (
                       <span className="text-sm text-muted-foreground">No interests added yet.</span>
                     ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md">
+                <CardContent className="p-5">
+                  <h3 className="font-headline mb-3 flex items-center gap-2 text-lg font-semibold text-foreground">
+                    <Star className="h-4 w-4 text-primary" />
+                    Reviews
+                  </h3>
+                  {reviewCount > 0 ? (
+                    <div className="mb-4 rounded-xl border bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-2xl font-semibold text-foreground">{avgRating.toFixed(1)}</p>
+                          <p className="text-xs text-muted-foreground">{reviewCount} review{reviewCount === 1 ? '' : 's'}</p>
+                        </div>
+                        {renderStars(avgRating)}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mb-4 text-sm text-muted-foreground">No reviews yet.</p>
+                  )}
+
+                  <div className="space-y-3">
+                    {recentReviews.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Recent reviews will appear here.</p>
+                    ) : (
+                      recentReviews.map((review) => (
+                        <div key={review.id} className="rounded-xl border bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            {renderStars(review.rating)}
+                            <span className="text-xs text-muted-foreground">
+                              {typeof review.createdAt?.toDate === 'function'
+                                ? review.createdAt.toDate().toLocaleDateString()
+                                : ''}
+                            </span>
+                          </div>
+                          {review.comment ? (
+                            <p className="mt-2 text-sm text-muted-foreground">{review.comment}</p>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
