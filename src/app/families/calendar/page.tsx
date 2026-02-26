@@ -237,7 +237,7 @@ export default function CalendarPage() {
     : null;
 
   const getShiftStartDate = (shift: Shift) => {
-    const withTimestamp = shift.startAt as unknown as { toDate?: () => Date } | undefined;
+    const withTimestamp = (shift as unknown as { startAt?: { toDate?: () => Date } }).startAt;
     if (typeof withTimestamp?.toDate === 'function') return withTimestamp.toDate();
     const parsed = new Date(`${shift.date}T${shift.startTime}:00`);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
