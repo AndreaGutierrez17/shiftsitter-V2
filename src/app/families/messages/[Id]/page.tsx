@@ -62,6 +62,26 @@ const validateChatAttachment = (file: File) => {
   return { ok: true as const };
 };
 
+const validateChatAttachment = (file: File) => {
+  const lowerName = file.name.toLowerCase();
+  if (BLOCKED_DOC_KEYWORDS.some((token) => lowerName.includes(token))) {
+    return { ok: false, reason: 'ID/licence documents cannot be sent in chat.' };
+  }
+
+  const allowedMime = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+  ];
+  const mimeOk = file.type.startsWith('image/') || allowedMime.includes(file.type);
+  if (!mimeOk) return { ok: false, reason: 'Only images, PDF, DOC, DOCX, or TXT files are allowed.' };
+  if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+    return { ok: false, reason: `Max file size is ${MAX_ATTACHMENT_MB}MB.` };
+  }
+  return { ok: true as const };
+};
+
 const localIcebreakerFallback = (name: string): AiIcebreakerSuggestionOutput => ({
   icebreakerMessages: [
     `Hi ${name}! Great to connect here. Want to share availability for this week?`,
@@ -180,6 +200,48 @@ export default function ChatPage() {
   const otherUserId = conversation?.userIds?.find((id: string) => id !== user?.uid);
   const otherUserProfile = otherUserId ? conversation?.userProfiles?.[otherUserId] : null;
   const currentUserProfile = user?.uid ? conversation?.userProfiles?.[user.uid] : null;
+
+  useEffect(() => {
+    if (!user || !otherUserId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [meDoc, otherDoc] = await Promise.all([
+          getDoc(doc(db, 'users', user.uid)),
+          getDoc(doc(db, 'users', otherUserId)),
+        ]);
+        if (cancelled) return;
+        setFullProfiles({
+          current: meDoc.exists() ? ({ id: meDoc.id, ...meDoc.data() } as UserProfile) : null,
+          other: otherDoc.exists() ? ({ id: otherDoc.id, ...otherDoc.data() } as UserProfile) : null,
+        });
+      } catch (error) {
+        console.error('Error loading chat profile details:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, otherUserId]);
+
+  useEffect(() => {
+    if (!user || !otherUserId) {
+      setRelatedShifts([]);
+      return;
+    }
+    const qShifts = query(collection(db, 'shifts'), where('userIds', 'array-contains', user.uid));
+    const unsubscribe = onSnapshot(qShifts, (snapshot) => {
+      const rows = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Shift))
+        .filter((shift) => Array.isArray(shift.userIds) && shift.userIds.includes(otherUserId));
+      setRelatedShifts(rows);
+    });
+    return () => unsubscribe();
+  }, [user, otherUserId]);
+
+  const compatibility = useMemo(
+    () => calculateCompatibility(fullProfiles.current ?? undefined, fullProfiles.other ?? undefined),
+    [fullProfiles.current, fullProfiles.other]
+  );
+
 
   useEffect(() => {
     if (!user || !otherUserId) return;
@@ -376,7 +438,7 @@ export default function ChatPage() {
         console.error('Icebreaker fallback path:', aiError.message ?? error);
         setAiSuggestions(localIcebreakerFallback('there'));
     } finally {
-        setIsLoadingAi(false);
+      setIsSending(false);
     }
   };
 
@@ -453,6 +515,100 @@ export default function ChatPage() {
               onClick={handleBack}
             >
               <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <Avatar className="chat-user-avatar">
+              <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
+              <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-lg text-[var(--navy)] truncate">{otherUserProfile.name}</h2>
+              <p className="text-xs text-muted-foreground">Secure chat</p>
+            </div>
+          </div>
+          <div className="chat-toolbar">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="chat-icon-btn" title="More"><MoreVertical className="h-4 w-4" /></button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                  <Info className="mr-2 h-4 w-4" />
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMuted(v => !v)}>
+                  {muted ? 'Unmute Notifications' : 'Mute Notifications'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/families/calendar')} className="text-destructive focus:text-destructive">
+                  <CalendarDays className="mr-2 h-4 w-4" />
+                  View Calendar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <div className="chat-security-banner">Messages are private to this conversation.</div>
+
+        {/* Messages */}
+        <div className="chat-messages chat-messages--workspace">
+          {messages.length === 0 && (
+              <div className="text-center my-4">
+                  <Button variant="outline" className="ss-pill-btn-outline" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
+                      <Sparkles className="mr-2 h-4 w-4 text-primary" />
+                      Need help breaking the ice?
+                  </Button>
+              </div>
+          )}
+
+          {messages.map((message) => {
+            const isSender = message.senderId === user?.uid;
+            const profile = isSender ? currentUserProfile : otherUserProfile;
+            return (
+              <div key={message.id} className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}>
+                {!isSender && (
+                  <Avatar className="chat-row-avatar">
+                    <AvatarImage src={profile.photoURLs[0]} className="object-cover" />
+                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                )}
+                  <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
+                  {message.attachmentUrl && (
+                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-attachment-link">
+                      {(message.attachmentType || '').startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                      <span className="truncate">{message.attachmentName || 'Attachment'}</span>
+                    </a>
+                  )}
+                  {message.text ? <p className="text-sm">{message.text}</p> : null}
+                   {message.createdAt && (
+                      <p className="text-xs text-right mt-1 opacity-70">
+                        {format((message.createdAt as Timestamp).toDate(), 'p')}
+                      </p>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Input */}
+        <div className="chat-input-wrap">
+          {sendError && <p className="mb-2 text-xs text-destructive">{sendError}</p>}
+          <form onSubmit={handleSendMessage} className="chat-input-form">
+            <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={handleAttachmentSelected} />
+            <button type="button" className="chat-attach-btn" onClick={handleAttachmentPick} disabled={isUploadingAttachment} title="Attach CV or document">
+              <Paperclip className="h-5 w-5" />
+            </button>
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder={isUploadingAttachment ? 'Uploading attachment...' : 'Type a message...'}
+              maxLength={MAX_MESSAGE_LENGTH}
+              className="flex-1 chat-input"
+              autoComplete="off"
+              disabled={isUploadingAttachment}
+            />
+            <Button type="submit" size="icon" className="ss-pill-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
+              <Send className="h-5 w-5" />
             </Button>
             <Avatar className="chat-user-avatar">
               <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
@@ -655,6 +811,7 @@ export default function ChatPage() {
           </button>
         </div>
       </aside>
+      </div>
       </div>
       </div>
       </div>
