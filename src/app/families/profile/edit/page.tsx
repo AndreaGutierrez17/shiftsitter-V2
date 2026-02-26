@@ -97,45 +97,6 @@ const compressImageFile = async (file: File): Promise<File> => {
   } finally {
     URL.revokeObjectURL(imageUrl);
   }
-
-  const maxDimension = 800;
-  const quality = 0.85;
-
-  const imageUrl = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new window.Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = imageUrl;
-    });
-
-    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-    const width = Math.max(1, Math.round(image.width * scale));
-    const height = Math.max(1, Math.round(image.height * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
-
-    ctx.drawImage(image, 0, 0, width, height);
-
-    const compressedBlob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', quality);
-    });
-
-    if (!compressedBlob) return file;
-
-    return new File(
-      [compressedBlob],
-      file.name.replace(/\.[^.]+$/, '.jpg'),
-      { type: 'image/jpeg', lastModified: Date.now() }
-    );
-  } finally {
-    URL.revokeObjectURL(imageUrl);
-  }
 };
 
 export default function EditProfilePage() {
@@ -400,59 +361,6 @@ export default function EditProfilePage() {
   }
 
   const upsertVerificationAfterUpload = async (partial: { idFrontUrl?: string; selfieUrl?: string }) => {
-    if (!user) return;
-    const nextIdFront = partial.idFrontUrl ?? idFrontUrl ?? undefined;
-    const nextSelfie = partial.selfieUrl ?? selfieUrl ?? undefined;
-    const hasBoth = !!nextIdFront && !!nextSelfie;
-
-    const nextStatus: UserProfile['verificationStatus'] = hasBoth ? 'verified' : 'unverified';
-    const payload: Record<string, unknown> = {
-      ...partial,
-      verificationStatus: nextStatus,
-      verificationSubmittedAt: hasBoth ? new Date() : null,
-    };
-
-    await updateDoc(doc(db, 'users', user.uid), payload);
-    if (typeof partial.idFrontUrl === 'string') setIdFrontUrl(partial.idFrontUrl);
-    if (typeof partial.selfieUrl === 'string') setSelfieUrl(partial.selfieUrl);
-    setVerificationStatus(nextStatus);
-  };
-
-  const handleVerificationUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    kind: 'idFront' | 'selfie'
-  ) => {
-    const file = e.target.files?.[0];
-    if (!user || !file) return;
-
-    const setLoading = kind === 'idFront' ? setIsUploadingIdFront : setIsUploadingSelfie;
-    setLoading(true);
-
-    try {
-      const url = await handleFileUpload(file, 'verification_docs');
-      if (kind === 'idFront') {
-        await upsertVerificationAfterUpload({ idFrontUrl: url });
-      } else {
-        await upsertVerificationAfterUpload({ selfieUrl: url });
-      }
-      toast({
-        title: kind === 'idFront' ? 'ID uploaded successfully' : 'Selfie uploaded successfully',
-        description: 'Verification file saved. Upload both files to unlock match access.',
-      });
-    } catch (error: any) {
-      console.error('Verification upload error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Upload Failed',
-        description: error?.message || 'Could not upload verification document.',
-      });
-    } finally {
-      setLoading(false);
-      e.target.value = '';
-    }
-  };
-
-  async function onSubmit(values: ProfileFormValues) {
     if (!user) return;
     const nextIdFront = partial.idFrontUrl ?? idFrontUrl ?? undefined;
     const nextSelfie = partial.selfieUrl ?? selfieUrl ?? undefined;
