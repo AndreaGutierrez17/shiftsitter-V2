@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, getDocs, doc, setDoc, addDoc, serverTimestamp, getDoc, deleteDoc, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, getDoc, onSnapshot, limit } from 'firebase/firestore';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useRouter } from 'next/navigation';
@@ -24,6 +24,13 @@ const isRoleCompatible = (
   if (currentRole === 'parent') return candidateRole === 'sitter' || candidateRole === 'reciprocal';
   if (currentRole === 'sitter') return candidateRole === 'parent' || candidateRole === 'reciprocal';
   return candidateRole === 'parent' || candidateRole === 'sitter' || candidateRole === 'reciprocal';
+};
+
+const isMarylandProfile = (profile: UserProfile) => {
+  const state = (((profile as UserProfile & { state?: string }).state) || '').toUpperCase().trim();
+  if (state === 'MD') return true;
+  const location = (profile.location || '').toLowerCase();
+  return location.includes('maryland') || location.includes(', md') || location.endsWith(' md');
 };
 
 const SwipeCard = ({
@@ -68,10 +75,10 @@ const SwipeCard = ({
       animate={{ x: 0, opacity: 1, scale: 1 }}
       exit={{ x: 300, opacity: 0, scale: 0.8 }}
       transition={{ ease: "easeInOut" }}
-      className="absolute w-full h-full"
+      className="relative w-full"
     >
       <Card
-        className="relative w-full h-full rounded-2xl overflow-hidden shadow-lg cursor-pointer"
+        className="relative w-full min-h-[680px] md:min-h-[740px] rounded-2xl overflow-hidden shadow-lg cursor-pointer"
         onClick={() => onOpenProfile(userProfile.id)}
       >
         <img
@@ -105,7 +112,7 @@ const SwipeCard = ({
                 {userProfile.availability && (
                   <p><CalendarDays size={16} /> <span>Availability</span> {userProfile.availability}</p>
                 )}
-                <p><Heart size={16} /> <span>Needs</span> {needsText}</p>
+                <p className="match-hero-needs-row"><Heart size={16} /> <span>Needs</span> {needsText}</p>
               </div>
               {Array.isArray(userProfile.interests) && userProfile.interests.length > 0 && (
                 <div className="match-chip-row">
@@ -224,8 +231,16 @@ export default function MatchPage() {
           })
           .filter(profile => {
             if (!profile.id || swipedIds.has(profile.id)) return false;
+            if (!isMarylandProfile(profile)) return false;
             return isRoleCompatible(currentUserProfile.role, profile.role);
           })
+          .map((profile) => ({
+            profile,
+            compatibility: calculateCompatibility(currentUserProfile, profile),
+          }))
+          .filter(({ compatibility }) => compatibility.hardFilterPassed)
+          .sort((a, b) => b.compatibility.totalScore - a.compatibility.totalScore)
+          .map(({ profile }) => profile)
           .slice(0, 10);
 
         if (fetchedProfiles.length === 0) {
@@ -241,13 +256,20 @@ export default function MatchPage() {
               return { ...data, id: data.id || userDoc.id };
             })
             .filter(profile => !!profile.id && !swipedIds.has(profile.id))
+            .map((profile) => ({
+              profile,
+              compatibility: calculateCompatibility(currentUserProfile, profile),
+            }))
+            .filter(({ compatibility }) => compatibility.hardFilterPassed)
+            .sort((a, b) => b.compatibility.totalScore - a.compatibility.totalScore)
+            .map(({ profile }) => profile)
             .slice(0, 10);
         }
 
         if (fetchedProfiles.length === 0) {
             setNoProfilesMessage({
-                title: "No more profiles for now",
-                description: "You've seen everyone available that matches your role. Check back later for new people!"
+                title: "No compatible profiles right now",
+                description: "We filtered by Maryland and your current preferences. Update onboarding preferences or check back later."
             });
         }
         
@@ -285,14 +307,6 @@ export default function MatchPage() {
         removeProfileFromStack(swipedUserId);
         setLastSwiped({ profile: swipedProfile, direction });
 
-        const swipeDocRef = doc(db, 'swipes', `${user.uid}_${swipedUserId}`);
-        await setDoc(swipeDocRef, {
-        swiperId: user.uid,
-        swipedId: swipedUserId,
-        direction,
-        timestamp: serverTimestamp(),
-        });
-
         let serverMatchResult: { mutual?: boolean; conversationId?: string } | null = null;
         try {
           const idToken = await user.getIdToken();
@@ -318,9 +332,13 @@ export default function MatchPage() {
 
           if (matchEventResponse.ok) {
             serverMatchResult = (await matchEventResponse.json()) as { mutual?: boolean; conversationId?: string };
+          } else {
+            const err = await matchEventResponse.text().catch(() => '');
+            throw new Error(err || 'match-events API failed');
           }
         } catch (error) {
-          console.warn('match-events API fallback to local swipe logic:', error);
+          console.error('match-events API failed:', error);
+          throw error;
         }
 
         if (direction === 'right') {
@@ -380,10 +398,24 @@ export default function MatchPage() {
     if (!user || !lastSwiped || isSwiping) return;
 
     const { profile } = lastSwiped;
-    const swipeDocRef = doc(db, 'swipes', `${user.uid}_${profile.id}`);
-
     try {
-      await deleteDoc(swipeDocRef);
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/match-events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: 'rewind',
+          targetUserId: profile.id,
+          direction: lastSwiped.direction,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(err || 'Could not rewind swipe');
+      }
       setProfiles(prev => [...prev, profile]);
       setLastSwiped(null);
     } catch (error) {
@@ -414,6 +446,27 @@ export default function MatchPage() {
     <AuthGuard>
       <div className="match-shell">
         <div className="match-inner">
+        {currentUserProfile && (currentUserProfile.verificationStatus ?? 'unverified') === 'unverified' ? (
+          <div className="match-deck-wrap">
+            <Card className="match-card w-full">
+              <CardContent className="match-foot text-center">
+                <h3 className="match-title">Verification Required</h3>
+                <p className="text-muted-foreground mt-2">
+                  Upload your government ID (front) and a selfie to access matching. This helps keep the community safe and trusted.
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-3">
+                  <button type="button" className="match-btn" onClick={() => router.push('/families/profile/edit')}>
+                    Go to Profile Edit
+                  </button>
+                  <button type="button" className="match-btn ghost" onClick={refreshProfiles}>
+                    Refresh
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+        <>
         {lastMatch && (
            <MatchModal
               open={showMatchModal}
@@ -475,6 +528,8 @@ export default function MatchPage() {
             <Heart className="h-8 w-8" />
           </button>
         </div>
+        </>
+        )}
         </div>
       </div>
     </AuthGuard>
