@@ -21,7 +21,7 @@ admin.initializeApp({
 const db = admin.firestore();
 const auth = admin.auth();
 
-
+const DEMO_PASSWORD = 'Demo2026!!';
 
 const DEMO_USERS = [
   {
@@ -276,10 +276,49 @@ const DEMO_USERS = [
   },
 ];
 
+const EXTRA_DEMO_USERS = [
+  ['demo_user_011', 'linda.therapist', 'Linda S.', 37, 'Towson, MD', 39.4015, -76.6019, 2, 6, '9, 6', 'Pediatric therapist with rotating appointments. Looking for reciprocal weekday coverage.', 'Pediatric Therapist - Private Clinic'],
+  ['demo_user_012', 'omar.cttech', 'Omar K.', 34, 'Baltimore, MD', 39.2904, -76.6122, 1, 2, '2', 'CT tech on hospital shifts. Needs early morning childcare and can offer evenings.', 'CT Technologist - UMMC'],
+  ['demo_user_013', 'keisha.nurse', 'Keisha W.', 41, 'Laurel, MD', 39.0993, -76.8483, 2, 5, '10, 5', 'Charge nurse with long shifts. Looking for trustworthy exchange care with another shift family.', 'Registered Nurse - MedStar'],
+  ['demo_user_014', 'brian.lineman', 'Brian D.', 39, 'Dundalk, MD', 39.2507, -76.5205, 3, 4, '11, 7, 4', 'Utility line worker, irregular emergency callouts. Needs reliable backup and can cover weekends.', 'Utility Line Worker - BGE'],
+  ['demo_user_015', 'tasha.radiology', 'Tasha E.', 33, 'Columbia, MD', 39.2037, -76.8610, 1, 3, '3', 'Radiology scheduler with split shifts. Can exchange afternoon coverage for mornings.', 'Radiology Scheduler - Howard County'],
+  ['demo_user_016', 'miguel.maintenance', 'Miguel A.', 36, 'Glen Burnie, MD', 39.1626, -76.6247, 2, 8, '8, 6', 'Facilities maintenance lead with rotating weekends. Interested in local reciprocal care.', 'Facilities Maintenance - BWI area'],
+  ['demo_user_017', 'amber.dispatch', 'Amber J.', 30, 'Owings Mills, MD', 39.4195, -76.7803, 1, 1, '1', 'Emergency dispatch on night rotation. Needs daytime sleep-window support and can help weekends.', '911 Dispatcher - County Comms'],
+  ['demo_user_018', 'noah.phlebotomy', 'Noah P.', 28, 'Catonsville, MD', 39.2721, -76.7319, 1, 4, '4', 'Phlebotomy tech on early shifts. Looking for another family to coordinate recurring swaps.', 'Phlebotomy Tech - Lab Services'],
+  ['demo_user_019', 'erica.teacher', 'Erica B.', 35, 'Parkville, MD', 39.3773, -76.5394, 2, 3, '7, 3', 'Teacher and parent with after-school needs. Offers daytime care during school breaks.', 'Middle School Teacher'],
+  ['demo_user_020', 'caleb.paramedic', 'Caleb N.', 32, 'Annapolis, MD', 38.9784, -76.4922, 2, 2, '5, 2', 'Paramedic on 12-hour shifts. Looking for reciprocal exchange with strong night/weekend overlap.', 'Paramedic - Anne Arundel EMS'],
+].map(([uid, emailStem, displayName, age, location, latitude, longitude, numberOfChildren, childAge, childrenAgesText, needs, workplace], idx) => ({
+  uid,
+  email: `${emailStem}@shiftsitter.demo`,
+  password: DEMO_PASSWORD,
+  emailVerified: true,
+  displayName,
+  profile: {
+    name: displayName,
+    age,
+    needs,
+    photoURLs: [`https://i.pravatar.cc/600?img=${60 + idx}`],
+    workplace,
+    location,
+    latitude,
+    longitude,
+    numberOfChildren,
+    childAge,
+    childrenAgesText,
+    averageRating: 4.6 + ((idx % 4) * 0.1),
+    ratingCount: 4 + idx,
+    backgroundCheckStatus: idx % 3 === 0 ? 'not_started' : 'completed',
+    interests: ['Family Time', 'Scheduling', 'Community'],
+    availability: idx % 2 === 0 ? 'Mon-Fri 8:00 AM-2:00 PM; Sat 9:00 AM-3:00 PM' : 'Weekdays 4:00 PM-10:00 PM; Sun 8:00 AM-6:00 PM',
+  },
+}));
+
+const ALL_DEMO_USERS = [...DEMO_USERS, ...EXTRA_DEMO_USERS];
+
 async function seedDemoUsers() {
   console.log('\nShiftSitter - Creating Maryland demo accounts...\n');
 
-  for (const user of DEMO_USERS) {
+  for (const user of ALL_DEMO_USERS) {
     try {
       console.log(`Processing: ${user.displayName} (${user.uid})`);
 
@@ -287,7 +326,7 @@ async function seedDemoUsers() {
         await auth.createUser({
           uid: user.uid,
           email: user.email,
-          password: user.password,
+          password: DEMO_PASSWORD,
           displayName: user.displayName,
           photoURL: user.profile.photoURLs[0],
           emailVerified: true,
@@ -297,7 +336,7 @@ async function seedDemoUsers() {
         if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
           await auth.updateUser(user.uid, {
             email: user.email,
-            password: user.password,
+            password: DEMO_PASSWORD,
             displayName: user.displayName,
             photoURL: user.profile.photoURLs[0],
             emailVerified: true,
@@ -328,13 +367,13 @@ async function seedDemoUsers() {
     }
   }
 
-  console.log('\nSeed completed. 10 Maryland demo accounts are ready.\n');
+  console.log(`\nSeed completed. ${ALL_DEMO_USERS.length} Maryland demo accounts are ready. Password: ${DEMO_PASSWORD}\n`);
   process.exit(0);
 }
 
 async function cleanDemoUsers() {
   console.log('\nDeleting Maryland demo accounts...\n');
-  for (const user of DEMO_USERS) {
+  for (const user of ALL_DEMO_USERS) {
     try {
       await auth.deleteUser(user.uid);
       await db.collection('users').doc(user.uid).delete();
