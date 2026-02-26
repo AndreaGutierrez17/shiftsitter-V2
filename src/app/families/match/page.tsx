@@ -6,6 +6,7 @@ import { Heart, X, RotateCcw, MapPin, ArrowRight, CalendarDays, Baby } from 'luc
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
+import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { db } from '@/lib/firebase/client';
 import { collection, query, where, getDocs, doc, setDoc, addDoc, serverTimestamp, getDoc, deleteDoc, onSnapshot, limit } from 'firebase/firestore';
 import Link from 'next/link';
@@ -27,10 +28,12 @@ const isRoleCompatible = (
 
 const SwipeCard = ({
   userProfile,
+  currentUserProfile,
   onSwipe,
   onOpenProfile,
 }: {
   userProfile: UserProfile,
+  currentUserProfile?: UserProfile | null,
   onSwipe: (id: string, direction: 'left' | 'right') => void,
   onOpenProfile: (id: string) => void,
 }) => {
@@ -40,10 +43,14 @@ const SwipeCard = ({
   const preferredPhoto = primaryPhoto && !avatarLikePhoto ? primaryPhoto : fallbackPhoto;
   const [imageSrc, setImageSrc] = useState(preferredPhoto);
   const needsText = userProfile.needs || userProfile.workplace || 'Open to coordinate care schedules.';
+  const { totalScore, breakdown } = calculateCompatibility(currentUserProfile ?? undefined, userProfile);
 
   useEffect(() => {
     setImageSrc(preferredPhoto);
   }, [preferredPhoto]);
+
+  const barWidth = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
+  const isLowCompatibility = totalScore < 50;
 
   return (
     <motion.div
@@ -107,6 +114,33 @@ const SwipeCard = ({
                   ))}
                 </div>
               )}
+              <div className={`mt-3 rounded-xl border bg-[rgba(28,33,44,.58)] p-3 ${isLowCompatibility ? 'low-compatibility border-rose-300/50' : 'border-white/20'}`}>
+                <div className={`mb-2 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold text-white ${isLowCompatibility ? 'border-rose-200/40 bg-rose-500/20' : 'border-white/20 bg-white/10'}`}>
+                  {totalScore}% Match
+                </div>
+                <div className="space-y-2 text-xs text-white/90">
+                  {[
+                    ['Schedule Fit', breakdown.schedule],
+                    ['Distance Fit', breakdown.distance],
+                    ['Safety Fit', breakdown.safety],
+                    ['Kids Fit', breakdown.kids],
+                    ['Handoff Fit', breakdown.handoff],
+                  ].map(([label, value]) => (
+                    <div key={String(label)}>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span>{label}</span>
+                        <span className="text-white/75">{value}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/10">
+                        <div
+                          className={`h-1.5 rounded-full ${isLowCompatibility ? 'bg-rose-300' : 'bg-emerald-300'}`}
+                          style={{ width: barWidth(Number(value)) }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
         </div>
       </Card>
@@ -259,8 +293,39 @@ export default function MatchPage() {
         timestamp: serverTimestamp(),
         });
 
+        let serverMatchResult: { mutual?: boolean; conversationId?: string } | null = null;
+        try {
+          const idToken = await user.getIdToken();
+          const matchEventResponse = await fetch('/api/match-events', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              targetUserId: swipedUserId,
+              direction,
+              currentUserProfile: {
+                name: currentUserProfile.name,
+                photoURLs: currentUserProfile.photoURLs || [],
+              },
+              targetProfile: {
+                name: swipedProfile.name,
+                photoURLs: swipedProfile.photoURLs || [],
+              },
+            }),
+          });
+
+          if (matchEventResponse.ok) {
+            serverMatchResult = (await matchEventResponse.json()) as { mutual?: boolean; conversationId?: string };
+          }
+        } catch (error) {
+          console.warn('match-events API fallback to local swipe logic:', error);
+        }
+
         if (direction === 'right') {
             const checkForMatch = async () => {
+                if (serverMatchResult?.mutual === true) return true;
                 // For demo users, always create a match to allow flow testing.
                 if (swipedProfile.isDemo) return true;
 
@@ -273,29 +338,33 @@ export default function MatchPage() {
             const isMatch = await checkForMatch();
 
             if (isMatch) {
-                const conversationRef = await addDoc(collection(db, 'conversations'), {
-                    userIds: [user.uid, swipedUserId],
-                    createdAt: serverTimestamp(),
-                    lastMessage: '',
-                    lastMessageAt: serverTimestamp(),
-                    lastMessageSenderId: '',
-                    userProfiles: {
-                        [user.uid]: {
-                            name: currentUserProfile.name,
-                            photoURLs: currentUserProfile.photoURLs,
-                        },
-                        [swipedUserId]: {
-                            name: swipedProfile.name,
-                            photoURLs: swipedProfile.photoURLs,
-                        }
-                    }
-                });
+                let conversationId = serverMatchResult?.conversationId;
+                if (!conversationId) {
+                  const conversationRef = await addDoc(collection(db, 'conversations'), {
+                      userIds: [user.uid, swipedUserId],
+                      createdAt: serverTimestamp(),
+                      lastMessage: '',
+                      lastMessageAt: serverTimestamp(),
+                      lastMessageSenderId: '',
+                      userProfiles: {
+                          [user.uid]: {
+                              name: currentUserProfile.name,
+                              photoURLs: currentUserProfile.photoURLs,
+                          },
+                          [swipedUserId]: {
+                              name: swipedProfile.name,
+                              photoURLs: swipedProfile.photoURLs,
+                          }
+                      }
+                  });
+                  conversationId = conversationRef.id;
+                }
                 
-                const matchState = { matchedUser: swipedProfile, conversationId: conversationRef.id };
+                const matchState = { matchedUser: swipedProfile, conversationId };
                 setLastMatch(matchState);
-                if (!hasShownMatch(conversationRef.id)) {
+                if (!hasShownMatch(conversationId)) {
                   setShowMatchModal(true);
-                  markMatchShown(conversationRef.id);
+                  markMatchShown(conversationId);
                 }
             }
         }
@@ -360,6 +429,7 @@ export default function MatchPage() {
                   <SwipeCard
                     key={currentProfile.id}
                     userProfile={currentProfile}
+                    currentUserProfile={currentUserProfile}
                     onSwipe={handleSwipe}
                     onOpenProfile={handleOpenProfile}
                   />

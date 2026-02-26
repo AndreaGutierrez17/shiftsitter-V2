@@ -262,9 +262,8 @@ export default function HomePage() {
         </div>
       </footer>
 
-      {/* =============== MODALS LEGALES =============== */}
 
-      {/* Privacy Policy Modal */}
+      {/* Privacy Policy */}
       <div
         className="modal fade"
         id="privacyModal"
@@ -310,10 +309,10 @@ export default function HomePage() {
                 <strong>Legal basis:</strong> your consent. You can withdraw
                 consent anytime by emailing{" "}
                 <a
-                  href="mailto:shiftsittersocial406@gmail.com"
+                  href="mailto:info@shiftsitter.com"
                   className="link-primary"
                 >
-                  shiftsittersocial406@gmail.com
+                  info@shiftsitter.com
                 </a>
                 .
               </p>

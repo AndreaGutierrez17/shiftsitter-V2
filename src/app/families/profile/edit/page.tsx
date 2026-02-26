@@ -21,6 +21,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { deleteUser } from 'firebase/auth';
 import { UserProfile } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { enableWebPush } from '@/lib/firebase/push';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
@@ -107,6 +108,7 @@ export default function EditProfilePage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [replacingPhotoUrl, setReplacingPhotoUrl] = useState<string | null>(null);
   const [isUploadingCv, setIsUploadingCv] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isHandlingNotifications, setIsHandlingNotifications] = useState(false);
@@ -294,6 +296,43 @@ export default function EditProfilePage() {
     }
   };
 
+  const handlePhotoReplace = async (urlToReplace: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!user || !file) return;
+
+    setIsUploadingPhoto(true);
+    setReplacingPhotoUrl(urlToReplace);
+    const originalPhotos = photos;
+
+    try {
+      const downloadURL = await handleFileUpload(file, 'user_photos');
+      const updatedPhotos = photos.map((url) => (url === urlToReplace ? downloadURL : url));
+      await updateDoc(doc(db, 'users', user.uid), { photoURLs: updatedPhotos });
+      setPhotos(updatedPhotos);
+
+      try {
+        await deleteObject(ref(storage, urlToReplace));
+      } catch (deleteError) {
+        console.warn('Old photo cleanup failed after replace:', deleteError);
+      }
+
+      toast({ title: 'Photo replaced successfully!' });
+    } catch (error: any) {
+      console.error('Photo Replace Error:', error);
+      setPhotos(originalPhotos);
+      toast({
+        variant: 'destructive',
+        title: 'Replace Failed',
+        description: error.message || 'An unexpected error occurred while replacing the photo.',
+        duration: 9000,
+      });
+    } finally {
+      setIsUploadingPhoto(false);
+      setReplacingPhotoUrl(null);
+      e.target.value = '';
+    }
+  };
+
   const handleCvDelete = async () => {
     if (!user || !cvUrl) return;
     const oldCvUrl = cvUrl;
@@ -385,10 +424,23 @@ export default function EditProfilePage() {
   }
 
   const handleEnableNotifications = async () => {
-    toast({
-      title: 'Coming soon',
-      description: 'Push notifications are temporarily disabled for MVP stability.',
-    });
+    setIsHandlingNotifications(true);
+    try {
+      if (!user) throw new Error('You must be logged in.');
+      await enableWebPush(user.uid);
+      toast({
+        title: 'Notifications enabled',
+        description: 'Push notifications were activated successfully.',
+      });
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not enable notifications',
+        description: error?.message || 'Please check your browser permissions and try again.',
+      });
+    } finally {
+      setIsHandlingNotifications(false);
+    }
   };
 
   if (pageLoading || authLoading) {
@@ -428,9 +480,11 @@ export default function EditProfilePage() {
                     <CardTitle className="font-headline text-3xl">Edit Your Profile</CardTitle>
                     <CardDescription>Keep your information up-to-date to get the best matches.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-8">
+                <CardContent className="space-y-6">
                     
-                    <div>
+                    <Card className="shadow-md">
+                      <CardContent className="p-5">
+                      <div>
                       <h3 className="text-lg font-semibold text-foreground">Your Photos</h3>
                       <p className="text-sm text-muted-foreground mb-4">The first photo is your main profile picture. You can have up to 5 photos.</p>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -443,6 +497,19 @@ export default function EditProfilePage() {
                                   Set main
                                 </Button>
                               ) : null}
+                              <label className="inline-flex">
+                                <span className="sr-only">Replace photo</span>
+                                <input
+                                  type="file"
+                                  className="sr-only"
+                                  onChange={(e) => handlePhotoReplace(url, e)}
+                                  accept="image/png, image/jpeg, image/webp"
+                                  disabled={isUploadingPhoto}
+                                />
+                                <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
+                                  <span>{replacingPhotoUrl === url ? 'Replacing...' : 'Replace'}</span>
+                                </Button>
+                              </label>
                               <Button type="button" variant="destructive" size="icon" onClick={() => handlePhotoDelete(url)}><Trash2 className="h-4 w-4" /></Button>
                               </div>
                               <div className="absolute top-2 right-2 flex gap-2 md:hidden">
@@ -451,6 +518,19 @@ export default function EditProfilePage() {
                                     Set main
                                   </Button>
                                 ) : null}
+                                <label className="inline-flex">
+                                  <span className="sr-only">Replace photo</span>
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    onChange={(e) => handlePhotoReplace(url, e)}
+                                    accept="image/png, image/jpeg, image/webp"
+                                    disabled={isUploadingPhoto}
+                                  />
+                                  <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
+                                    <span>{replacingPhotoUrl === url ? 'Replacing...' : 'Replace'}</span>
+                                  </Button>
+                                </label>
                                 <Button type="button" variant="destructive" size="icon" onClick={() => handlePhotoDelete(url)}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -467,10 +547,12 @@ export default function EditProfilePage() {
                           )}
                       </div>
                     </div>
-
-                    <Separator />
+                    </CardContent>
+                    </Card>
 
                     {isSitter && (
+                      <Card className="shadow-md">
+                        <CardContent className="p-5">
                       <div>
                           <h3 className="text-lg font-semibold text-foreground">Curriculum Vitae (CV)</h3>
                           <p className="text-sm text-muted-foreground mb-4">Upload your CV in PDF format for families to review your experience.</p>
@@ -493,10 +575,12 @@ export default function EditProfilePage() {
                             )}
                           </div>
                       </div>
+                      </CardContent>
+                      </Card>
                     )}
 
-                    <Separator />
-
+                    <Card className="shadow-md">
+                    <CardContent className="p-5">
                     <div className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField control={form.control} name="name" render={({ field }) => (
@@ -581,6 +665,8 @@ export default function EditProfilePage() {
                         )} />
                     </div>
                     </CardContent>
+                    </Card>
+                    </CardContent>
                     <CardFooter className="flex justify-end gap-2 pt-4">
                       <Button type="button" variant="ghost" onClick={() => router.push(`/families/profile/${user?.uid}`)}>Cancel</Button>
                       <Button type="submit">
@@ -607,16 +693,16 @@ export default function EditProfilePage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Push notifications are temporarily disabled for MVP stabilization.
+              Enable browser notifications to receive updates for matches, messages, and shifts.
             </p>
           </CardContent>
           <CardFooter className="bg-slate-50 pt-4 pb-4">
             <Button
               onClick={handleEnableNotifications}
-              disabled
+              disabled={isHandlingNotifications}
             >
               {isHandlingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Coming Soon
+              Enable Notifications
             </Button>
           </CardFooter>
         </Card>

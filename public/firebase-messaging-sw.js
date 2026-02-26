@@ -1,56 +1,39 @@
-importScripts("https://www.gstatic.com/firebasejs/12.9.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/12.9.0/firebase-messaging-compat.js");
-
+/* eslint-disable no-undef */
+let firebaseApp = null;
 let messaging = null;
-let isInitialized = false;
+let firebaseConfig = null;
 
-function initializeFirebase(config) {
-  if (isInitialized || !config || !config.apiKey) return;
-  firebase.initializeApp(config);
-  messaging = firebase.messaging();
-  messaging.onBackgroundMessage((payload) => {
-    const title = payload?.notification?.title || "ShiftSitter";
-    const options = {
-      body: payload?.notification?.body || "You have a new update.",
-      icon: "/logo-shiftsitter.png",
-      badge: "/logo-shiftsitter.png",
-      data: {
-        link: payload?.data?.link || payload?.fcmOptions?.link || "/families/messages",
-      },
-    };
-    self.registration.showNotification(title, options);
-  });
-  isInitialized = true;
-}
+self.addEventListener('message', async (event) => {
+  if (!event?.data || event.data.type !== 'FIREBASE_CONFIG') return;
+  firebaseConfig = event.data.payload;
 
-self.addEventListener("message", (event) => {
-  if (event?.data?.type === "FIREBASE_CONFIG") {
-    initializeFirebase(event.data.payload);
+  try {
+    if (!self.firebase) {
+      importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+      importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+    }
+
+    if (!firebaseApp && firebaseConfig) {
+      firebaseApp = self.firebase.initializeApp(firebaseConfig);
+      messaging = self.firebase.messaging();
+
+      messaging.onBackgroundMessage((payload) => {
+        const title = payload.notification?.title || 'ShiftSitter';
+        const options = {
+          body: payload.notification?.body || 'You have a new update.',
+          icon: '/logo-shiftsitter.png',
+          data: payload.data || {},
+        };
+        self.registration.showNotification(title, options);
+      });
+    }
+  } catch (error) {
+    console.error('[firebase-messaging-sw] init error', error);
   }
 });
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener("notificationclick", (event) => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.link || "/families/messages";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client) {
-          if (client.url.includes(targetUrl)) return client.focus();
-        }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-      return undefined;
-    })
-  );
+  const targetUrl = event.notification?.data?.url || '/families/messages';
+  event.waitUntil(clients.openWindow(targetUrl));
 });

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { db, storage } from '@/lib/firebase/client';
@@ -124,126 +125,130 @@ export default function ProfilePage() {
     <AuthGuard>
       <div className="ss-page-shell profile-premium-shell">
         <div className="ss-page-inner max-w-6xl">
-          <Card className="mx-auto w-full max-w-5xl rounded-2xl border border-[#d8d8eb] bg-[#f2f1fd] shadow-[0_14px_40px_rgba(31,41,55,0.08)]">
-            <CardContent className="p-6 md:p-8">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-[84px] w-[84px] border-2 border-white shadow-md">
-                    <AvatarImage src={mainPhoto} />
-                    <AvatarFallback>{userProfile.name?.charAt(0) || '?'}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h1 className="text-5xl font-bold leading-none text-[#283456]">
-                      {userProfile.name}, {userProfile.age}
-                    </h1>
-                    <p className="mt-2 flex items-center gap-2 text-xl text-[#6f7088]">
-                      <MapPin className="h-4 w-4" />
-                      {userProfile.location || 'Location not set'}
-                    </p>
-                  </div>
-                </div>
-                {isOwnProfile ? (
-                  <div className="flex gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="hidden"
-                      onChange={handleMainPhotoUpload}
-                      disabled={isUploadingMainPhoto}
-                    />
-                    <Button variant="outline" className="profile-soft-btn" onClick={handlePickMainPhoto} disabled={isUploadingMainPhoto}>
-                      {isUploadingMainPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                      Change photo
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="profile-soft-btn"
-                      onClick={() => router.push('/families/profile/edit')}
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </Button>
-                  </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card className="overflow-hidden shadow-lg">
+              <div className="relative h-40 bg-gradient-to-r from-primary/20 via-accent to-primary/10">
+                {photos[1] ? (
+                  <Image src={photos[1]} alt="Profile banner" fill className="object-cover opacity-70" />
                 ) : null}
               </div>
-
-              <div className="mt-8 grid gap-7">
-                <div>
-                  <h3 className="flex items-center gap-2 text-4xl font-semibold text-[#2f3047]">
-                    <CalendarDays className="h-5 w-5 text-[#c8aedf]" />
-                    Availability
-                  </h3>
-                  <p className="mt-2 text-2xl text-[#6f7088]">{userProfile.availability || 'Not provided yet.'}</p>
+              <CardContent className="relative p-6">
+                <div className="-mt-20 mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="flex items-end gap-4">
+                    <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+                      <AvatarImage src={mainPhoto} />
+                      <AvatarFallback>{userProfile.name?.charAt(0) || '?'}</AvatarFallback>
+                    </Avatar>
+                    <div className="pb-2">
+                      <h1 className="font-headline text-3xl font-semibold text-foreground md:text-4xl">
+                        {userProfile.name}, {userProfile.age}
+                      </h1>
+                      <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground md:text-base">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        {userProfile.location || 'Location not set'}
+                      </p>
+                    </div>
+                  </div>
+                  {isOwnProfile ? (
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleMainPhotoUpload}
+                        disabled={isUploadingMainPhoto}
+                      />
+                      <Button variant="outline" className="profile-soft-btn" onClick={handlePickMainPhoto} disabled={isUploadingMainPhoto}>
+                        {isUploadingMainPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                        Change photo
+                      </Button>
+                      <Button variant="outline" className="profile-soft-btn" onClick={() => router.push('/families/profile/edit')}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div>
-                  <h3 className="flex items-center gap-2 text-4xl font-semibold text-[#2f3047]">
-                    <Smile className="h-5 w-5 text-[#c8aedf]" />
-                    Childcare Needs
-                  </h3>
-                  <p className="mt-2 text-2xl text-[#6f7088]">{userProfile.needs || 'Not provided yet.'}</p>
-                </div>
+                <div className="mt-4 space-y-5">
+                  <div className="rounded-xl border bg-white p-4 shadow-sm">
+                    <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
+                      <CalendarDays className="h-4 w-4 text-primary" />
+                      Availability
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{userProfile.availability || 'Not provided yet.'}</p>
+                  </div>
 
-                <div>
-                  <h3 className="flex items-center gap-2 text-4xl font-semibold text-[#2f3047]">
-                    <Heart className="h-5 w-5 text-[#c8aedf]" />
-                    Interests
-                  </h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(userProfile.interests || []).map((interest, index) => (
-                      <span
-                        key={`${interest}-${index}`}
-                        className="rounded-full bg-white/70 px-3 py-1 text-sm font-medium text-[#3f3f59] border border-[#d9d8ef]"
-                      >
-                        {interest}
-                      </span>
-                    ))}
-                    {(userProfile.interests || []).length === 0 ? (
-                      <span className="text-sm text-[#7f8098]">No interests added yet.</span>
+                  <div className="rounded-xl border bg-white p-4 shadow-sm">
+                    <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
+                      <Smile className="h-4 w-4 text-primary" />
+                      Childcare Needs
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{userProfile.needs || 'Not provided yet.'}</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    {userProfile.workplace ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border bg-background px-3 py-1"><Briefcase className="h-4 w-4 text-primary" /> {userProfile.workplace}</span>
+                    ) : null}
+                    {userProfile.numberOfChildren ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border bg-background px-3 py-1"><Users className="h-4 w-4 text-primary" /> {userProfile.numberOfChildren} {userProfile.numberOfChildren > 1 ? 'children' : 'child'}</span>
+                    ) : null}
+                    {userProfile.backgroundCheckStatus === 'completed' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Verified</span>
                     ) : null}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
 
-                <div className="flex flex-wrap items-center gap-4 text-base text-[#72748a]">
-                  {userProfile.workplace ? (
-                    <span className="inline-flex items-center gap-1"><Briefcase className="h-4 w-4" /> {userProfile.workplace}</span>
-                  ) : null}
-                  {userProfile.numberOfChildren ? (
-                    <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> {userProfile.numberOfChildren} {userProfile.numberOfChildren > 1 ? 'children' : 'child'}</span>
-                  ) : null}
-                  {userProfile.backgroundCheckStatus === 'completed' ? (
-                    <span className="inline-flex items-center gap-1 text-green-700"><CheckCircle2 className="h-4 w-4" /> Verified</span>
-                  ) : null}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="mx-auto mt-6 w-full max-w-5xl rounded-2xl border border-[#d9d8ef] bg-white/90">
-            <CardContent className="p-4">
-              <h3 className="mb-3 text-xl font-semibold text-[#2f3047]">Photo Gallery</h3>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                {gallerySlots.map((url, index) => (
-                  <div key={`gallery-slot-${index}`} className="relative aspect-square overflow-hidden rounded-xl border border-[#d9d8ef] bg-[#eceaf7]">
-                    {url ? (
-                      <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-[#888aa2]">No photo</div>
-                    )}
+            <div className="space-y-6">
+              <Card className="shadow-md">
+                <CardContent className="p-5">
+                  <h3 className="font-headline mb-3 flex items-center gap-2 text-lg font-semibold text-foreground">
+                    <Heart className="h-4 w-4 text-primary" />
+                    Interests
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(userProfile.interests || []).map((interest, index) => (
+                      <Badge key={`${interest}-${index}`} variant="secondary">
+                        {interest}
+                      </Badge>
+                    ))}
+                    {(userProfile.interests || []).length === 0 ? (
+                      <span className="text-sm text-muted-foreground">No interests added yet.</span>
+                    ) : null}
                   </div>
-                ))}
-              </div>
-              {isOwnProfile && photos.length < 5 ? (
-                <div className="mt-3">
-                  <Button variant="outline" className="profile-soft-btn" onClick={() => router.push('/families/profile/edit')}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit photos
-                  </Button>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md">
+                <CardContent className="p-5">
+                  <h3 className="font-headline mb-3 text-lg font-semibold text-foreground">Photo Gallery</h3>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {gallerySlots.map((url, index) => (
+                      <div key={`gallery-slot-${index}`} className="relative aspect-square overflow-hidden rounded-xl border bg-card">
+                        {url ? (
+                          <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">No photo</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {isOwnProfile && photos.length < 5 ? (
+                    <div className="mt-4">
+                      <Button variant="outline" className="profile-soft-btn" onClick={() => router.push('/families/profile/edit')}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit photos
+                      </Button>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     </AuthGuard>
