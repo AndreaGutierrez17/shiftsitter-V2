@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
 import { Loader2, PlusCircle, Star } from 'lucide-react';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
-import type { Conversation, Review, Shift } from '@/lib/types';
+import type { Conversation, Review, Shift, UserProfile } from '@/lib/types';
 import { shiftProposalSchema } from './schemas';
 
 type ShiftFormValues = {
@@ -45,6 +45,11 @@ function normalizeConversation(conversation: Conversation): Conversation {
   };
 }
 
+function buildShiftDateTime(date: string, time: string) {
+  const parsed = new Date(`${date}T${time}:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default function CalendarPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -61,8 +66,21 @@ export default function CalendarPage() {
   const [cancelTargetShift, setCancelTargetShift] = useState<Shift | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState<CancelReasonCode | ''>('');
   const [cancelReasonText, setCancelReasonText] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editTargetShift, setEditTargetShift] = useState<Shift | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [respondingSwapShiftId, setRespondingSwapShiftId] = useState<string | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; comment: string }>>({});
   const [submittingReviewShiftId, setSubmittingReviewShiftId] = useState<string | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null | undefined>(undefined);
+  const autoCompletedShiftIdsRef = useRef<Set<string>>(new Set());
+  const createStartTimeRef = useRef<HTMLInputElement | null>(null);
+  const createEndTimeRef = useRef<HTMLInputElement | null>(null);
+  const editStartTimeRef = useRef<HTMLInputElement | null>(null);
+  const editEndTimeRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<ShiftFormValues>({
     resolver: zodResolver(shiftProposalSchema),
@@ -73,6 +91,14 @@ export default function CalendarPage() {
       endTime: '',
     },
   });
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      setCurrentUserProfile(snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as UserProfile) : null);
+    });
+    return () => unsubscribeProfile();
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -199,8 +225,11 @@ export default function CalendarPage() {
     }
 
     try {
-      const startAt = new Date(`${validated.data.date}T${validated.data.startTime}:00`);
-      const endAt = new Date(`${validated.data.date}T${validated.data.endTime}:00`);
+      const startAt = buildShiftDateTime(validated.data.date, validated.data.startTime);
+      const endAt = buildShiftDateTime(validated.data.date, validated.data.endTime);
+      if (!startAt || !endAt || endAt.getTime() <= startAt.getTime()) {
+        throw new Error('End time must be after the start time.');
+      }
       await addDoc(collection(db, 'shifts'), {
         proposerId: user.uid,
         accepterId: validated.data.accepterId,
@@ -240,6 +269,13 @@ export default function CalendarPage() {
     const withTimestamp = (shift as unknown as { startAt?: { toDate?: () => Date } }).startAt;
     if (typeof withTimestamp?.toDate === 'function') return withTimestamp.toDate();
     const parsed = new Date(`${shift.date}T${shift.startTime}:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const getShiftEndDate = (shift: Shift) => {
+    const withTimestamp = (shift as unknown as { endAt?: { toDate?: () => Date } }).endAt;
+    if (typeof withTimestamp?.toDate === 'function') return withTimestamp.toDate();
+    const parsed = new Date(`${shift.date}T${shift.endTime}:00`);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
@@ -360,6 +396,14 @@ export default function CalendarPage() {
     }
     setSubmittingReviewShiftId(shift.id);
     try {
+      const endedAt = getShiftEndDate(shift);
+      if (shift.status === 'accepted' && endedAt && endedAt.getTime() <= Date.now()) {
+        await updateDoc(doc(db, 'shifts', shift.id), {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+        });
+      }
+
       const idToken = await user.getIdToken();
       const response = await fetch(`/api/shifts/${shift.id}/review`, {
         method: 'POST',
@@ -407,7 +451,168 @@ export default function CalendarPage() {
     }
   };
 
+  const canEditShift = (shift: Shift) => {
+    if (!user) return { allowed: false, reason: 'You must be logged in.' };
+    if (shift.status !== 'accepted') {
+      return { allowed: false, reason: 'Only accepted shifts can be changed.' };
+    }
+    const startAt = getShiftStartDate(shift);
+    if (!startAt) return { allowed: false, reason: 'Shift start time is missing.' };
+    const cutoffHours = shift.cancellationWindowHours ?? CANCELLATION_CUTOFF_HOURS;
+    if (Date.now() > startAt.getTime() - cutoffHours * 60 * 60 * 1000) {
+      return { allowed: false, reason: `You can’t request a new date within ${cutoffHours} hours of the start time.` };
+    }
+    return { allowed: true as const, reason: null };
+  };
+
+  const openEditShiftModal = (shift: Shift) => {
+    const eligibility = canEditShift(shift);
+    if (!eligibility.allowed) {
+      toast({ variant: 'destructive', title: 'Cannot edit shift', description: eligibility.reason || 'This shift cannot be changed.' });
+      return;
+    }
+    setEditTargetShift(shift);
+    setEditDate(shift.date);
+    setEditStartTime(shift.startTime);
+    setEditEndTime(shift.endTime);
+    setEditModalOpen(true);
+  };
+
+  const handleRequestShiftChange = async () => {
+    if (!user || !editTargetShift) return;
+    if (!editDate || !editStartTime || !editEndTime) {
+      toast({ variant: 'destructive', title: 'Missing details', description: 'Date, start, and end time are required.' });
+      return;
+    }
+
+    const nextStartAt = buildShiftDateTime(editDate, editStartTime);
+    const nextEndAt = buildShiftDateTime(editDate, editEndTime);
+    if (!nextStartAt || !nextEndAt || nextEndAt.getTime() <= nextStartAt.getTime()) {
+      toast({ variant: 'destructive', title: 'Invalid time range', description: 'End time must be after the start time.' });
+      return;
+    }
+
+    setEditingShiftId(editTargetShift.id);
+    try {
+      await updateDoc(doc(db, 'shifts', editTargetShift.id), {
+        status: 'swap_proposed',
+        swapDetails: {
+          proposerId: user.uid,
+          newDate: editDate,
+          newStartTime: editStartTime,
+          newEndTime: editEndTime,
+        },
+      });
+      toast({ title: 'Change request sent', description: 'The other participant can now accept or reject the new schedule.' });
+      setEditModalOpen(false);
+      setEditTargetShift(null);
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Could not request change', description: error?.message || 'Please try again.' });
+    } finally {
+      setEditingShiftId(null);
+    }
+  };
+
+  const handleRespondToShiftChange = async (shift: Shift, response: 'accepted' | 'rejected') => {
+    if (!user) return;
+    const swapDetails = shift.swapDetails;
+    if (!swapDetails) {
+      toast({ variant: 'destructive', title: 'Missing change request', description: 'There is no pending date change for this shift.' });
+      return;
+    }
+    if (swapDetails.proposerId === user.uid) {
+      toast({ variant: 'destructive', title: 'Action not allowed', description: 'You cannot respond to your own date change request.' });
+      return;
+    }
+
+    setRespondingSwapShiftId(shift.id);
+    try {
+      if (response === 'accepted') {
+        const nextStartAt = buildShiftDateTime(swapDetails.newDate, swapDetails.newStartTime);
+        const nextEndAt = buildShiftDateTime(swapDetails.newDate, swapDetails.newEndTime);
+        if (!nextStartAt || !nextEndAt || nextEndAt.getTime() <= nextStartAt.getTime()) {
+          throw new Error('The requested new date/time is invalid.');
+        }
+
+        await updateDoc(doc(db, 'shifts', shift.id), {
+          status: 'accepted',
+          date: swapDetails.newDate,
+          startTime: swapDetails.newStartTime,
+          endTime: swapDetails.newEndTime,
+          startAt: nextStartAt,
+          endAt: nextEndAt,
+          completedAt: deleteField(),
+          startReminderSent: false,
+          startReminderSentAt: deleteField(),
+          swapDetails: deleteField(),
+        });
+      } else {
+        await updateDoc(doc(db, 'shifts', shift.id), {
+          status: 'accepted',
+          swapDetails: deleteField(),
+        });
+      }
+
+      toast({
+        title: response === 'accepted' ? 'Change accepted' : 'Change declined',
+        description: response === 'accepted'
+          ? 'The new date/time has been applied.'
+          : 'The shift kept its original date/time.',
+      });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Could not update request', description: error?.message || 'Please try again.' });
+    } finally {
+      setRespondingSwapShiftId(null);
+    }
+  };
+  const canAccessSecureCalendar = Boolean(
+    currentUserProfile &&
+    (
+      currentUserProfile.isDemo ||
+      currentUserProfile.verificationStatus === 'verified' ||
+      (currentUserProfile.idFrontUrl && currentUserProfile.selfieUrl)
+    )
+  );
+
+  useEffect(() => {
+    if (!user || !canAccessSecureCalendar || shifts.length === 0) return;
+
+    const now = Date.now();
+    const staleAcceptedShifts = shifts.filter((shift) => {
+      if (shift.status !== 'accepted') return false;
+      if (autoCompletedShiftIdsRef.current.has(shift.id)) return false;
+      const endAt = getShiftEndDate(shift);
+      return !!endAt && endAt.getTime() <= now;
+    });
+
+    if (staleAcceptedShifts.length === 0) return;
+
+    staleAcceptedShifts.forEach((shift) => {
+      autoCompletedShiftIdsRef.current.add(shift.id);
+      updateDoc(doc(db, 'shifts', shift.id), {
+        status: 'completed',
+        completedAt: serverTimestamp(),
+      }).catch((error) => {
+        console.error('Could not auto-complete shift:', error);
+        autoCompletedShiftIdsRef.current.delete(shift.id);
+      });
+    });
+  }, [shifts, user, canAccessSecureCalendar]);
+
   if (loading || authLoading) {
+    return (
+      <div className="ss-page-shell">
+        <div className="ss-page-inner">
+          <Card className="ss-soft-card">
+            <CardContent className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  if (user && typeof currentUserProfile === 'undefined') {
     return (
       <div className="ss-page-shell">
         <div className="ss-page-inner">
@@ -428,16 +633,16 @@ export default function CalendarPage() {
           <Card className="ss-soft-card">
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle className="font-headline text-3xl">Upcoming Shifts</CardTitle>
+                <CardTitle className="font-headline text-3xl">Shifts</CardTitle>
                 <CardDescription>
                   {selectedMatchName
                     ? `Showing shifts with ${selectedMatchName}.`
-                    : 'Simple MVP calendar view for upcoming proposals and accepted shifts.'}
+                    : 'Request, review, and manage shift proposals with your matches.'}
                 </CardDescription>
               </div>
               <Dialog open={modalOpen} onOpenChange={setModalOpen}>
                 <DialogTrigger asChild>
-                  <Button className="calendar-primary-btn">
+                  <Button className="calendar-primary-btn" disabled={!canAccessSecureCalendar}>
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Propose Shift
                   </Button>
@@ -497,8 +702,24 @@ export default function CalendarPage() {
                             <FormItem>
                               <FormLabel>Start</FormLabel>
                               <FormControl>
-                                <Input type="time" {...field} />
+                                <Input
+                                  type="time"
+                                  {...field}
+                                  ref={(node) => {
+                                    field.ref(node);
+                                    createStartTimeRef.current = node;
+                                  }}
+                                />
                               </FormControl>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-2"
+                                onClick={() => createStartTimeRef.current?.blur()}
+                              >
+                                Confirm start
+                              </Button>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -510,8 +731,24 @@ export default function CalendarPage() {
                             <FormItem>
                               <FormLabel>End</FormLabel>
                               <FormControl>
-                                <Input type="time" {...field} />
+                                <Input
+                                  type="time"
+                                  {...field}
+                                  ref={(node) => {
+                                    field.ref(node);
+                                    createEndTimeRef.current = node;
+                                  }}
+                                />
                               </FormControl>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-2"
+                                onClick={() => createEndTimeRef.current?.blur()}
+                              >
+                                Confirm end
+                              </Button>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -594,14 +831,102 @@ export default function CalendarPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+              <Dialog
+                open={editModalOpen}
+                onOpenChange={(open) => {
+                  setEditModalOpen(open);
+                  if (!open) {
+                    setEditTargetShift(null);
+                    setEditDate('');
+                    setEditStartTime('');
+                    setEditEndTime('');
+                  }
+                }}
+              >
+                <DialogContent className="border shadow-lg">
+                  <DialogHeader>
+                    <DialogTitle>Request a new date</DialogTitle>
+                    <DialogDescription>
+                      Send a date/time change request. The other participant must accept it before the shift changes.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-foreground">New date</label>
+                      <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-foreground">New start</label>
+                        <Input
+                          type="time"
+                          value={editStartTime}
+                          onChange={(e) => setEditStartTime(e.target.value)}
+                          ref={editStartTimeRef}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2"
+                          onClick={() => editStartTimeRef.current?.blur()}
+                        >
+                          Confirm start
+                        </Button>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-foreground">New end</label>
+                        <Input
+                          type="time"
+                          value={editEndTime}
+                          onChange={(e) => setEditEndTime(e.target.value)}
+                          ref={editEndTimeRef}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2"
+                          onClick={() => editEndTimeRef.current?.blur()}
+                        >
+                          Confirm end
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={() => setEditModalOpen(false)}>
+                      Keep current shift
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleRequestShiftChange}
+                      disabled={!editDate || !editStartTime || !editEndTime || editingShiftId === editTargetShift?.id}
+                    >
+                      {editingShiftId === editTargetShift?.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Send change request
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardHeader>
             <CardContent className="space-y-3">
+              {!canAccessSecureCalendar ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  <p className="font-medium">Shifts are locked until documents are uploaded.</p>
+                  <p className="mt-1">Upload your ID front and selfie in Profile Edit. Verification activates automatically as soon as both files are uploaded.</p>
+                  <Button className="mt-3" size="sm" onClick={() => window.location.assign('/families/profile/edit')}>
+                    Go to Profile Edit
+                  </Button>
+                </div>
+              ) : null}
               <div className="rounded-xl border border-border/80 bg-white p-3 shadow-sm">
                 <label className="mb-2 block text-sm font-medium text-foreground">Filter by match</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={selectedMatchFilterId}
                   onChange={(e) => setSelectedMatchFilterId(e.target.value)}
+                  disabled={!canAccessSecureCalendar}
                 >
                   <option value="">All matches</option>
                   {conversationOptions.map((option) => (
@@ -611,7 +936,9 @@ export default function CalendarPage() {
                   ))}
                 </select>
               </div>
-              {upcomingShifts.length === 0 ? (
+              {!canAccessSecureCalendar ? (
+                <p className="text-sm text-muted-foreground">Shift actions unlock after both verification documents are uploaded.</p>
+              ) : upcomingShifts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {selectedMatchFilterId ? 'No shifts found for the selected match yet.' : 'No shifts scheduled yet.'}
                 </p>
@@ -622,7 +949,12 @@ export default function CalendarPage() {
                   const isThisUserResponding = respondingShiftId === shift.id;
                   const counterpart = getShiftCounterpart(shift);
                   const proposerLabel = shift.proposerId === user?.uid ? 'You' : counterpart.name;
-                  const canLeaveReview = shift.status === 'completed' && !reviewedShiftIds.has(shift.id);
+                  const shiftEnded = (() => {
+                    const endAt = getShiftEndDate(shift);
+                    return !!endAt && endAt.getTime() <= Date.now();
+                  })();
+                  const isReviewEligible = shift.status === 'completed' || (shift.status === 'accepted' && shiftEnded);
+                  const canLeaveReview = isReviewEligible && !reviewedShiftIds.has(shift.id);
                   const existingReview = myReviewsByShiftId[shift.id];
                   const reviewDraft = getReviewDraft(shift.id);
                   const cancelledByLabel = shift.cancelledByUid
@@ -630,6 +962,9 @@ export default function CalendarPage() {
                     : null;
                   const cancellationEligibility = canCancelShift(shift);
                   const canShowCancelAction = ['proposed', 'accepted'].includes(shift.status);
+                  const editEligibility = canEditShift(shift);
+                  const canRespondToSwap = shift.status === 'swap_proposed' && shift.swapDetails?.proposerId !== user?.uid;
+                  const isWaitingOnSwapResponse = shift.status === 'swap_proposed' && shift.swapDetails?.proposerId === user?.uid;
                   return (
                     <div key={shift.id} className="rounded-xl border border-border/90 bg-white p-4 shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -688,6 +1023,55 @@ export default function CalendarPage() {
                           ) : null}
                         </div>
                       ) : null}
+                      {shift.status === 'accepted' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!editEligibility.allowed || editingShiftId === shift.id}
+                            onClick={() => openEditShiftModal(shift)}
+                          >
+                            {editingShiftId === shift.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Request new date
+                          </Button>
+                          {!editEligibility.allowed ? (
+                            <p className="text-xs text-muted-foreground">{editEligibility.reason}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {shift.status === 'swap_proposed' && shift.swapDetails ? (
+                        <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                          <p className="font-medium">
+                            Requested change: {format(parseISO(shift.swapDetails.newDate), 'EEEE, MMM d')} from {shift.swapDetails.newStartTime} to {shift.swapDetails.newEndTime}
+                          </p>
+                          {isWaitingOnSwapResponse ? (
+                            <p className="mt-1 text-xs text-sky-800/80">Waiting for {counterpart.name} to accept or reject your request.</p>
+                          ) : null}
+                          {canRespondToSwap ? (
+                            <div className="mt-3 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={respondingSwapShiftId === shift.id}
+                                onClick={() => handleRespondToShiftChange(shift, 'accepted')}
+                              >
+                                {respondingSwapShiftId === shift.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Accept change
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={respondingSwapShiftId === shift.id}
+                                onClick={() => handleRespondToShiftChange(shift, 'rejected')}
+                              >
+                                Decline change
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {shift.status === 'cancelled' ? (
                         <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
                           <p className="font-medium">
@@ -727,7 +1111,7 @@ export default function CalendarPage() {
                           </div>
                         </div>
                       ) : null}
-                      {shift.status === 'completed' && existingReview ? (
+                      {isReviewEligible && existingReview ? (
                         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                           <p className="text-sm font-medium text-emerald-900">Thanks, you already reviewed this shift.</p>
                           <div className="mt-1">{renderStars(existingReview.rating)}</div>

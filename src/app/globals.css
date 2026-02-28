@@ -812,7 +812,7 @@ button {
   display:flex;
   align-items:flex-start;
   justify-content:center;
-  min-height:680px;
+  min-height:900px;
   height:auto;
 }
 .match-hero-overlay{
@@ -847,8 +847,8 @@ button {
 .match-hero-content{
   color:#fff;
   margin-top:auto;
-  padding-top:11.5rem;
-  padding-bottom:.65rem;
+  padding-top:7.5rem;
+  padding-bottom:1rem;
 }
 .match-hero-name{
   margin:0;
@@ -875,13 +875,18 @@ button {
 .match-hero-meta p{
   margin:0;
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:.45rem;
   font-size:.98rem;
   color:rgba(255,255,255,.93);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:unset;
+  line-height:1.35;
+}
+.match-hero-meta p svg{
+  flex:0 0 auto;
+  margin-top:.08rem;
 }
 .match-hero-needs-row{
   white-space:normal !important;
@@ -1002,7 +1007,7 @@ button {
   .q-options{grid-template-columns:1fr}
   .match-deck-wrap{
     max-width:100%;
-    min-height:620px;
+    min-height:760px;
   }
   .match-hero-name{
     font-size:2.25rem;
@@ -1011,8 +1016,8 @@ button {
     font-size:.88rem;
   }
   .match-hero-content{
-    padding-top:8.4rem;
-    padding-bottom:.5rem;
+    padding-top:5.25rem;
+    padding-bottom:.8rem;
   }
   .match-shell{
     padding:5.5rem .85rem 1.25rem;

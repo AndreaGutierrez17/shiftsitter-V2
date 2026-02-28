@@ -11,6 +11,19 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
+    function isEmployerAccount() {
+      return isAuthenticated()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountType == 'employer';
+    }
+
+    function isFamilyAccount() {
+      return isAuthenticated()
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountType == 'family'
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['parent', 'sitter', 'reciprocal']
+        );
+    }
+
     // USERS
     match /users/{uid} {
       allow read: if isAuthenticated();
@@ -60,6 +73,47 @@ service cloud.firestore {
         allow write: if isOwner(uid);
         allow delete: if false;
       }
+    }
+
+    match /profiles/{uid} {
+      allow read, write: if isOwner(uid);
+      allow delete: if false;
+    }
+
+    match /employers/{employerId} {
+      allow read: if isOwner(employerId) && isEmployerAccount();
+      allow create: if isOwner(employerId)
+        && isEmployerAccount()
+        && request.resource.data.employerId == request.auth.uid;
+      allow update: if isOwner(employerId)
+        && isEmployerAccount()
+        && request.resource.data.employerId == resource.data.employerId;
+      allow delete: if false;
+    }
+
+    match /access_codes/{codeId} {
+      allow read: if isEmployerAccount() && resource.data.employerId == request.auth.uid;
+      allow create: if isEmployerAccount()
+        && request.resource.data.employerId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.code is string;
+      allow update: if isEmployerAccount()
+        && resource.data.employerId == request.auth.uid
+        && request.resource.data.employerId == resource.data.employerId
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+
+    match /redemptions/{redemptionId} {
+      allow read: if isAuthenticated()
+        && (
+          (isEmployerAccount() && resource.data.employerId == request.auth.uid)
+          || resource.data.userId == request.auth.uid
+        );
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     // SWIPES (CURRENT APP SHAPE: /swipes/{swiperId_swipedId})
@@ -196,7 +250,7 @@ service cloud.firestore {
       allow read: if isOwner(uid);
       allow create: if false;
       allow update: if isOwner(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt', 'isRead']);
       allow delete: if isOwner(uid);
     }
 

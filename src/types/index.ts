@@ -2,13 +2,62 @@ import type { Timestamp } from "firebase/firestore";
 
 export type UserRole = "parent" | "sitter" | "reciprocal";
 
+export type ShiftBlock = "Early" | "Day" | "Evening" | "Night";
+export type HandoffPreference = "pickup" | "dropoff" | "my_workplace" | "their_workplace" | "either";
+export type SettingPreference = "my_home" | "their_home" | "either";
+export type PetsInHome = "none" | "dog" | "cat" | "multiple" | "unknown";
+
+export interface MatchNeed {
+  days?: string[];
+  shifts?: ShiftBlock[];
+  durationBucket?: string;
+  settingPreference?: SettingPreference;
+  childrenCount?: number;
+  childrenAges?: number[];
+  specialNeeds?: {
+    has?: boolean;
+    notes?: string;
+  };
+  smokeFree?: boolean;
+  requireSmokeFree?: boolean;
+  petsInHome?: PetsInHome;
+  okWithPets?: boolean;
+  zipHome?: string;
+  zipWork?: string;
+  handoffPreference?: HandoffPreference;
+  maxTravelMinutes?: number;
+  extrasNeeded?: string[];
+}
+
+export interface MatchOffer {
+  days?: string[];
+  shifts?: ShiftBlock[];
+  hoursPerMonthBucket?: string;
+  settingPreference?: SettingPreference;
+  maxChildrenTotal?: number;
+  ageRanges?: string[];
+  okWithSpecialNeeds?: boolean;
+  hasVehicle?: boolean;
+  extrasOffered?: string[];
+  smokeFree?: boolean;
+  okWithPets?: boolean;
+  zipHome?: string;
+  zipWork?: string;
+  handoffPreference?: HandoffPreference;
+  maxTravelMinutes?: number;
+}
+
 export interface UserProfile {
   id: string;
   email: string | null;
+  accountType?: 'family' | 'employer';
   name: string;
   age: number;
   role: UserRole;
   location: string;
+  state?: string;
+  city?: string;
+  zip?: string;
   latitude?: number;
   longitude?: number;
   numberOfChildren?: number;
@@ -16,9 +65,21 @@ export interface UserProfile {
   childrenAgesText?: string;
   availability: string;
   needs: string;
+  offerSummary?: string;
   interests: string[];
+  interestSelections?: string[];
+  interestsOther?: string;
+  interestsText?: string;
   photoURLs: string[];
   workplace?: string;
+  daysNeeded?: string[];
+  shiftsNeeded?: string[];
+  smokeFree?: boolean;
+  petsOk?: boolean;
+  drivingLicense?: boolean;
+  specialNeedsOk?: boolean;
+  need?: MatchNeed;
+  offer?: MatchOffer;
   references?: string;
   backgroundCheckStatus: "not_started" | "in_progress" | "completed";
   cvUrl?: string;
@@ -64,6 +125,7 @@ export interface Conversation {
   lastMessageAt: Timestamp;
   lastMessageSenderId: string;
   userProfiles: Record<string, ConversationUserProfile>;
+  unreadCount?: Record<string, number>;
 }
 
 export interface Message {
@@ -132,9 +194,20 @@ export interface Review {
 
 export interface Notification {
   id: string;
-  userId: string;
+  userId?: string;
   toUid?: string;
-  type: "match" | "message" | "shift" | "system" | "new_match" | "shift_cancelled" | "shift_starting_soon" | "shift_completed_review";
+  type:
+    | "match"
+    | "message"
+    | "request"
+    | "review"
+    | "shift"
+    | "system"
+    | "new_match"
+    | "shift_cancelled"
+    | "shift_starting_soon"
+    | "shift_completed_review"
+    | "shift_updated";
   title: string;
   body: string;
   read: boolean;

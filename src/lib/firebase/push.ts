@@ -54,6 +54,7 @@ export async function enableWebPush(uid: string) {
   navigator.serviceWorker.controller?.postMessage(configMessage);
 
   const { getToken } = await import('firebase/messaging');
+  const { onMessage } = await import('firebase/messaging');
   const token = await getToken(messaging, {
     vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
     serviceWorkerRegistration: registration,
@@ -76,5 +77,26 @@ export async function enableWebPush(uid: string) {
 
   // Backward compatibility for existing reads.
   await setDoc(doc(db, 'users', uid), { fcmToken: token }, { merge: true });
+
+  const windowWithFlag = window as typeof window & { __shiftSitterForegroundPushBound?: boolean };
+  if (!windowWithFlag.__shiftSitterForegroundPushBound) {
+    onMessage(messaging, async (payload) => {
+      try {
+        const title = payload.notification?.title || payload.data?.title || 'ShiftSitter';
+        const body = payload.notification?.body || payload.data?.body || 'You have a new update.';
+        const readySw = await navigator.serviceWorker.ready;
+        await readySw.showNotification(title, {
+          body,
+          icon: '/logo-shiftsitter.png',
+          badge: '/logo-shiftsitter.png',
+          data: payload.data || {},
+        });
+      } catch (error) {
+        console.error('Foreground notification display failed:', error);
+      }
+    });
+    windowWithFlag.__shiftSitterForegroundPushBound = true;
+  }
+
   return token;
 }

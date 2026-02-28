@@ -6,8 +6,20 @@ import { useEffect, useState } from "react";
 import { Bell, CheckCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
-import { NAV_LINKS } from "@/lib/constants";
+import { auth, db } from "@/lib/firebase/client";
+import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +36,9 @@ const publicNavLinks = [
   { href: "/#partners", label: "Partners" },
   { href: "/employers", label: "For employers" },
 ];
+
+const INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = "shiftsitter:last-activity-at";
 
 
 export default function Header() {
@@ -42,12 +57,49 @@ export default function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
+  const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
 
-  const navLinks = user ? NAV_LINKS : publicNavLinks;
+  const navLinks = user ? (accountType === "employer" ? EMPLOYER_NAV_LINKS : NAV_LINKS) : publicNavLinks;
 
   useEffect(() => {
     setIsMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountType(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setAccountType(null);
+          return;
+        }
+        const data = snap.data() as { accountType?: string; role?: string } | undefined;
+        if (data?.accountType === "employer") {
+          setAccountType("employer");
+          return;
+        }
+        if (data?.accountType === "family" || ["parent", "sitter", "reciprocal"].includes(String(data?.role || ""))) {
+          setAccountType("family");
+          return;
+        }
+        setAccountType(null);
+      } catch {
+        setAccountType(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     document.documentElement.style.overflowX = isMenuOpen ? "hidden" : "";
@@ -62,45 +114,114 @@ export default function Header() {
   const handleNavClick = () => setIsMenuOpen(false);
 
   const handleSignOut = async () => {
+    try {
+      window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+    } catch {
+      // ignore storage issues
+    }
     await signOut(auth);
     router.push('/');
-  }
-
-  const fetchNotifications = async () => {
-    if (!user) {
-      setNotifications([]);
-      setUnreadCount(0);
-      return;
-    }
-    try {
-      const token = await user.getIdToken();
-      const response = await fetch('/api/notifications', {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store',
-      });
-      if (!response.ok) return;
-      const data = await response.json() as { items?: Array<{ id: string; title: string; body: string; href: string | null; read?: boolean; readAt: unknown | null }>; unreadCount?: number };
-      setNotifications(data.items || []);
-      setUnreadCount(data.unreadCount || 0);
-    } catch {
-      // silent in header
-    }
   };
+
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId: number | null = null;
+    let lastPersistedAt = 0;
+
+    const signOutForInactivity = async () => {
+      try {
+        window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+      } catch {
+        // ignore storage issues
+      }
+      await signOut(auth);
+      router.push('/');
+    };
+
+    const scheduleFrom = (baseMs: number) => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      const remaining = Math.max(0, INACTIVITY_TIMEOUT_MS - (Date.now() - baseMs));
+      timeoutId = window.setTimeout(() => {
+        void signOutForInactivity();
+      }, remaining);
+    };
+
+    const persistActivity = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastPersistedAt < 60_000) {
+        return;
+      }
+      lastPersistedAt = now;
+      try {
+        window.localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+      } catch {
+        // ignore storage issues
+      }
+      scheduleFrom(now);
+    };
+
+    try {
+      const raw = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+      const parsed = raw ? Number(raw) : NaN;
+      const initialLastActivity = Number.isFinite(parsed) ? parsed : Date.now();
+
+      if (Date.now() - initialLastActivity >= INACTIVITY_TIMEOUT_MS) {
+        void signOutForInactivity();
+        return;
+      }
+
+      lastPersistedAt = initialLastActivity;
+      window.localStorage.setItem(LAST_ACTIVITY_KEY, String(initialLastActivity));
+      scheduleFrom(initialLastActivity);
+    } catch {
+      persistActivity(true);
+    }
+
+    const onActivity = () => persistActivity();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        persistActivity(true);
+      }
+    };
+    const onFocus = () => persistActivity(true);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== LAST_ACTIVITY_KEY || !event.newValue) return;
+      const next = Number(event.newValue);
+      if (!Number.isFinite(next)) return;
+      lastPersistedAt = next;
+      scheduleFrom(next);
+    };
+
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "scroll", "mousemove", "touchstart"];
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, onActivity, { passive: true });
+    });
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, onActivity);
+      });
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [router, user]);
+
+  const isNotificationRead = (notification: { read?: boolean; readAt: unknown | null }) =>
+    notification.read === true || Boolean(notification.readAt);
 
   const markNotificationRead = async (id: string) => {
     if (!user) return;
     try {
-      const token = await user.getIdToken();
-      await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ id }),
+      await updateDoc(doc(db, "notifications", user.uid, "items", id), {
+        read: true,
+        readAt: serverTimestamp(),
       });
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true, readAt: {} } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch {
       // silent
     }
@@ -109,37 +230,72 @@ export default function Header() {
   const markAllNotificationsRead = async () => {
     if (!user || unreadCount === 0) return;
     try {
-      const token = await user.getIdToken();
-      await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ markAll: true }),
-      });
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true, readAt: n.readAt ?? {} })));
-      setUnreadCount(0);
+      const batch = writeBatch(db);
+      notifications
+        .filter((notification) => !isNotificationRead(notification))
+        .forEach((notification) => {
+          batch.update(doc(db, "notifications", user.uid, "items", notification.id), {
+            read: true,
+            readAt: serverTimestamp(),
+          });
+        });
+      await batch.commit();
     } catch {
       // silent
     }
   };
 
   useEffect(() => {
-    if (!user) return;
-    fetchNotifications();
-    const timer = window.setInterval(fetchNotifications, 30000);
-    return () => window.clearInterval(timer);
-  }, [user, pathname]);
+    if (!user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
 
-  useEffect(() => {
-    if (notifOpenDesktop || notifOpenMobile) fetchNotifications();
-  }, [notifOpenDesktop, notifOpenMobile]);
+    const notificationsQuery = query(
+      collection(db, "notifications", user.uid, "items"),
+      orderBy("createdAt", "desc"),
+      limit(24)
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const nextNotifications = snapshot.docs.map((notificationDoc) => {
+          const data = notificationDoc.data() as {
+            title?: string;
+            body?: string;
+            href?: string | null;
+            read?: boolean;
+            readAt?: unknown | null;
+          };
+
+          return {
+            id: notificationDoc.id,
+            title: data.title || "Notification",
+            body: data.body || "",
+            href: data.href || null,
+            read: data.read ?? false,
+            readAt: data.readAt ?? null,
+          };
+        });
+
+        setNotifications(nextNotifications);
+        setUnreadCount(nextNotifications.filter((notification) => !isNotificationRead(notification)).length);
+      },
+      () => {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user, pathname]);
 
   return (
     <header className={`ss-header${isMenuOpen ? " ss-header-open" : ""}`}>
       <div className="ss-header-inner">
-        <Link href={user ? "/families/match" : "/"} className="ss-brand" onClick={handleNavClick}>
+        <Link href={user ? (accountType === "employer" ? "/employers/dashboard" : "/families/match") : "/"} className="ss-brand" onClick={handleNavClick}>
           <div className="ss-brand-logo">
             <img src="/logo-shiftsitter.png" alt="ShiftSitter logo" />
           </div>
@@ -157,61 +313,63 @@ export default function Header() {
         <div className="ss-header-actions ss-nav-desktop">
           {user ? (
              <>
-              <DropdownMenu
-                open={notifOpenDesktop}
-                onOpenChange={(open) => {
-                  setNotifOpenDesktop(open);
-                  if (open) setNotifOpenMobile(false);
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
-                    <Bell className="h-4 w-4" />
-                    {unreadCount > 0 ? (
-                      <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    ) : null}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 rounded-[var(--radius)] p-1">
-                  <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>Notifications</span>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                      onClick={markAllNotificationsRead}
-                      disabled={unreadCount === 0}
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" />
-                      Mark all read
+              {accountType !== "employer" ? (
+                <DropdownMenu
+                  open={notifOpenDesktop}
+                  onOpenChange={(open) => {
+                    setNotifOpenDesktop(open);
+                    if (open) setNotifOpenMobile(false);
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
+                      <Bell className="h-4 w-4" />
+                      {unreadCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      ) : null}
                     </button>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {notifications.length === 0 ? (
-                    <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                  ) : (
-                    notifications.slice(0, 8).map((notif) => (
-                      <DropdownMenuItem
-                        key={notif.id}
-                        className={`items-start gap-2 p-3 ${(!notif.read && !notif.readAt) ? 'bg-accent/40' : ''}`}
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          void markNotificationRead(notif.id);
-                          setNotifOpenDesktop(false);
-                          if (notif.href) router.push(notif.href);
-                        }}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-80 rounded-[var(--radius)] p-1">
+                    <DropdownMenuLabel className="flex items-center justify-between">
+                      <span>Notifications</span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                        onClick={markAllNotificationsRead}
+                        disabled={unreadCount === 0}
                       >
-                        <span className={`mt-1 h-2 w-2 rounded-full ${(!notif.read && !notif.readAt) ? 'bg-primary' : 'bg-muted'}`} />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{notif.title}</div>
-                          <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                        </div>
-                      </DropdownMenuItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        Mark all read
+                      </button>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                    ) : (
+                      notifications.slice(0, 8).map((notif) => (
+                        <DropdownMenuItem
+                          key={notif.id}
+                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            void markNotificationRead(notif.id);
+                            setNotifOpenDesktop(false);
+                            if (notif.href) router.push(notif.href);
+                          }}
+                        >
+                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{notif.title}</div>
+                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <button onClick={handleSignOut} className="ss-btn-outline ss-nav-btn">
                 Log out
               </button>
@@ -256,63 +414,65 @@ export default function Header() {
         <div className="ss-mobile-actions">
            {user ? (
              <>
-              <DropdownMenu
-                open={notifOpenMobile}
-                onOpenChange={(open) => {
-                  setNotifOpenMobile(open);
-                  if (open) setNotifOpenDesktop(false);
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
-                    <Bell className="h-4 w-4" />
-                    <span>Notifications</span>
-                    {unreadCount > 0 ? (
-                      <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    ) : null}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[92vw] max-w-80 rounded-[var(--radius)] p-1">
-                  <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>Notifications</span>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                      onClick={markAllNotificationsRead}
-                      disabled={unreadCount === 0}
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" />
-                      Mark all read
+              {accountType !== "employer" ? (
+                <DropdownMenu
+                  open={notifOpenMobile}
+                  onOpenChange={(open) => {
+                    setNotifOpenMobile(open);
+                    if (open) setNotifOpenDesktop(false);
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
+                      <Bell className="h-4 w-4" />
+                      <span>Notifications</span>
+                      {unreadCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      ) : null}
                     </button>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {notifications.length === 0 ? (
-                    <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                  ) : (
-                    notifications.slice(0, 8).map((notif) => (
-                      <DropdownMenuItem
-                        key={notif.id}
-                        className={`items-start gap-2 p-3 ${(!notif.read && !notif.readAt) ? 'bg-accent/40' : ''}`}
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          void markNotificationRead(notif.id);
-                          setNotifOpenMobile(false);
-                          handleNavClick();
-                          if (notif.href) router.push(notif.href);
-                        }}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[92vw] max-w-80 rounded-[var(--radius)] p-1">
+                    <DropdownMenuLabel className="flex items-center justify-between">
+                      <span>Notifications</span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                        onClick={markAllNotificationsRead}
+                        disabled={unreadCount === 0}
                       >
-                        <span className={`mt-1 h-2 w-2 rounded-full ${(!notif.read && !notif.readAt) ? 'bg-primary' : 'bg-muted'}`} />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{notif.title}</div>
-                          <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                        </div>
-                      </DropdownMenuItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        Mark all read
+                      </button>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                    ) : (
+                      notifications.slice(0, 8).map((notif) => (
+                        <DropdownMenuItem
+                          key={notif.id}
+                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            void markNotificationRead(notif.id);
+                            setNotifOpenMobile(false);
+                            handleNavClick();
+                            if (notif.href) router.push(notif.href);
+                          }}
+                        >
+                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{notif.title}</div>
+                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
                 Log out
               </button>

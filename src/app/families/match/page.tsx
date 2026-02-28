@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { db } from '@/lib/firebase/client';
-import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, getDoc, onSnapshot, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, addDoc, serverTimestamp, onSnapshot, limit } from 'firebase/firestore';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useRouter } from 'next/navigation';
@@ -50,7 +50,9 @@ const SwipeCard = ({
   const preferredPhoto = primaryPhoto && !avatarLikePhoto ? primaryPhoto : fallbackPhoto;
   const [imageSrc, setImageSrc] = useState(preferredPhoto);
   const needsText = userProfile.needs || userProfile.workplace || 'Open to coordinate care schedules.';
-  const { totalScore, breakdown } = calculateCompatibility(currentUserProfile ?? undefined, userProfile);
+  const { totalScore, breakdown, distanceKm } = calculateCompatibility(currentUserProfile ?? undefined, userProfile);
+  const isVerified = userProfile.verificationStatus === 'verified';
+  const matchTier = totalScore >= 85 ? 'Ideal Match' : totalScore >= 65 ? 'Good Match' : 'Maybe Match';
 
   useEffect(() => {
     setImageSrc(preferredPhoto);
@@ -78,7 +80,7 @@ const SwipeCard = ({
       className="relative w-full"
     >
       <Card
-        className="relative w-full min-h-[680px] md:min-h-[740px] rounded-2xl overflow-hidden shadow-lg cursor-pointer"
+        className="relative w-full min-h-[820px] md:min-h-[900px] rounded-2xl overflow-hidden shadow-lg cursor-pointer"
         onClick={() => onOpenProfile(userProfile.id)}
       >
         <img
@@ -91,9 +93,19 @@ const SwipeCard = ({
         />
         <div className="absolute inset-0 match-hero-overlay p-5">
             <div className="match-hero-top">
-              <button type="button" className="match-hero-icon ghost" onClick={(e) => e.stopPropagation()}>
-                <MapPin className="h-5 w-5" />
-              </button>
+              {typeof distanceKm === 'number' ? (
+                <div
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/90 px-4 py-2 text-sm font-semibold text-[var(--navy)] shadow-sm"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MapPin className="h-5 w-5" />
+                  <span>{distanceKm} km away</span>
+                </div>
+              ) : (
+                <button type="button" className="match-hero-icon ghost" onClick={(e) => e.stopPropagation()}>
+                  <MapPin className="h-5 w-5" />
+                </button>
+              )}
               <Link
                 href={`/families/profile/${userProfile.id}`}
                 onClick={(e) => e.stopPropagation()}
@@ -103,6 +115,17 @@ const SwipeCard = ({
               </Link>
             </div>
             <div className="match-hero-content">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                    isVerified
+                      ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700'
+                      : 'border-amber-200 bg-amber-50/95 text-amber-700'
+                  }`}
+                >
+                  {isVerified ? 'Verified' : 'Unverified'}
+                </span>
+              </div>
               <h2 className="match-hero-name">{userProfile.name}, {userProfile.age}</h2>
               <p className="match-hero-location"><MapPin size={16}/> {userProfile.location}</p>
               <div className="match-hero-meta">
@@ -122,10 +145,21 @@ const SwipeCard = ({
                 </div>
               )}
               <div className={`mt-3 rounded-xl border bg-[rgba(28,33,44,.58)] p-3 ${isLowCompatibility ? 'low-compatibility border-rose-300/50' : 'border-white/20'}`}>
-                <div className={`mb-2 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold text-white ${isLowCompatibility ? 'border-rose-200/40 bg-rose-500/20' : 'border-white/20 bg-white/10'}`}>
-                  {totalScore}% Match
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold text-white ${isLowCompatibility ? 'border-rose-200/40 bg-rose-500/20' : 'border-white/20 bg-white/10'}`}>
+                    {totalScore}% Match
+                  </div>
+                  <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90">
+                    {matchTier}
+                  </div>
                 </div>
                 <div className="space-y-2 text-xs text-white/90">
+                  {typeof distanceKm === 'number' ? (
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-2 py-1.5">
+                      <span>Estimated distance</span>
+                      <span className="text-white">{distanceKm} km</span>
+                    </div>
+                  ) : null}
                   {[
                     ['Schedule Fit', breakdown.schedule],
                     ['Distance Fit', breakdown.distance],
@@ -342,18 +376,7 @@ export default function MatchPage() {
         }
 
         if (direction === 'right') {
-            const checkForMatch = async () => {
-                if (serverMatchResult?.mutual === true) return true;
-                // For demo users, always create a match to allow flow testing.
-                if (swipedProfile.isDemo) return true;
-
-                // For real users, check for a mutual like.
-                const otherUserSwipeDocRef = doc(db, 'swipes', `${swipedUserId}_${user.uid}`);
-                const otherUserSwipeDoc = await getDoc(otherUserSwipeDocRef);
-                return otherUserSwipeDoc.exists() && otherUserSwipeDoc.data().direction === 'right';
-            }
-
-            const isMatch = await checkForMatch();
+            const isMatch = serverMatchResult?.mutual === true || swipedProfile.isDemo;
 
             if (isMatch) {
                 let conversationId = serverMatchResult?.conversationId;
@@ -446,26 +469,6 @@ export default function MatchPage() {
     <AuthGuard>
       <div className="match-shell">
         <div className="match-inner">
-        {currentUserProfile && (currentUserProfile.verificationStatus ?? 'unverified') === 'unverified' ? (
-          <div className="match-deck-wrap">
-            <Card className="match-card w-full">
-              <CardContent className="match-foot text-center">
-                <h3 className="match-title">Verification Required</h3>
-                <p className="text-muted-foreground mt-2">
-                  Upload your government ID (front) and a selfie to access matching. This helps keep the community safe and trusted.
-                </p>
-                <div className="mt-4 flex items-center justify-center gap-3">
-                  <button type="button" className="match-btn" onClick={() => router.push('/families/profile/edit')}>
-                    Go to Profile Edit
-                  </button>
-                  <button type="button" className="match-btn ghost" onClick={refreshProfiles}>
-                    Refresh
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
         <>
         {lastMatch && (
            <MatchModal
@@ -529,7 +532,6 @@ export default function MatchPage() {
           </button>
         </div>
         </>
-        )}
         </div>
       </div>
     </AuthGuard>

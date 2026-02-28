@@ -46,6 +46,7 @@ const profileSchema = z.object({
   childrenAgesText: z.string().optional(),
   availability: z.string().min(10, 'Please describe your availability.'),
   needs: z.string().min(10, 'Please describe your needs or what you offer.'),
+  offerSummary: z.string().optional(),
   interests: z.string().min(3, 'Please list at least one interest.'),
 });
 
@@ -56,7 +57,9 @@ const compressImageFile = async (file: File): Promise<File> => {
     return file;
   }
   if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) {
-    throw new Error('HEIC/HEIF photos are not reliably supported in mobile browsers yet. Please upload JPG/PNG or change iPhone Camera format to "Most Compatible".');
+    // Keep the original file so mobile users can still upload from iPhone/Android galleries.
+    // Some browsers cannot transcode HEIC/HEIF client-side reliably.
+    return file;
   }
 
   const maxDimension = 800;
@@ -130,6 +133,7 @@ export default function EditProfilePage() {
       workplace: '',
       availability: '',
       needs: '',
+      offerSummary: '',
       interests: '',
       numberOfChildren: undefined,
       childAge: undefined,
@@ -157,6 +161,7 @@ export default function EditProfilePage() {
             childAge: profile.childAge ?? undefined,
             childrenAgesText: profile.childrenAgesText || '',
             needs: profile.needs || '',
+            offerSummary: profile.offerSummary || '',
             interests: profile.interests?.join(', ') || '',
           });
           const validPhotos = (profile.photoURLs || []).filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
@@ -194,10 +199,10 @@ export default function EditProfilePage() {
         } catch (error) {
             console.error("Image compression error:", error);
             toast({
-                variant: 'destructive',
-                title: 'Compression Failed',
-                description: 'Could not compress image. Uploading original file instead.',
+                title: 'Using original image',
+                description: 'Your phone provided a format that could not be compressed in-browser, so we are uploading the original file instead.',
             });
+            fileToUpload = file;
         }
     } else if (file.size > 5 * 1024 * 1024) { // 5MB limit for other files like CVs/docs
       throw new Error("File is too large. The limit is 5MB.");
@@ -371,6 +376,7 @@ export default function EditProfilePage() {
       ...partial,
       verificationStatus: nextStatus,
       verificationSubmittedAt: hasBoth ? new Date() : null,
+      verificationReviewedAt: hasBoth ? new Date() : null,
     };
 
     await updateDoc(doc(db, 'users', user.uid), payload);
@@ -398,7 +404,7 @@ export default function EditProfilePage() {
       }
       toast({
         title: kind === 'idFront' ? 'ID uploaded successfully' : 'Selfie uploaded successfully',
-        description: 'Verification file saved. Upload both files to unlock match access.',
+        description: 'Verification file saved. Once both files are uploaded, verification is activated automatically.',
       });
     } catch (error: any) {
       console.error('Verification upload error:', error);
@@ -424,6 +430,7 @@ export default function EditProfilePage() {
       childAge: values.childAge || null,
       childrenAgesText: values.childrenAgesText?.trim() || '',
       workplace: values.workplace || '',
+      offerSummary: values.offerSummary?.trim() || '',
     };
       
     try {
@@ -575,7 +582,6 @@ export default function EditProfilePage() {
                                   className="sr-only"
                                   onChange={(e) => handlePhotoReplace(url, e)}
                                   accept="image/*"
-                                  capture="environment"
                                   disabled={isUploadingPhoto}
                                 />
                                 <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
@@ -597,7 +603,6 @@ export default function EditProfilePage() {
                                   className="sr-only"
                                   onChange={(e) => handlePhotoReplace(url, e)}
                                   accept="image/*"
-                                  capture="environment"
                                   disabled={isUploadingPhoto}
                                 />
                                   <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
@@ -615,7 +620,7 @@ export default function EditProfilePage() {
                           <label className={cn("aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center hover:bg-accent relative", isUploadingPhoto ? "cursor-not-allowed" : "cursor-pointer")}>
                               {isUploadingPhoto ? <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
                               <span className="text-xs text-muted-foreground mt-1">{isUploadingPhoto ? 'Uploading...' : 'Upload'}</span>
-                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/*" capture="environment" disabled={isUploadingPhoto}/>
+                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/*" disabled={isUploadingPhoto}/>
                           </label>
                           )}
                       </div>
@@ -659,7 +664,7 @@ export default function EditProfilePage() {
                             <div>
                               <h3 className="text-lg font-semibold text-foreground">Identity Verification (Required for Match)</h3>
                               <p className="text-sm text-muted-foreground mb-4">
-                                Upload one government ID (front only) and one selfie to enable matching and build trust with other families.
+                                Upload one government ID (front only) and one selfie to unlock secure messaging and calendar access. After both files are uploaded, your verification activates automatically.
                               </p>
                             </div>
                             <span
@@ -704,8 +709,7 @@ export default function EditProfilePage() {
                                 <input
                                   type="file"
                                   className="sr-only"
-                                  accept="image/*,application/pdf"
-                                  capture="environment"
+                                  accept="image/*,.pdf,application/pdf"
                                   onChange={(e) => handleVerificationUpload(e, 'idFront')}
                                   disabled={isUploadingIdFront}
                                 />
@@ -734,15 +738,45 @@ export default function EditProfilePage() {
                                   type="file"
                                   className="sr-only"
                                   accept="image/*"
-                                  capture="user"
                                   onChange={(e) => handleVerificationUpload(e, 'selfie')}
                                   disabled={isUploadingSelfie}
                                 />
                               </label>
                             </div>
                           </div>
+                          {verificationStatus === 'unverified' ? (
+                            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                              Secure messages and calendar stay locked until both documents are uploaded.
+                            </div>
+                          ) : null}
                         </div>
                       </CardContent>
+                    </Card>
+
+                    <Card className="shadow-md" lang="en" translate="no">
+                      <CardHeader>
+                        <CardTitle className="font-headline text-xl flex items-center gap-2">
+                          <BellRing className="text-primary" />
+                          Stay in the loop
+                        </CardTitle>
+                        <CardDescription>
+                          Turn on alerts so you do not miss messages, matches, shift changes, or reviews.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardFooter className="bg-slate-50 pt-4 pb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          Browser alerts help you keep up with important updates in real time.
+                        </p>
+                        <Button
+                          onClick={handleEnableNotifications}
+                          disabled={isHandlingNotifications}
+                        >
+                          <span className="inline-flex min-w-4 items-center justify-center">
+                            {isHandlingNotifications ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                          </span>
+                          <span>{isHandlingNotifications ? 'Working...' : 'Turn On Alerts'}</span>
+                        </Button>
+                      </CardFooter>
                     </Card>
 
                     <Card className="shadow-md">
@@ -807,6 +841,20 @@ export default function EditProfilePage() {
                       <FormField control={form.control} name="needs" render={({ field }) => (
                           <FormItem><FormLabel>About Me / My Needs</FormLabel><FormControl><Textarea placeholder="Describe your family's needs, or what you offer as a sitter..." rows={4} {...field} /></FormControl><FormMessage /></FormItem>
                         )} />
+                      <FormField control={form.control} name="offerSummary" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>What You Expect In Return (Optional)</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Describe what kind of reciprocal support, exchange, or help you expect in return..."
+                                rows={3}
+                                {...field}
+                                value={field.value ?? ''}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
                       <FormField control={form.control} name="availability" render={({ field }) => (
                           <FormItem><FormLabel>Availability</FormLabel><FormControl><Input placeholder="e.g., Weekends, weekday evenings after 5 PM" {...field} /></FormControl><FormMessage /></FormItem>
                         )} />
@@ -830,34 +878,6 @@ export default function EditProfilePage() {
         </Form>
         
         <Separator className="my-8" />
-        
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-headline text-xl flex items-center gap-2">
-              <BellRing className="text-primary" />
-              Notification Settings
-            </CardTitle>
-            <CardDescription>
-              Enable push notifications to get real-time updates on matches, messages, and shifts.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Enable browser notifications to receive updates for matches, messages, and shifts.
-            </p>
-          </CardContent>
-          <CardFooter className="bg-slate-50 pt-4 pb-4">
-            <Button
-              onClick={handleEnableNotifications}
-              disabled={isHandlingNotifications}
-            >
-              {isHandlingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Enable Notifications
-            </Button>
-          </CardFooter>
-        </Card>
-
-         <Separator className="my-8" />
 
           <Card className="border-destructive">
             <CardHeader>

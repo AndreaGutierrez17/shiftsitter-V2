@@ -15,6 +15,7 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { Review, UserProfile } from '@/lib/types';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useToast } from '@/hooks/use-toast';
+import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 
 
 export default function ProfilePage() {
@@ -26,6 +27,7 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [viewerProfile, setViewerProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUploadingMainPhoto, setIsUploadingMainPhoto] = useState(false);
   const [recentReviews, setRecentReviews] = useState<Review[]>([]);
@@ -73,6 +75,19 @@ export default function ProfilePage() {
     }
     router.push('/families/match');
   };
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setViewerProfile(null);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      setViewerProfile(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
+    });
+
+    return () => unsub();
+  }, [user?.uid]);
 
   useEffect(() => {
       if (!profileId) return;
@@ -140,6 +155,101 @@ export default function ProfilePage() {
   const gallerySlots = Array.from({ length: 5 }, (_, index) => photos[index] || null);
   const avgRating = userProfile.avgRating ?? userProfile.averageRating ?? 0;
   const reviewCount = userProfile.reviewCount ?? userProfile.ratingCount ?? 0;
+  const compatibility = !isOwnProfile ? calculateCompatibility(viewerProfile ?? undefined, userProfile) : null;
+  const strongestAreas = compatibility?.strengths?.slice(0, 3) ?? [];
+  const headlineFacts = [
+    userProfile.workplace ? {
+      key: 'workplace',
+      label: userProfile.workplace,
+      icon: Briefcase,
+      tone: 'border-slate-200 bg-white text-slate-700',
+    } : null,
+    userProfile.numberOfChildren ? {
+      key: 'children',
+      label: `${userProfile.numberOfChildren} ${userProfile.numberOfChildren > 1 ? 'children' : 'child'}`,
+      icon: Users,
+      tone: 'border-slate-200 bg-white text-slate-700',
+    } : null,
+    userProfile.verificationStatus === 'verified' ? {
+      key: 'id-verified',
+      label: 'ID Verified',
+      icon: CheckCircle2,
+      tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    } : userProfile.verificationStatus === 'pending' ? {
+      key: 'id-pending',
+      label: 'Verification Pending',
+      icon: AlertCircle,
+      tone: 'border-amber-200 bg-amber-50 text-amber-700',
+    } : {
+      key: 'id-unverified',
+      label: 'Unverified',
+      icon: AlertCircle,
+      tone: 'border-slate-200 bg-slate-50 text-slate-600',
+    },
+    userProfile.backgroundCheckStatus === 'completed' ? {
+      key: 'background',
+      label: 'Background Checked',
+      icon: CheckCircle2,
+      tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    } : null,
+  ].filter(Boolean) as Array<{ key: string; label: string; icon: typeof Briefcase; tone: string }>;
+  const quickNeedSummary = userProfile.needs?.trim() || 'Needs not provided yet.';
+  const expectationSummary = userProfile.offerSummary?.trim() || 'Open to coordinate a fair reciprocal exchange.';
+  const careSnapshotItems = [
+    {
+      label: 'Preferred schedule',
+      value:
+        userProfile.availability?.trim() ||
+        [
+          ...(userProfile.need?.days || []),
+          ...(userProfile.need?.shifts || []),
+        ].filter(Boolean).join(' • ') ||
+        'Not specified',
+    },
+    {
+      label: 'Handoff',
+      value:
+        userProfile.need?.handoffPreference
+          ? userProfile.need.handoffPreference.replaceAll('_', ' ')
+          : 'Not specified',
+    },
+    {
+      label: 'Travel range',
+      value:
+        typeof userProfile.need?.maxTravelMinutes === 'number'
+          ? `Up to ${userProfile.need.maxTravelMinutes} min`
+          : 'Not specified',
+    },
+    {
+      label: 'Children ages',
+      value:
+        userProfile.childrenAgesText?.trim() ||
+        (Array.isArray(userProfile.need?.childrenAges) && userProfile.need?.childrenAges.length > 0
+          ? userProfile.need.childrenAges.join(', ')
+          : typeof userProfile.childAge === 'number'
+            ? `${userProfile.childAge}`
+            : 'Not specified'),
+    },
+    {
+      label: 'Home environment',
+      value:
+        [
+          userProfile.need?.smokeFree ? 'Smoke-free' : null,
+          userProfile.need?.petsInHome && userProfile.need.petsInHome !== 'none'
+            ? `Pets: ${userProfile.need.petsInHome}`
+            : userProfile.need?.petsInHome === 'none'
+              ? 'No pets'
+              : null,
+        ].filter(Boolean).join(' • ') || 'Not specified',
+    },
+    {
+      label: 'Special notes',
+      value:
+        userProfile.need?.specialNeeds?.has
+          ? userProfile.need.specialNeeds.notes?.trim() || 'Special support requested'
+          : 'None noted',
+    },
+  ];
   const renderStars = (value: number) => (
     <div className="flex items-center gap-1">
       {Array.from({ length: 5 }, (_, idx) => {
@@ -177,6 +287,17 @@ export default function ProfilePage() {
                         <MapPin className="h-4 w-4 text-primary" />
                         {userProfile.location || 'Location not set'}
                       </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                        {headlineFacts.map((fact) => {
+                          const Icon = fact.icon;
+                          return (
+                            <span key={fact.key} className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 ${fact.tone}`}>
+                              <Icon className="h-4 w-4" />
+                              {fact.label}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                   {isOwnProfile ? (
@@ -202,6 +323,63 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="mt-4 space-y-5">
+                  {!isOwnProfile && compatibility ? (
+                    <div className="rounded-xl border bg-white p-4 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Match Snapshot</p>
+                          <div className="mt-1 flex items-end gap-2">
+                            <p className="text-4xl font-semibold text-foreground">{compatibility.totalScore}%</p>
+                            <p className="pb-1 text-sm text-muted-foreground">
+                              {compatibility.totalScore >= 85 ? 'Ideal Match' : compatibility.totalScore >= 65 ? 'Good Match' : 'Maybe Match'}
+                            </p>
+                          </div>
+                        </div>
+                        {typeof compatibility.distanceKm === 'number' ? (
+                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            {compatibility.distanceKm} km away
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What they expect in return</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{expectationSummary}</p>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {[
+                          ['Schedule', compatibility.breakdown.schedule],
+                          ['Distance', compatibility.breakdown.distance],
+                          ['Safety', compatibility.breakdown.safety],
+                          ['Kids', compatibility.breakdown.kids],
+                        ].map(([label, value]) => (
+                          <div key={String(label)}>
+                            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{label}</span>
+                              <span>{value}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-slate-100">
+                              <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, Number(value)))}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {strongestAreas.length > 0 ? (
+                        <div className="mt-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Strongest areas</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {strongestAreas.map((item) => (
+                              <Badge key={item} variant="secondary">{item}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="rounded-xl border bg-white p-4 shadow-sm">
                     <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
                       <CalendarDays className="h-4 w-4 text-primary" />
@@ -218,21 +396,27 @@ export default function ProfilePage() {
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">{userProfile.needs || 'Not provided yet.'}</p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                    {userProfile.workplace ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border bg-background px-3 py-1"><Briefcase className="h-4 w-4 text-primary" /> {userProfile.workplace}</span>
-                    ) : null}
-                    {userProfile.numberOfChildren ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border bg-background px-3 py-1"><Users className="h-4 w-4 text-primary" /> {userProfile.numberOfChildren} {userProfile.numberOfChildren > 1 ? 'children' : 'child'}</span>
-                    ) : null}
-                    {userProfile.backgroundCheckStatus === 'completed' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Verified</span>
-                    ) : null}
-                    {userProfile.verificationStatus === 'verified' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" /> ID Verified</span>
-                    ) : userProfile.verificationStatus === 'pending' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"><CheckCircle2 className="h-4 w-4" /> Verification Pending</span>
-                    ) : null}
+                  <div className="rounded-xl border bg-white p-4 shadow-sm">
+                    <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
+                      <Briefcase className="h-4 w-4 text-primary" />
+                      What They Expect In Return
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{expectationSummary}</p>
+                  </div>
+
+                  <div className="rounded-xl border bg-white p-4 shadow-sm">
+                    <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
+                      <CalendarDays className="h-4 w-4 text-primary" />
+                      Care Snapshot
+                    </h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {careSnapshotItems.map((item) => (
+                        <div key={item.label} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-700">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </CardContent>

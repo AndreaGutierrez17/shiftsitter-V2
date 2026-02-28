@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Send, Sparkles, MoreVertical, Paperclip, FileText, ImageIcon, CalendarDays, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -27,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { db, storage } from '@/lib/firebase/client';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import type { Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -37,6 +38,10 @@ type FirestoreError = { message?: string };
 type AiIcebreakerSuggestionOutput = {
   icebreakerMessages: string[];
   tips: string[];
+};
+type AssistantReplyPayload = {
+  advice?: string;
+  source?: 'ai' | 'fallback';
 };
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_ATTACHMENT_MB = 8;
@@ -64,16 +69,52 @@ const validateChatAttachment = (file: File) => {
 
 const localIcebreakerFallback = (name: string): AiIcebreakerSuggestionOutput => ({
   icebreakerMessages: [
-    `Hi ${name}! Great to connect here. Want to share availability for this week?`,
-    `Would you like to start with a quick intro about routines and preferred times?`,
-    `I can share my schedule first so we can find a good overlap.`,
+    `Hi ${name}. Would you like to compare availability for this week?`,
+    `Before we plan a shift, would it help to confirm routines, care notes, and preferred timing?`,
+    `I can share my schedule and handoff details first so we can find a good fit.`,
   ],
   tips: [
-    'Keep your first message short and friendly.',
-    'Propose one specific time option to keep momentum.',
-    'Confirm key expectations early: timing, location, and communication.',
+    'Lead with schedule overlap, routines, and the child’s needs.',
+    'Clarify pickup, drop-off, timing, and care notes before confirming a shift.',
+    'Keep the first exchange practical and focused on expectations.',
   ],
 });
+
+const buildLocalChatAssistantFallback = (prompt: string) => {
+  const text = prompt.trim().toLowerCase();
+
+  if (!text) {
+    return 'I can help with timing, expectations, handoff details, cancellations, reviews, and what to say next.';
+  }
+
+  if (['hi', 'hello', 'hey', 'hola', 'hello!', 'hi!'].includes(text)) {
+    return 'Hello. I can help with schedules, expectations, handoff details, and the next step in the conversation. What would you like help with?';
+  }
+
+  if (
+    text.includes('confirm') ||
+    text.includes('confirmation') ||
+    text.includes('what next') ||
+    text.includes('next step') ||
+    text.includes('after accepting')
+  ) {
+    return 'After a confirmation, the next step is to align on timing, handoff details, routines, and any care notes. Once that is clear, both sides can move forward with a simple plan.';
+  }
+
+  if (text.includes('cancel')) {
+    return 'If plans need to change, send a direct note early, explain briefly, and offer a replacement time if possible. Keep the message focused on logistics so the other side can respond quickly.';
+  }
+
+  if (text.includes('review') || text.includes('rating') || text.includes('stars')) {
+    return 'A useful review should mention reliability, communication, punctuality, and whether expectations matched what was agreed. Keep it specific and focused on the shift itself.';
+  }
+
+  if (text.includes('message') || text.includes('say') || text.includes('write')) {
+    return 'A clear next message usually confirms timing, routines, handoff details, and any care notes. Short, specific messages work better than vague ones.';
+  }
+
+  return 'A practical next step is to confirm timing, expectations, handoff details, and any care notes. If you want, ask what to say next and I will help you phrase it clearly.';
+};
 
 export default function ChatPage() {
   const rawParams = useParams();
@@ -85,6 +126,13 @@ export default function ChatPage() {
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AiIcebreakerSuggestionOutput | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false);
+  const [assistantQuestion, setAssistantQuestion] = useState('');
+  const [assistantAnswer, setAssistantAnswer] = useState('');
+  const [isChatAssistantLoading, setIsChatAssistantLoading] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
+  const [isEndingMatch, setIsEndingMatch] = useState(false);
+  const [isClosingConversation, setIsClosingConversation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -99,8 +147,9 @@ export default function ChatPage() {
     current: null,
     other: null,
   });
+  const [secureAccessProfile, setSecureAccessProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [messageUnreadCounts, setMessageUnreadCounts] = useState<Record<string, number>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const conversationId =
     (typeof params.id === 'string' ? params.id : '') ||
@@ -115,7 +164,10 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isClosingConversation) return;
+    const unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      setSecureAccessProfile(snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as UserProfile) : null);
+    });
     const listQuery = query(collection(db, 'conversations'), where('userIds', 'array-contains', user.uid));
     const unsubscribe = onSnapshot(listQuery, (snapshot) => {
       const convs = snapshot.docs
@@ -127,11 +179,40 @@ export default function ChatPage() {
         });
       setConversations(convs);
     });
-    return () => unsubscribe();
-  }, [user]);
+    return () => {
+      unsubscribeProfile();
+      unsubscribe();
+    };
+  }, [isClosingConversation, user]);
 
   useEffect(() => {
-    if (!user || !conversationId) return;
+    if (!user || isClosingConversation) {
+      setMessageUnreadCounts({});
+      return;
+    }
+
+    const unreadQuery = query(
+      collection(db, 'notifications', user.uid, 'items'),
+      where('type', '==', 'message'),
+      where('read', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(unreadQuery, (snapshot) => {
+      const nextCounts: Record<string, number> = {};
+      snapshot.docs.forEach((row) => {
+        const data = row.data() as { data?: { conversationId?: unknown } };
+        const unreadConversationId = typeof data.data?.conversationId === 'string' ? data.data.conversationId : '';
+        if (!unreadConversationId) return;
+        nextCounts[unreadConversationId] = (nextCounts[unreadConversationId] || 0) + 1;
+      });
+      setMessageUnreadCounts(nextCounts);
+    });
+
+    return () => unsubscribe();
+  }, [isClosingConversation, user]);
+
+  useEffect(() => {
+    if (!user || !conversationId || isClosingConversation) return;
 
     // Fetch conversation details
     const convDocRef = doc(db, 'conversations', conversationId);
@@ -171,18 +252,57 @@ export default function ChatPage() {
       unsubConv();
       unsubMessages();
     };
-  }, [user, conversationId]);
+  }, [conversationId, isClosingConversation, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (!user || !conversationId || !conversation || isClosingConversation) return;
+    const unreadForMe = Number(messageUnreadCounts[conversationId] || conversation.unreadCount?.[user.uid] || 0);
+    if (unreadForMe <= 0) return;
+
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const unreadNotificationsQuery = query(
+      collection(db, 'notifications', user.uid, 'items'),
+      where('type', '==', 'message'),
+      where('read', '==', false),
+      where('data.conversationId', '==', conversationId)
+    );
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        await updateDoc(conversationRef, {
+          [`unreadCount.${user.uid}`]: 0,
+        });
+
+        const unsubscribe = onSnapshot(unreadNotificationsQuery, async (snapshot) => {
+          unsubscribe();
+          if (snapshot.empty) return;
+          const batch = writeBatch(db);
+          snapshot.docs.forEach((row) => {
+            batch.update(row.ref, {
+              read: true,
+              readAt: serverTimestamp(),
+            });
+          });
+          await batch.commit();
+        });
+      } catch (error) {
+        console.error('Could not clear unread count:', error);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [conversation, conversationId, isClosingConversation, messageUnreadCounts, user]);
 
   const otherUserId = conversation?.userIds?.find((id: string) => id !== user?.uid);
   const otherUserProfile = otherUserId ? conversation?.userProfiles?.[otherUserId] : null;
   const currentUserProfile = user?.uid ? conversation?.userProfiles?.[user.uid] : null;
 
   useEffect(() => {
-    if (!user || !otherUserId) return;
+    if (!user || !otherUserId || isClosingConversation) return;
     let cancelled = false;
     (async () => {
       try {
@@ -200,10 +320,10 @@ export default function ChatPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [user, otherUserId]);
+  }, [isClosingConversation, otherUserId, user]);
 
   useEffect(() => {
-    if (!user || !otherUserId) {
+    if (!user || !otherUserId || isClosingConversation) {
       setRelatedShifts([]);
       return;
     }
@@ -215,12 +335,39 @@ export default function ChatPage() {
       setRelatedShifts(rows);
     });
     return () => unsubscribe();
-  }, [user, otherUserId]);
+  }, [isClosingConversation, otherUserId, user]);
 
   const compatibility = useMemo(
     () => calculateCompatibility(fullProfiles.current ?? undefined, fullProfiles.other ?? undefined),
     [fullProfiles.current, fullProfiles.other]
   );
+  const completedShiftInitiatedByMe = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId === user?.uid).length;
+  const completedShiftInitiatedByThem = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId !== user?.uid).length;
+  const proposalBalance = completedShiftInitiatedByMe - completedShiftInitiatedByThem;
+  const canAccessSecureMessaging = Boolean(
+    secureAccessProfile &&
+    (
+      secureAccessProfile.isDemo ||
+      secureAccessProfile.verificationStatus === 'verified' ||
+      (secureAccessProfile.idFrontUrl && secureAccessProfile.selfieUrl)
+    )
+  );
+
+  const buildAssistantContext = () => {
+    const me = fullProfiles.current;
+    const other = fullProfiles.other;
+    return [
+      `Current user: ${me?.name || 'Unknown'}`,
+      `Current user location: ${me?.location || 'Unknown'}`,
+      `Current user availability: ${me?.availability || 'Not provided'}`,
+      `Current user needs: ${me?.needs || 'Not provided'}`,
+      `Matched user: ${other?.name || 'Unknown'}`,
+      `Matched user location: ${other?.location || 'Unknown'}`,
+      `Matched user availability: ${other?.availability || 'Not provided'}`,
+      `Matched user needs: ${other?.needs || 'Not provided'}`,
+      `Conversation context: private ShiftSitter childcare coordination chat.`,
+    ].join('\n');
+  };
 
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -245,22 +392,6 @@ export default function ChatPage() {
           lastMessageAt: serverTimestamp(),
           lastMessageSenderId: user.uid,
       });
-
-      const idToken = await user.getIdToken();
-      await fetch('/api/notify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          type: 'message',
-          conversationId,
-          title: 'New message',
-          body: msgText.length > 80 ? `${msgText.slice(0, 77)}...` : msgText,
-          link: `/families/messages/${conversationId}`,
-        }),
-      });
     } catch (error: unknown) {
       const notifyError = error as FirestoreError;
       console.error('Message send failed:', notifyError.message ?? error);
@@ -269,10 +400,6 @@ export default function ChatPage() {
     } finally {
       setIsSending(false);
     }
-  };
-
-  const handleAttachmentPick = () => {
-    fileInputRef.current?.click();
   };
 
   const handleAttachmentSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -290,7 +417,7 @@ export default function ChatPage() {
     setSendError(null);
     try {
       const safeName = file.name.replace(/[^\w.\- ]+/g, '_');
-      const storageRef = ref(storage, `message-attachments/${conversationId}/${Date.now()}-${safeName}`);
+      const storageRef = ref(storage, `message-attachments/${user.uid}/${conversationId}/${Date.now()}-${safeName}`);
       const snapshot = await uploadBytes(storageRef, file);
       const attachmentUrl = await getDownloadURL(snapshot.ref);
       const summary = file.type.startsWith('image/') ? 'Shared an image attachment' : `Shared document: ${file.name}`;
@@ -380,7 +507,124 @@ export default function ChatPage() {
     }
   };
 
+  const handleAskChatAssistant = async () => {
+    const prompt = assistantQuestion.trim();
+    if (!prompt || isChatAssistantLoading) return;
+
+    setIsChatAssistantLoading(true);
+    try {
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: prompt,
+          userProfile: buildAssistantContext(),
+        }),
+      });
+
+      const result = (await response.json().catch(() => ({}))) as AssistantReplyPayload;
+      setAssistantAnswer(
+        typeof result.advice === 'string' && result.advice.trim()
+          ? result.advice.trim()
+          : buildLocalChatAssistantFallback(prompt)
+      );
+    } catch (error) {
+      console.error('Chat assistant request failed:', error);
+      setAssistantAnswer(buildLocalChatAssistantFallback(prompt));
+    } finally {
+      setIsChatAssistantLoading(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!user || !conversationId || isClearingChat) return;
+
+    const confirmed = window.confirm('Clear this chat history? You can still message this person again later.');
+    if (!confirmed) return;
+
+    setIsClearingChat(true);
+    setSendError(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/conversations/clear', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ conversationId }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(err || 'Could not clear this chat.');
+      }
+
+      setMessages([]);
+    } catch (error) {
+      console.error('Clear chat failed:', error);
+      setSendError('Could not clear this chat. Please try again.');
+    } finally {
+      setIsClearingChat(false);
+    }
+  };
+
+  const handleEndMatch = async () => {
+    if (!user || !conversationId || !otherUserId || isEndingMatch) return;
+
+    const confirmed = window.confirm('End this match and remove the conversation?');
+    if (!confirmed) return;
+
+    setIsEndingMatch(true);
+    setIsClosingConversation(true);
+    setSendError(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/matches/unmatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          conversationId,
+          otherUserId,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(err || 'Could not end this match.');
+      }
+
+      router.replace('/families/messages');
+    } catch (error) {
+      console.error('End match failed:', error);
+      setSendError('Could not end this match. Please try again.');
+      setIsClosingConversation(false);
+    } finally {
+      setIsEndingMatch(false);
+    }
+  };
+
+  if (isClosingConversation) {
+    return (
+      <AuthGuard>
+        <div className="flex h-screen items-center justify-center">
+          <div className="rounded-2xl border bg-white px-6 py-5 text-center shadow-sm">
+            <p className="text-sm font-medium text-[var(--navy)]">Ending match...</p>
+          </div>
+        </div>
+      </AuthGuard>
+    );
+  }
+
   if (loading || authLoading) {
+    return <div className="flex items-center justify-center h-screen"><div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
+  }
+  if (user && typeof secureAccessProfile === 'undefined') {
     return <div className="flex items-center justify-center h-screen"><div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
   }
   if (loadError) {
@@ -395,6 +639,26 @@ export default function ChatPage() {
   }
   if (!otherUserProfile || !currentUserProfile) {
     return <div className="flex items-center justify-center h-screen">Loading chat...</div>;
+  }
+  if (!canAccessSecureMessaging) {
+    return (
+      <AuthGuard>
+        <div className="ss-page-shell">
+          <div className="messages-shell-wrap">
+            <div className="w-full max-w-2xl rounded-2xl border bg-white p-8 text-center shadow-sm">
+              <h2 className="font-headline text-2xl">Secure Messages Locked</h2>
+              <p className="mt-3 text-muted-foreground">
+                Upload your ID front and selfie before entering chat. Verification activates automatically as soon as both files are uploaded.
+              </p>
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <Button onClick={() => router.push('/families/profile/edit')}>Go to Profile Edit</Button>
+                <Button variant="outline" onClick={handleBack}>Back</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </AuthGuard>
+    );
   }
 
   return (
@@ -414,6 +678,10 @@ export default function ChatPage() {
             const listOtherId = conv.userIds.find((id) => id !== user?.uid);
             const listOther = listOtherId ? conv.userProfiles?.[listOtherId] : null;
             if (!listOther) return null;
+            const unreadForMe = Math.max(
+              0,
+              Number(messageUnreadCounts[conv.id] || conv.unreadCount?.[user?.uid || ''] || 0)
+            );
             return (
               <Link
                 key={conv.id}
@@ -427,11 +695,18 @@ export default function ChatPage() {
                 <div className="min-w-0 flex-1">
                   <div className="chat-sidebar-item-head">
                     <p className="chat-sidebar-item-name">{listOther.name || 'Unknown user'}</p>
-                    <span className="chat-sidebar-item-time">
-                      {conv.lastMessageAt && typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
-                        ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
-                        : ''}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {unreadForMe > 0 ? (
+                        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold leading-5 text-white">
+                          {unreadForMe > 9 ? '9+' : unreadForMe}
+                        </span>
+                      ) : null}
+                      <span className="chat-sidebar-item-time">
+                        {conv.lastMessageAt && typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
+                          ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
+                          : ''}
+                      </span>
+                    </div>
                   </div>
                   <p className="chat-sidebar-item-preview">
                     {conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}{conv.lastMessage || 'No messages yet.'}
@@ -464,6 +739,14 @@ export default function ChatPage() {
             </div>
           </div>
           <div className="chat-toolbar">
+            <button
+              type="button"
+              className="chat-icon-btn"
+              title="ShiftSitter Assistant"
+              onClick={() => setIsChatAssistantOpen(true)}
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button type="button" className="chat-icon-btn" title="More"><MoreVertical className="h-4 w-4" /></button>
@@ -477,9 +760,20 @@ export default function ChatPage() {
                   {muted ? 'Unmute Notifications' : 'Mute Notifications'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push('/families/calendar')} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={() => router.push('/families/calendar')}>
                   <CalendarDays className="mr-2 h-4 w-4" />
-                  View Calendar
+                  View Shifts
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleClearChat} disabled={isClearingChat}>
+                  {isClearingChat ? 'Clearing Chat...' : 'Clear Chat'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleEndMatch}
+                  disabled={isEndingMatch}
+                  className="text-destructive focus:text-destructive"
+                >
+                  {isEndingMatch ? 'Ending Match...' : 'End Match'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -493,7 +787,7 @@ export default function ChatPage() {
               <div className="text-center my-4">
                   <Button variant="outline" className="ss-pill-btn-outline" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
                       <Sparkles className="mr-2 h-4 w-4 text-primary" />
-                      Need help breaking the ice?
+                      Need help starting the care conversation?
                   </Button>
               </div>
           )}
@@ -539,10 +833,21 @@ export default function ChatPage() {
         <div className="chat-input-wrap">
           {sendError && <p className="mb-2 text-xs text-destructive">{sendError}</p>}
           <form onSubmit={handleSendMessage} className="chat-input-form">
-            <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,image/*" onChange={handleAttachmentSelected} />
-            <button type="button" className="chat-attach-btn" onClick={handleAttachmentPick} disabled={isUploadingAttachment} title="Attach CV or document">
+            <input
+              id="chat-attachment-input"
+              type="file"
+              className="sr-only"
+              accept=".pdf,.doc,.docx,.txt,image/*"
+              onChange={handleAttachmentSelected}
+              disabled={isUploadingAttachment}
+            />
+            <label
+              htmlFor="chat-attachment-input"
+              className={cn('chat-attach-btn', isUploadingAttachment && 'pointer-events-none opacity-60')}
+              title="Attach CV or document"
+            >
               <Paperclip className="h-5 w-5" />
-            </button>
+            </label>
             <Input
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
@@ -552,6 +857,16 @@ export default function ChatPage() {
               autoComplete="off"
               disabled={isUploadingAttachment}
             />
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="ss-pill-btn-outline"
+              onClick={() => setIsChatAssistantOpen(true)}
+              title="Ask ShiftSitter Assistant"
+            >
+              <Sparkles className="h-5 w-5" />
+            </Button>
             <Button type="submit" size="icon" className="ss-pill-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
               <Send className="h-5 w-5" />
             </Button>
@@ -570,7 +885,7 @@ export default function ChatPage() {
                 AI Icebreaker Suggestions
               </DialogTitle>
               <DialogDescription className="px-6 pb-2 text-sm">
-                Here are a few ideas to get the conversation started with {otherUserProfile.name}.
+                Here are a few childcare-focused ways to start the conversation with {otherUserProfile.name}.
               </DialogDescription>
             </DialogHeader>
             {isLoadingAi ? (
@@ -580,7 +895,7 @@ export default function ChatPage() {
             ) : (
               <div className="grid gap-4 px-6 py-2">
                 <div>
-                  <h4 className="font-semibold mb-2">Message Ideas:</h4>
+                  <h4 className="font-semibold mb-2">Care-focused message ideas:</h4>
                   <ul className="list-disc list-inside space-y-2 text-sm">
                     {aiSuggestions?.icebreakerMessages.map((msg, i) => (
                       <li key={i} className="text-muted-foreground hover:text-foreground cursor-pointer" onClick={() => {setNewMessage(msg); setIsAiOpen(false);}}>{msg}</li>
@@ -588,7 +903,7 @@ export default function ChatPage() {
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold mb-2">Conversation Tips:</h4>
+                  <h4 className="font-semibold mb-2">Conversation tips:</h4>
                    <ul className="list-disc list-inside space-y-2 text-sm">
                     {aiSuggestions?.tips.map((tip, i) => (
                       <li key={i} className="text-muted-foreground">{tip}</li>
@@ -599,6 +914,52 @@ export default function ChatPage() {
             )}
             <DialogFooter className="border-t border-slate-200 px-6 py-4">
               <Button className="ss-pill-btn" onClick={() => setIsAiOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isChatAssistantOpen} onOpenChange={setIsChatAssistantOpen}>
+          <DialogContent className="w-[92vw] max-w-[620px] rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl" lang="en" translate="no">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 px-6 pt-6 font-headline text-xl">
+                <Sparkles className="text-primary" />
+                ShiftSitter Assistant
+              </DialogTitle>
+              <DialogDescription className="px-6 pb-2 text-sm">
+                Get quick help with timing, expectations, handoff details, or what to say next.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 px-6 py-2">
+              <Textarea
+                value={assistantQuestion}
+                onChange={(event) => setAssistantQuestion(event.target.value)}
+                rows={4}
+                maxLength={600}
+                placeholder="Example: What should I confirm before tomorrow's shift?"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">{assistantQuestion.length}/600</p>
+                <Button type="button" className="ss-pill-btn" onClick={handleAskChatAssistant} disabled={isChatAssistantLoading || !assistantQuestion.trim()}>
+                  {isChatAssistantLoading ? 'Thinking...' : 'Ask'}
+                </Button>
+              </div>
+              {isChatAssistantLoading || assistantAnswer ? (
+                <div className="rounded-xl border bg-slate-50 p-4">
+                  {isChatAssistantLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Thinking through the next step...
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {assistantAnswer}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter className="border-t border-slate-200 px-6 py-4">
+              <Button className="ss-pill-btn" onClick={() => setIsChatAssistantOpen(false)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -617,6 +978,9 @@ export default function ChatPage() {
           </Avatar>
           <h4>{otherUserProfile.name}</h4>
           <p>{fullProfiles.other?.location || 'Location unavailable'}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {fullProfiles.other?.verificationStatus === 'verified' ? 'Verified' : 'Unverified'}
+          </p>
           <Link href={`/families/profile/${otherUserId}`} className="chat-details-link">View profile</Link>
         </div>
         <div className="chat-details-section">
@@ -624,6 +988,12 @@ export default function ChatPage() {
             <h4>Compatibility</h4>
             <span className="chat-details-score">{compatibility.totalScore}%</span>
           </div>
+          {typeof compatibility.distanceKm === 'number' ? (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Approx. distance: {compatibility.distanceKm} km
+              {typeof compatibility.estimatedTravelMinutes === 'number' ? ` • ${compatibility.estimatedTravelMinutes} min est.` : ''}
+            </p>
+          ) : null}
           {[
             ['Distance / Travel', compatibility.breakdown.distance],
             ['Schedule Overlap', compatibility.breakdown.schedule],
@@ -644,14 +1014,20 @@ export default function ChatPage() {
         </div>
         <div className="chat-details-section">
           <div className="chat-details-row-head">
-            <h4>Calendar</h4>
+            <h4>Shifts</h4>
             <button type="button" className="chat-mini-link" onClick={() => router.push('/families/calendar')}>Open</button>
           </div>
           <p className="text-sm text-muted-foreground">Shared shifts: {relatedShifts.length}</p>
           <p className="text-sm text-muted-foreground">Accepted: {relatedShifts.filter(s => s.status === 'accepted').length}</p>
           <p className="text-sm text-muted-foreground">Completed: {relatedShifts.filter(s => s.status === 'completed').length}</p>
+          <div className="mt-3 rounded-lg border border-border/80 bg-white/70 p-3 text-sm">
+            <p className="font-medium text-foreground">Exchange Ledger</p>
+            <p className="mt-1 text-muted-foreground">You initiated: {completedShiftInitiatedByMe}</p>
+            <p className="text-muted-foreground">They initiated: {completedShiftInitiatedByThem}</p>
+            <p className="text-muted-foreground">Net balance: {proposalBalance > 0 ? `+${proposalBalance}` : proposalBalance}</p>
+          </div>
           <button type="button" className="chat-details-danger-link" onClick={() => router.push('/families/calendar')}>
-            View Calendar
+            View Shifts
           </button>
         </div>
       </aside>

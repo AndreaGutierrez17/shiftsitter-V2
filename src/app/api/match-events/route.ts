@@ -76,8 +76,12 @@ export async function POST(request: Request) {
       createdAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    const reverseLike = await db.collection('likes').doc(`${targetUserId}_${callerUid}`).get();
-    const mutual = reverseLike.exists;
+    const [reverseLike, targetUserSnap] = await Promise.all([
+      db.collection('likes').doc(`${targetUserId}_${callerUid}`).get(),
+      db.collection('users').doc(targetUserId).get(),
+    ]);
+    const targetIsDemo = Boolean(targetUserSnap.exists && targetUserSnap.data()?.isDemo);
+    const mutual = reverseLike.exists || targetIsDemo;
     if (!mutual) {
       return NextResponse.json({ ok: true, mutual: false });
     }
@@ -135,39 +139,6 @@ export async function POST(request: Request) {
       }
       conversationId = convRef.id;
     }
-
-    const targetName = body.targetProfile?.name || 'a new family';
-    const callerName = body.currentUserProfile?.name || 'a new match';
-
-    const callerNotifId = `new_match_${matchId}_${callerUid}`;
-    const targetNotifId = `new_match_${matchId}_${targetUserId}`;
-
-    await Promise.all([
-      db.collection('notifications').doc(callerNotifId).set({
-        userId: callerUid,
-        type: 'new_match',
-        matchId,
-        fromUserId: targetUserId,
-        title: 'New Match!',
-        body: `You matched with ${targetName}`,
-        href: conversationId ? `/families/messages/${conversationId}` : '/families/messages',
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        readAt: null,
-      }, { merge: true }),
-      db.collection('notifications').doc(targetNotifId).set({
-        userId: targetUserId,
-        type: 'new_match',
-        matchId,
-        fromUserId: callerUid,
-        title: 'New Match!',
-        body: `You matched with ${callerName}`,
-        href: conversationId ? `/families/messages/${conversationId}` : '/families/messages',
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        readAt: null,
-      }, { merge: true }),
-    ]);
 
     return NextResponse.json({ ok: true, mutual: true, matchId, conversationId });
   } catch (error) {

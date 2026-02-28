@@ -1,7 +1,7 @@
 import type { UserProfile } from '@/lib/types';
 
 type ShiftBlock = 'Early' | 'Day' | 'Evening' | 'Night';
-type HandoffPreference = 'pickup' | 'dropoff' | 'either';
+type HandoffPreference = 'pickup' | 'dropoff' | 'my_workplace' | 'their_workplace' | 'either';
 type SettingPreference = 'my_home' | 'their_home' | 'either';
 type PetsInHome = 'none' | 'dog' | 'cat' | 'multiple' | 'unknown';
 
@@ -80,6 +80,8 @@ export type CompatibilityCalculationResult = {
   totalScore: number;
   hardFilterPassed: boolean;
   hardFilterFailures: string[];
+  distanceKm: number | null;
+  estimatedTravelMinutes: number | null;
   breakdown: {
     schedule: number;
     distance: number;
@@ -96,6 +98,8 @@ const DEFAULT_RESULT: CompatibilityCalculationResult = {
   totalScore: 0,
   hardFilterPassed: false,
   hardFilterFailures: ['Missing profile data'],
+  distanceKm: null,
+  estimatedTravelMinutes: null,
   breakdown: { schedule: 0, distance: 0, safety: 0, kids: 0, handoff: 0 },
   dimensions10: {
     schedule: 0,
@@ -152,6 +156,24 @@ function parseAgeTokensFromText(text?: string) {
     .filter((n) => Number.isFinite(n) && n >= 0);
 }
 
+function parseListFromText(text?: string) {
+  if (!text) return [] as string[];
+  return text
+    .split(/[\n,;|]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function inferStateCode(profile: MatchProfile) {
+  const directState = String(profile.state || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(directState)) return directState;
+
+  const location = String(profile.location || '').trim();
+  const match = location.match(/,\s*([A-Za-z]{2})(?:\s+\d{5})?$/);
+  if (!match) return '';
+  return match[1].toUpperCase();
+}
+
 function parseAgeRange(range: string): [number, number] | null {
   const cleaned = range.toLowerCase().trim();
   if (!cleaned) return null;
@@ -178,17 +200,6 @@ function anyAgeFitsRange(ages: number[], ranges: string[]) {
     if (parsedRanges.some(([min, max]) => age >= min && age <= max)) matches += 1;
   });
   return matches / ages.length;
-}
-
-function haversineMiles(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const R = 3958.8;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const aa =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return R * (2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)));
 }
 
 function deriveNeed(profile: MatchProfile): NeedOfferShape {
@@ -225,7 +236,7 @@ function deriveOffer(profile: MatchProfile): NeedOfferShape {
     settingPreference: profile.offer?.settingPreference ?? profile.settingPreference ?? 'either',
     zipHome: profile.offer?.zipHome ?? profile.zip,
     zipWork: profile.offer?.zipWork,
-    extrasOffered: profile.offer?.extrasOffered ?? [],
+    extrasOffered: profile.offer?.extrasOffered ?? parseListFromText(profile.offerSummary),
     okWithSpecialNeeds: profile.offer?.okWithSpecialNeeds ?? profile.specialNeedsOk,
   };
 }
@@ -249,35 +260,47 @@ function handoffCompatible(needHandoff?: HandoffPreference, offerHandoff?: Hando
 function travelHardFilterAndScore10(currentUser: MatchProfile, candidate: MatchProfile, need: NeedOfferShape, offer: NeedOfferShape) {
   const targetMinutes = need.maxTravelMinutes ?? 30;
   let estimatedMinutes: number | null = null;
+  let estimatedMiles: number | null = null;
+  const currentState = inferStateCode(currentUser);
+  const candidateState = inferStateCode(candidate);
 
-  if (
-    typeof currentUser.latitude === 'number' &&
-    typeof currentUser.longitude === 'number' &&
-    typeof candidate.latitude === 'number' &&
-    typeof candidate.longitude === 'number'
-  ) {
-    const miles = haversineMiles(currentUser.latitude, currentUser.longitude, candidate.latitude, candidate.longitude);
-    estimatedMinutes = miles * 2.2; // coarse suburban driving heuristic for MVP
-  } else {
-    const zipA = need.zipHome || need.zipWork || currentUser.zip;
-    const zipB = offer.zipHome || offer.zipWork || candidate.zip;
-    if (zipA && zipB) {
-      if (zipA === zipB) estimatedMinutes = 10;
-      else if (currentUser.state && candidate.state && currentUser.state === candidate.state) estimatedMinutes = 25;
-      else estimatedMinutes = 55;
-    } else if (currentUser.state && candidate.state) {
-      estimatedMinutes = currentUser.state === candidate.state ? 35 : 75;
-    }
+  const zipA = need.zipHome || need.zipWork || currentUser.zip;
+  const zipB = offer.zipHome || offer.zipWork || candidate.zip;
+  if (zipA && zipB) {
+    if (zipA === zipB) estimatedMinutes = 10;
+    else if (currentState && candidateState && currentState === candidateState) estimatedMinutes = 25;
+    else estimatedMinutes = 55;
+  } else if (currentState && candidateState) {
+    estimatedMinutes = currentState === candidateState ? 35 : 75;
   }
 
-  if (estimatedMinutes == null) return { pass: true, score10: 5, reason: null as string | null };
+  if (estimatedMiles == null && estimatedMinutes != null) {
+    estimatedMiles = estimatedMinutes / 2.2;
+  }
+  const distanceKm = estimatedMiles == null ? null : Math.max(1, Math.round(estimatedMiles * 1.60934));
+
+  if (estimatedMinutes == null) {
+    return {
+      pass: true,
+      score10: 5,
+      reason: null as string | null,
+      estimatedMinutes: null,
+      distanceKm,
+    };
+  }
   if (estimatedMinutes > targetMinutes) {
-    return { pass: false, score10: 0, reason: 'Travel distance exceeds max travel time' };
+    return {
+      pass: false,
+      score10: 0,
+      reason: 'Travel distance exceeds max travel time',
+      estimatedMinutes,
+      distanceKm,
+    };
   }
 
   const ratio = targetMinutes <= 0 ? 1 : estimatedMinutes / targetMinutes;
   const score10 = clamp(Math.round((1 - ratio) * 8 + 2));
-  return { pass: true, score10, reason: null as string | null };
+  return { pass: true, score10, reason: null as string | null, estimatedMinutes, distanceKm };
 }
 
 export function calculateCompatibility(
@@ -285,6 +308,43 @@ export function calculateCompatibility(
   candidate: MatchProfile | null | undefined
 ): CompatibilityCalculationResult {
   if (!currentUser || !candidate) return DEFAULT_RESULT;
+  if (currentUser.isDemo || candidate.isDemo) {
+    return {
+      totalScore: 96,
+      hardFilterPassed: true,
+      hardFilterFailures: [],
+      distanceKm: 8,
+      estimatedTravelMinutes: 12,
+      breakdown: {
+        schedule: 95,
+        distance: 90,
+        safety: 95,
+        kids: 95,
+        handoff: 95,
+      },
+      dimensions10: {
+        schedule: 10,
+        distance: 9,
+        safety: 10,
+        capacity: 10,
+        handoff: 10,
+        age: 9,
+        reciprocity: 9,
+        extras: 9,
+      },
+      detailedBreakdown: [
+        { key: 'schedule', label: 'Schedule overlap', score10: 10, weight: COMPATIBILITY_WEIGHTS.schedule, normalizedContribution: 25 },
+        { key: 'distance', label: 'Distance / travel', score10: 9, weight: COMPATIBILITY_WEIGHTS.distance, normalizedContribution: 18 },
+        { key: 'safety', label: 'Safety alignment', score10: 10, weight: COMPATIBILITY_WEIGHTS.safety, normalizedContribution: 15 },
+        { key: 'capacity', label: 'Kids capacity', score10: 10, weight: COMPATIBILITY_WEIGHTS.capacity, normalizedContribution: 10 },
+        { key: 'handoff', label: 'Handoff / pickup', score10: 10, weight: COMPATIBILITY_WEIGHTS.handoff, normalizedContribution: 10 },
+        { key: 'age', label: 'Age fit', score10: 9, weight: COMPATIBILITY_WEIGHTS.age, normalizedContribution: 9 },
+        { key: 'reciprocity', label: 'Reciprocity balance', score10: 9, weight: COMPATIBILITY_WEIGHTS.reciprocity, normalizedContribution: 4.5 },
+        { key: 'extras', label: 'Extras fit', score10: 9, weight: COMPATIBILITY_WEIGHTS.extras, normalizedContribution: 4.5 },
+      ],
+      strengths: ['Great shift overlap', 'Safety aligned', 'Balanced exchange potential'],
+    };
+  }
 
   const myNeed = deriveNeed(currentUser);
   const myOffer = deriveOffer(currentUser);
@@ -435,6 +495,8 @@ export function calculateCompatibility(
     totalScore,
     hardFilterPassed,
     hardFilterFailures,
+    distanceKm: travelCheck.distanceKm,
+    estimatedTravelMinutes: travelCheck.estimatedMinutes,
     breakdown: {
       schedule: Math.round((dimensions10.schedule / 10) * 100),
       distance: Math.round((dimensions10.distance / 10) * 100),

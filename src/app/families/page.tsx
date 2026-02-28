@@ -120,6 +120,7 @@ export default function FamiliesPage() {
             name: auth.currentUser?.displayName || '',
             profileComplete: false,
             isActive: true,
+            accountType: 'family',
             createdAt: serverTimestamp(),
         };
         await setDoc(userDocRef, newUserPayload, { merge: true });
@@ -127,7 +128,15 @@ export default function FamiliesPage() {
         return;
     }
     
-    const data = docSnap.data() as UserProfile;
+    const data = docSnap.data() as UserProfile & { accountType?: string };
+    if (data.accountType === 'employer') {
+        router.push('/employers/dashboard');
+        return;
+    }
+    if (!data.accountType && !['parent', 'sitter', 'reciprocal'].includes(String(data.role || ''))) {
+        router.push('/account/setup');
+        return;
+    }
     if (data.profileComplete) {
         router.push('/families/match');
     } else {

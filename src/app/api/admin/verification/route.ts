@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         verificationStatus: u.verificationStatus || 'unverified',
         idFrontUrl: u.idFrontUrl || null,
         selfieUrl: u.selfieUrl || null,
+        verificationSubmittedAt: u.verificationSubmittedAt || null,
         verificationReviewNotes: u.verificationReviewNotes || '',
         verificationReviewedAt: u.verificationReviewedAt || null,
       }))
@@ -76,11 +77,12 @@ export async function PATCH(request: Request) {
     }
 
     const db = adminDb();
+    const isFinalReview = body.verificationStatus === 'verified' || body.verificationStatus === 'rejected';
     await db.collection('users').doc(body.userId).set(
       {
         verificationStatus: body.verificationStatus,
         verificationReviewNotes: (body.verificationReviewNotes || '').slice(0, 280),
-        verificationReviewedAt: FieldValue.serverTimestamp(),
+        verificationReviewedAt: isFinalReview ? FieldValue.serverTimestamp() : null,
       },
       { merge: true }
     );
@@ -91,4 +93,3 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Could not update verification status.' }, { status: 500 });
   }
 }
-

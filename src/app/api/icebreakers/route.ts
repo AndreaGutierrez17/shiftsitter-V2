@@ -37,14 +37,14 @@ export async function POST(request: Request) {
     console.error('Icebreakers API error:', error);
     const safeFallback = {
       icebreakerMessages: [
-        `Hi ${bodySafeName(error)}! I saw we matched. Would you like to coordinate availability this week?`,
-        'Would you like to start with a quick intro about schedules and childcare needs?',
-        'I can share my preferred times first if that helps us plan faster.',
+        `Hi ${bodySafeName(error)}. Would you like to compare availability for this week?`,
+        'Before we plan a shift, would it help to confirm routines, care notes, and preferred timing?',
+        'I can share my preferred times and handoff details first so we can see what fits best.',
       ],
       tips: [
-        'Keep the first message short and friendly.',
-        'Propose one concrete time option to make planning easy.',
-        'Confirm expectations (drop-off, pick-up, and timing) early.',
+        'Start with schedule overlap and the child’s routine instead of general small talk.',
+        'Clarify pickup, drop-off, timing, and care notes before confirming a shift.',
+        'Keep the first exchange focused on availability and expectations.',
       ],
     };
     return NextResponse.json(

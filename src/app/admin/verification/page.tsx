@@ -14,8 +14,27 @@ type VerificationRow = {
   verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
   idFrontUrl: string | null;
   selfieUrl: string | null;
+  verificationSubmittedAt?: unknown;
+  verificationReviewedAt?: unknown;
   verificationReviewNotes?: string;
 };
+
+function formatTimestamp(value: unknown) {
+  if (!value) return 'Not available';
+  if (typeof value === 'object' && value !== null && 'seconds' in (value as Record<string, unknown>)) {
+    const seconds = (value as { seconds?: number }).seconds;
+    if (typeof seconds === 'number') return new Date(seconds * 1000).toLocaleString();
+  }
+  if (typeof value === 'object' && value !== null && '_seconds' in (value as Record<string, unknown>)) {
+    const seconds = (value as { _seconds?: number })._seconds;
+    if (typeof seconds === 'number') return new Date(seconds * 1000).toLocaleString();
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+  }
+  return 'Not available';
+}
 
 export default function AdminVerificationPage() {
   const { user } = useAuth();
@@ -24,6 +43,7 @@ export default function AdminVerificationPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [filter, setFilter] = useState<'all' | VerificationRow['verificationStatus']>('all');
 
   const loadQueue = async () => {
     if (!user) return;
@@ -48,6 +68,8 @@ export default function AdminVerificationPage() {
       setLoading(false);
     }
   };
+
+  const filteredItems = items.filter((row) => filter === 'all' || row.verificationStatus === filter);
 
   useEffect(() => {
     loadQueue();
@@ -90,13 +112,19 @@ export default function AdminVerificationPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button>
+              <Button size="sm" variant={filter === 'pending' ? 'default' : 'outline'} onClick={() => setFilter('pending')}>Pending</Button>
+              <Button size="sm" variant={filter === 'rejected' ? 'default' : 'outline'} onClick={() => setFilter('rejected')}>Rejected</Button>
+              <Button size="sm" variant={filter === 'verified' ? 'default' : 'outline'} onClick={() => setFilter('verified')}>Verified</Button>
+            </div>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading queue...</p>
-            ) : items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No verification submissions yet.</p>
+            ) : filteredItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No verification submissions match this filter.</p>
             ) : (
               <div className="space-y-4">
-                {items.map((row) => (
+                {filteredItems.map((row) => (
                   <div key={row.id} className="rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -117,6 +145,22 @@ export default function AdminVerificationPage() {
                         {row.selfieUrl ? <a className="text-primary underline" href={row.selfieUrl} target="_blank" rel="noreferrer">Open selfie file</a> : <span className="text-sm text-muted-foreground">Missing</span>}
                       </div>
                     </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div className="rounded-lg border p-3">
+                        <p className="font-medium text-foreground">Submitted</p>
+                        <p className="mt-1">{formatTimestamp(row.verificationSubmittedAt)}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="font-medium text-foreground">Reviewed</p>
+                        <p className="mt-1">{formatTimestamp(row.verificationReviewedAt)}</p>
+                      </div>
+                    </div>
+                    {row.verificationReviewNotes ? (
+                      <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
+                        <p className="font-medium">Current note</p>
+                        <p className="mt-1 text-muted-foreground">{row.verificationReviewNotes}</p>
+                      </div>
+                    ) : null}
                     <div className="mt-3">
                       <Textarea
                         value={notes[row.id] || ''}
@@ -126,9 +170,9 @@ export default function AdminVerificationPage() {
                       />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => updateStatus(row, 'verified')} disabled={savingId === row.id}>Approve</Button>
+                      <Button size="sm" onClick={() => updateStatus(row, 'verified')} disabled={savingId === row.id}>Approve (Verified)</Button>
                       <Button size="sm" variant="destructive" onClick={() => updateStatus(row, 'rejected')} disabled={savingId === row.id}>Reject</Button>
-                      <Button size="sm" variant="secondary" onClick={() => updateStatus(row, 'pending')} disabled={savingId === row.id}>Mark Pending</Button>
+                      <Button size="sm" variant="secondary" onClick={() => updateStatus(row, 'pending')} disabled={savingId === row.id}>Reset to Pending</Button>
                     </div>
                   </div>
                 ))}
@@ -140,4 +184,3 @@ export default function AdminVerificationPage() {
     </AuthGuard>
   );
 }
-

@@ -77,8 +77,14 @@ Interests: {{#each matchedUserProfile.interests}}- {{{this}}}
 Workplace: {{{matchedUserProfile.workplace}}}
 
 Based on these profiles, generate:
-1.  Three personalized icebreaker messages that the current user can send to their match. They should be friendly, engaging, and make specific references to shared interests, complementary availability, or specific needs/offers mentioned in their profiles.
-2.  Three helpful tips for breaking the ice and maintaining a good conversation, keeping in mind the context of a childcare matching app.
+1.  Three personalized message starters that the current user can send to their match. They must sound clearly like childcare coordination inside ShiftSitter, not like a dating app. They should make specific references to shared interests, complementary availability, routines, childcare needs, or reciprocal support mentioned in their profiles.
+2.  Three helpful tips for starting and maintaining a productive conversation in a childcare matching app.
+
+Hard requirements:
+- No flirting, romance, compliments on appearance, or date-like phrasing.
+- Prioritize practical topics: schedules, routines, handoff details, child age, comfort level, and care expectations.
+- Keep each message concise and easy to send as a first text.
+- Prefer prompts about availability, routines, pickup/drop-off, care notes, child age, and schedule fit over generic small talk.
 
 Ensure the messages are respectful and appropriate for a professional yet friendly context.`,
 });
