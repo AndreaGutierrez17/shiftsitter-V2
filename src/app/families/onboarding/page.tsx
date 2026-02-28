@@ -118,8 +118,6 @@ const profileSchema = z.object({
   interests: z.string(),
   smokeFree: z.boolean().optional(),
   petsOk: z.boolean().optional(),
-  drivingLicense: z.boolean().optional(),
-  specialNeedsOk: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   const isFamilyRole = data.role === 'parent' || data.role === 'reciprocal';
   if (isFamilyRole && data.needDays.length === 0) {
@@ -246,8 +244,6 @@ function OnboardingForm() {
       interests: '',
       smokeFree: false,
       petsOk: false,
-      drivingLicense: false,
-      specialNeedsOk: false,
     },
   });
 
@@ -960,12 +956,6 @@ function OnboardingForm() {
                             <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
                           </FormItem>
                         )} />
-                        <FormField control={form.control} name="drivingLicense" render={({ field }) => (
-                          <FormItem className="flex items-center justify-between space-y-0">
-                            <FormLabel className="font-normal">Valid driver's license</FormLabel>
-                            <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
-                          </FormItem>
-                        )} />
                       </div>
 
                       <FormField control={form.control} name="offerExtrasOffered" render={({ field }) => (
@@ -996,12 +986,6 @@ function OnboardingForm() {
                         <FormField control={form.control} name="petsOk" render={({ field }) => (
                           <FormItem className="flex items-center justify-between space-y-0">
                             <FormLabel className="font-normal">Comfortable with pets in another home</FormLabel>
-                            <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="specialNeedsOk" render={({ field }) => (
-                          <FormItem className="flex items-center justify-between space-y-0">
-                            <FormLabel className="font-normal">Open to special-needs support overall</FormLabel>
                             <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
                           </FormItem>
                         )} />
