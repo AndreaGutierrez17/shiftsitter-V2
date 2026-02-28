@@ -133,9 +133,15 @@ export default function FamiliesPage() {
         router.push('/employers/dashboard');
         return;
     }
-    if (!data.accountType && !['parent', 'sitter', 'reciprocal'].includes(String(data.role || ''))) {
-        router.push('/account/setup');
-        return;
+    if (!data.accountType) {
+        await setDoc(
+          userDocRef,
+          {
+            accountType: 'family',
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
     }
     if (data.profileComplete) {
         router.push('/families/match');

@@ -30,6 +30,16 @@ export async function POST(request: Request) {
     }
 
     const db = adminDb();
+    const userSnap = await db.collection('users').doc(uid).get();
+    const userData = userSnap.exists ? (userSnap.data() as { accountType?: string; role?: string }) : null;
+    const isFamilyAccount =
+      userData?.accountType === 'family' ||
+      ['parent', 'sitter', 'reciprocal'].includes(String(userData?.role || ''));
+
+    if (!isFamilyAccount) {
+      return NextResponse.json({ error: 'family_only' }, { status: 403 });
+    }
+
     const codeQuery = await db.collection('access_codes').where('code', '==', code).limit(1).get();
     if (codeQuery.empty) {
       return NextResponse.json({ error: 'invalid' }, { status: 400 });

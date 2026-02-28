@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase/client';
 type UserRoleDoc = {
   accountType?: 'family' | 'employer';
   role?: string;
+  profileComplete?: boolean;
 };
 
 const FAMILY_ROLES = new Set(['family', 'parent', 'sitter', 'reciprocal']);
@@ -59,7 +60,11 @@ export function useRequireRole(expected: 'family' | 'employer') {
     }
 
     if (normalizedRole !== expected) {
-      router.replace(normalizedRole === 'employer' ? '/employers/dashboard' : '/families/match');
+      if (normalizedRole === 'employer') {
+        router.replace('/employers/dashboard');
+        return;
+      }
+      router.replace(roleData?.profileComplete ? '/families/match' : '/families/onboarding');
     }
   }, [authLoading, expected, normalizedRole, roleData, router, user]);
 

@@ -24,13 +24,13 @@ export default function AccountSetupPage() {
     void (async () => {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (!snap.exists()) return;
-      const data = snap.data() as { accountType?: string; role?: string } | undefined;
+      const data = snap.data() as { accountType?: string; role?: string; profileComplete?: boolean } | undefined;
       if (data?.accountType === 'employer') {
         router.replace('/employers/dashboard');
         return;
       }
       if (data?.accountType === 'family' || ['parent', 'sitter', 'reciprocal'].includes(String(data?.role || ''))) {
-        router.replace('/families/match');
+        router.replace(data?.profileComplete ? '/families/match' : '/families/onboarding');
       }
     })();
   }, [loading, router, user]);
@@ -41,8 +41,14 @@ export default function AccountSetupPage() {
     setError(null);
 
     try {
+      const userRef = doc(db, 'users', user.uid);
+      const existingSnap = await getDoc(userRef);
+      const existingCreatedAt = existingSnap.exists()
+        ? (existingSnap.data() as { createdAt?: unknown }).createdAt
+        : undefined;
+
       await setDoc(
-        doc(db, 'users', user.uid),
+        userRef,
         {
           uid: user.uid,
           id: user.uid,
@@ -52,13 +58,13 @@ export default function AccountSetupPage() {
           isActive: true,
           profileComplete: false,
           accountType,
-          createdAt: serverTimestamp(),
+          createdAt: existingCreatedAt ?? serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
 
-      router.replace(accountType === 'employer' ? '/employers/settings' : '/families/onboarding');
+      router.replace(accountType === 'employer' ? '/employers/settings' : '/employers/redeem');
     } catch (setupError) {
       console.error('Account setup failed:', setupError);
       setError('Could not save your account type. Please try again.');
@@ -75,7 +81,7 @@ export default function AccountSetupPage() {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-shell" lang="en" translate="no">
       <Card className="auth-card" style={{ maxWidth: '640px' }}>
         <CardHeader className="auth-card-head">
           <CardTitle>Complete account setup</CardTitle>

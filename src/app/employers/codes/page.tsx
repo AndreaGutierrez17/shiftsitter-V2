@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Timestamp, addDoc, collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { Timestamp, collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,25 +18,6 @@ type AccessCodeDoc = {
   expiresAt?: Timestamp | null;
   createdAt?: Timestamp;
 };
-
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-function generateVisibleCode() {
-  const block = () => Array.from({ length: 4 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join('');
-  return `SS-${block()}-${block()}`;
-}
-
-async function generateUniqueCodes(quantity: number) {
-  const codes = new Set<string>();
-  while (codes.size < quantity) {
-    const candidate = generateVisibleCode();
-    if (codes.has(candidate)) continue;
-    const existing = await getDocs(query(collection(db, 'access_codes'), where('code', '==', candidate)));
-    if (!existing.empty) continue;
-    codes.add(candidate);
-  }
-  return Array.from(codes);
-}
 
 export default function EmployerCodesPage() {
   const guard = useRequireRole('employer');
@@ -87,27 +68,26 @@ export default function EmployerCodesPage() {
     setError(null);
 
     try {
-      const nextCodes = await generateUniqueCodes(quantity);
-      const expiresAt = expiryDays
-        ? Timestamp.fromDate(new Date(Date.now() + Number(expiryDays) * 24 * 60 * 60 * 1000))
-        : null;
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/access-codes/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          quantity,
+          expiryDays: expiryDays ? Number(expiryDays) : null,
+        }),
+      });
 
-      await Promise.all(
-        nextCodes.map((value) =>
-          addDoc(collection(db, 'access_codes'), {
-            code: value,
-            employerId: user.uid,
-            status: 'active',
-            redeemedBy: null,
-            redeemedAt: null,
-            expiresAt,
-            createdAt: serverTimestamp(),
-          })
-        )
-      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || 'Could not create access codes.');
+      }
     } catch (createError) {
       console.error('Create codes failed:', createError);
-      setError('Could not create access codes.');
+      setError(createError instanceof Error ? createError.message : 'Could not create access codes.');
     } finally {
       setCreating(false);
     }
@@ -145,12 +125,13 @@ export default function EmployerCodesPage() {
             <CardTitle className="font-headline">Access Codes</CardTitle>
             <CardDescription>Create batches, track redemptions, and revoke access when needed.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-4" onSubmit={handleCreateCodes}>
+          <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
+          <CardContent className="pt-6">
+            <form className="grid gap-x-4 gap-y-6 md:grid-cols-4" onSubmit={handleCreateCodes}>
               <div className="form-field">
                 <label>Quantity</label>
                 <input
-                  className="ss-input"
+                  className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10"
                   type="number"
                   min={1}
                   max={500}
@@ -162,7 +143,7 @@ export default function EmployerCodesPage() {
               <div className="form-field">
                 <label>Expires in days (optional)</label>
                 <input
-                  className="ss-input"
+                  className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10"
                   type="number"
                   min={1}
                   placeholder="e.g. 30"
@@ -186,15 +167,18 @@ export default function EmployerCodesPage() {
               </div>
               {error ? <p className="md:col-span-4 text-sm text-destructive">{error}</p> : null}
             </form>
+            <div className="mt-6 h-0.5 w-full rounded-full bg-emerald-300/80" />
           </CardContent>
         </Card>
 
         <Card className="ss-soft-card">
           <CardHeader>
             <CardTitle className="font-headline">Code Inventory</CardTitle>
-            <CardDescription>Only real codes are listed here. Nothing is simulated.</CardDescription>
+            <CardDescription>Review every access code you have created, along with its current status and redemption details.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
+          <CardContent className="pt-6">
+            <div className="mb-5 h-0.5 w-full rounded-full bg-emerald-300/80" />
             {codes.length === 0 ? (
               <div className="rounded-2xl border bg-white p-6 text-center text-muted-foreground">
                 No access codes yet. Create your first batch to start redemptions.
@@ -216,9 +200,9 @@ export default function EmployerCodesPage() {
                       <tr key={row.id} className="border-b last:border-0">
                         <td className="px-3 py-3 font-medium text-[var(--navy)]">{row.code}</td>
                         <td className="px-3 py-3 capitalize">{row.status}</td>
-                        <td className="px-3 py-3">{row.redeemedBy || '—'}</td>
+                        <td className="px-3 py-3">{row.redeemedBy || 'â€”'}</td>
                         <td className="px-3 py-3">
-                          {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : '—'}
+                          {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : 'â€”'}
                         </td>
                         <td className="px-3 py-3">
                           <button

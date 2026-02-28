@@ -140,23 +140,24 @@ export default function EmployerSettingsPage() {
             <CardTitle className="font-headline">Company Settings</CardTitle>
             <CardDescription>Maintain the basic employer profile used for access code management.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+          <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
+          <CardContent className="pt-6">
+            <form className="grid gap-x-4 gap-y-6 md:grid-cols-2" onSubmit={handleSubmit}>
               <div className="form-field">
                 <label>Company name</label>
-                <input className="ss-input" value={form.companyName} onChange={(e) => setForm((prev) => ({ ...prev, companyName: e.target.value }))} required />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.companyName} onChange={(e) => setForm((prev) => ({ ...prev, companyName: e.target.value }))} required />
               </div>
               <div className="form-field">
                 <label>Company email</label>
-                <input className="ss-input" type="email" value={form.companyEmail} onChange={(e) => setForm((prev) => ({ ...prev, companyEmail: e.target.value }))} required />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" type="email" value={form.companyEmail} onChange={(e) => setForm((prev) => ({ ...prev, companyEmail: e.target.value }))} required />
               </div>
               <div className="form-field">
                 <label>Contact name</label>
-                <input className="ss-input" value={form.contactName} onChange={(e) => setForm((prev) => ({ ...prev, contactName: e.target.value }))} required />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.contactName} onChange={(e) => setForm((prev) => ({ ...prev, contactName: e.target.value }))} required />
               </div>
               <div className="form-field">
                 <label>Company size</label>
-                <select className="ss-input" value={form.companySize} onChange={(e) => setForm((prev) => ({ ...prev, companySize: e.target.value as CompanySize }))}>
+                <select className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.companySize} onChange={(e) => setForm((prev) => ({ ...prev, companySize: e.target.value as CompanySize }))}>
                   <option value="1-50">1-50</option>
                   <option value="51-200">51-200</option>
                   <option value="201-1000">201-1000</option>
@@ -165,19 +166,20 @@ export default function EmployerSettingsPage() {
               </div>
               <div className="form-field md:col-span-2">
                 <label>Industries (comma separated)</label>
-                <input className="ss-input" value={form.industriesText} onChange={(e) => setForm((prev) => ({ ...prev, industriesText: e.target.value }))} placeholder="Healthcare, Manufacturing" />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.industriesText} onChange={(e) => setForm((prev) => ({ ...prev, industriesText: e.target.value }))} placeholder="Healthcare, Manufacturing" />
               </div>
               <div className="form-field">
                 <label>Primary state</label>
-                <input className="ss-input" value={form.state} onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value }))} placeholder="MD" />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.state} onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value }))} placeholder="MD" />
               </div>
               <div className="form-field">
                 <label>Primary city</label>
-                <input className="ss-input" value={form.city} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Baltimore" />
+                <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.city} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Baltimore" />
               </div>
               {error ? <p className="md:col-span-2 text-sm text-destructive">{error}</p> : null}
               {saved ? <p className="md:col-span-2 text-sm text-emerald-600">Company settings saved.</p> : null}
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 mt-2 h-0.5 rounded-full bg-emerald-300/80" />
+              <div className="md:col-span-2 pt-1">
                 <Button type="submit" className="ss-pill-btn" disabled={saving}>
                   {saving ? 'Saving...' : 'Save settings'}
                 </Button>

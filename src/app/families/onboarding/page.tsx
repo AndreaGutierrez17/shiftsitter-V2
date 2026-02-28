@@ -319,7 +319,11 @@ function OnboardingForm() {
   };
 
   const handleBack = () => {
-    if (currentStep > 0) setCurrentStep((prev) => prev - 1);
+    if (currentStep > 0) {
+      setCurrentStep((prev) => prev - 1);
+      return;
+    }
+    router.back();
   };
 
   async function onSubmit(data: ProfileFormValues) {
@@ -445,7 +449,7 @@ function OnboardingForm() {
   }
 
   return (
-    <div className="onb-shell">
+    <div className="onb-shell" lang="en" translate="no">
       <div className="onb-card">
         <div className="p-6">
           <Progress value={progressValue} className="mb-4" />
@@ -1097,7 +1101,7 @@ function OnboardingForm() {
                 </motion.div>
               </AnimatePresence>
               <div className="flex justify-between pt-4">
-                <button type="button" className="ss-btn-outline" onClick={handleBack} disabled={isSaving || currentStep === 0}>
+                <button type="button" className="ss-btn-outline" onClick={handleBack} disabled={isSaving}>
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </button>
                 <button type="button" className="ss-btn" onClick={handleNext} disabled={isSaving}>
