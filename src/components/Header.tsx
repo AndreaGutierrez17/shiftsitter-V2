@@ -386,6 +386,69 @@ export default function Header() {
           )}
         </div>
 
+        {user && accountType !== "employer" ? (
+          <div className="ss-mobile-top-actions">
+            <DropdownMenu
+              open={notifOpenMobile}
+              onOpenChange={(open) => {
+                setNotifOpenMobile(open);
+                if (open) {
+                  setNotifOpenDesktop(false);
+                  setIsMenuOpen(false);
+                }
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
+                <DropdownMenuLabel className="flex items-center justify-between">
+                  <span>Notifications</span>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                    onClick={markAllNotificationsRead}
+                    disabled={unreadCount === 0}
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    Mark all read
+                  </button>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {notifications.length === 0 ? (
+                  <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                ) : (
+                  notifications.slice(0, 8).map((notif) => (
+                    <DropdownMenuItem
+                      key={notif.id}
+                      className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        void markNotificationRead(notif.id);
+                        setNotifOpenMobile(false);
+                        if (notif.href) router.push(notif.href);
+                      }}
+                    >
+                      <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{notif.title}</div>
+                        <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : null}
+
         <button
           type="button"
           className={`ss-menu-toggle${isMenuOpen ? " is-open" : ""}`}
@@ -414,65 +477,6 @@ export default function Header() {
         <div className="ss-mobile-actions">
            {user ? (
              <>
-              {accountType !== "employer" ? (
-                <DropdownMenu
-                  open={notifOpenMobile}
-                  onOpenChange={(open) => {
-                    setNotifOpenMobile(open);
-                    if (open) setNotifOpenDesktop(false);
-                  }}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
-                      <Bell className="h-4 w-4" />
-                      <span>Notifications</span>
-                      {unreadCount > 0 ? (
-                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                          {unreadCount > 9 ? '9+' : unreadCount}
-                        </span>
-                      ) : null}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[92vw] max-w-80 rounded-[var(--radius)] p-1">
-                    <DropdownMenuLabel className="flex items-center justify-between">
-                      <span>Notifications</span>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                        onClick={markAllNotificationsRead}
-                        disabled={unreadCount === 0}
-                      >
-                        <CheckCheck className="h-3.5 w-3.5" />
-                        Mark all read
-                      </button>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {notifications.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                    ) : (
-                      notifications.slice(0, 8).map((notif) => (
-                        <DropdownMenuItem
-                          key={notif.id}
-                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            void markNotificationRead(notif.id);
-                            setNotifOpenMobile(false);
-                            handleNavClick();
-                            if (notif.href) router.push(notif.href);
-                          }}
-                        >
-                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{notif.title}</div>
-                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                          </div>
-                        </DropdownMenuItem>
-                      ))
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
               <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
                 Log out
               </button>

@@ -492,6 +492,9 @@ button {
 .ss-menu-toggle {
   display: none;
 }
+.ss-mobile-top-actions {
+  display: none;
+}
 .ss-mobile-menu {
   display: none;
 }
@@ -528,6 +531,17 @@ button {
   }
   .ss-menu-toggle.is-open span:nth-child(3) {
     transform: translateY(-6px) rotate(-45deg);
+  }
+  .ss-mobile-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+    margin-right: 0.5rem;
+  }
+  .ss-mobile-notif-btn {
+    padding: 0.45rem 0.7rem;
+    min-width: 42px;
   }
   .ss-mobile-menu {
     position: fixed;
