@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload, Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { db, storage } from '@/lib/firebase/client';
-import { collection, doc, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import type { Review, UserProfile } from '@/lib/types';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -82,52 +82,85 @@ export default function ProfilePage() {
       return;
     }
 
-    const unsub = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
-      setViewerProfile(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
-    });
+    let cancelled = false;
 
-    return () => unsub();
+    void (async () => {
+      try {
+        const snapshot = await getDoc(doc(db, 'users', user.uid));
+        if (cancelled) return;
+        setViewerProfile(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
+      } catch {
+        if (!cancelled) setViewerProfile(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.uid]);
 
   useEffect(() => {
       if (!profileId) return;
       
       setLoading(true);
-      const unsub = onSnapshot(doc(db, "users", profileId), (doc) => {
-        if (doc.exists()) {
-          const profileData = doc.data() as UserProfile;
-          if (!profileData.profileComplete && profileData.id === user?.uid) {
-            router.push('/families/onboarding');
+      let cancelled = false;
+
+      void (async () => {
+        try {
+          const profileDoc = await getDoc(doc(db, "users", profileId));
+          if (cancelled) return;
+          if (profileDoc.exists()) {
+            const profileData = profileDoc.data() as UserProfile;
+            if (!profileData.profileComplete && profileData.id === user?.uid) {
+              router.push('/families/onboarding');
+            } else {
+              setUserProfile(profileData);
+            }
           } else {
-            setUserProfile(profileData);
+            if (user?.uid === profileId) {
+              router.push('/families/onboarding');
+            } else {
+              setUserProfile(null);
+            }
           }
-        } else {
-          if (user?.uid === profileId) {
-            router.push('/families/onboarding');
-          } else {
-             setUserProfile(null); // User not found
-          }
+        } catch {
+          if (!cancelled) setUserProfile(null);
+        } finally {
+          if (!cancelled) setLoading(false);
         }
-        setLoading(false);
-      });
-      return () => unsub();
+      })();
+
+      return () => {
+        cancelled = true;
+      };
   }, [profileId, user, router]);
 
   useEffect(() => {
     if (!profileId) return;
+    let cancelled = false;
     const reviewsQuery = query(collection(db, 'reviews'), where('revieweeId', '==', profileId));
-    const unsub = onSnapshot(reviewsQuery, (snapshot) => {
-      const reviews = snapshot.docs
-        .map((snap) => ({ id: snap.id, ...snap.data() } as Review))
-        .sort((a, b) => {
-          const aMs = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : 0;
-          const bMs = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : 0;
-          return bMs - aMs;
-        })
-        .slice(0, 3);
-      setRecentReviews(reviews);
-    });
-    return () => unsub();
+
+    void (async () => {
+      try {
+        const snapshot = await getDocs(reviewsQuery);
+        if (cancelled) return;
+        const reviews = snapshot.docs
+          .map((snap) => ({ id: snap.id, ...snap.data() } as Review))
+          .sort((a, b) => {
+            const aMs = typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : 0;
+            const bMs = typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : 0;
+            return bMs - aMs;
+          })
+          .slice(0, 3);
+        setRecentReviews(reviews);
+      } catch {
+        if (!cancelled) setRecentReviews([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [profileId]);
 
   if (loading || authLoading) {
@@ -273,21 +306,21 @@ export default function ProfilePage() {
                 ) : null}
               </div>
               <CardContent className="relative p-6">
-                <div className="-mt-20 mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="flex items-end gap-4">
-                    <Avatar className="h-32 w-32 border-4 border-background shadow-lg">
+                <div className="-mt-20 mb-4 profile-hero-wrap">
+                  <div className="profile-hero-main">
+                    <Avatar className="profile-hero-avatar h-32 w-32 border-4 border-background shadow-lg">
                       <AvatarImage src={mainPhoto} />
                       <AvatarFallback>{userProfile.name?.charAt(0) || '?'}</AvatarFallback>
                     </Avatar>
-                    <div className="pb-2">
-                      <h1 className="font-headline text-3xl font-semibold text-foreground md:text-4xl">
+                    <div className="profile-hero-copy">
+                      <h1 className="profile-hero-name font-headline text-3xl font-semibold text-foreground md:text-4xl">
                         {userProfile.name}, {userProfile.age}
                       </h1>
-                      <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground md:text-base">
+                      <p className="profile-hero-location mt-1 flex items-center gap-2 text-sm text-muted-foreground md:text-base">
                         <MapPin className="h-4 w-4 text-primary" />
                         {userProfile.location || 'Location not set'}
                       </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                      <div className="profile-hero-badges mt-3 flex flex-wrap items-center gap-2 text-sm">
                         {headlineFacts.map((fact) => {
                           const Icon = fact.icon;
                           return (
@@ -301,7 +334,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   {isOwnProfile ? (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="profile-hero-actions flex flex-wrap gap-2">
                       <input
                         ref={fileInputRef}
                         type="file"
