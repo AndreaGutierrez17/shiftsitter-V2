@@ -5,12 +5,14 @@ import type { firestore } from 'firebase-admin';
 export const runtime = 'nodejs';
 
 type NotifyBody = {
-  type: 'message' | 'match' | 'shift';
+  type: 'message' | 'match' | 'shift' | 'request';
   conversationId?: string;
   targetUserIds?: string[];
   title?: string;
   body?: string;
   link?: string;
+  notificationId?: string;
+  data?: Record<string, string | number | boolean | null | undefined>;
 };
 
 async function getUidFromRequest(request: Request) {
@@ -89,7 +91,13 @@ export async function POST(request: Request) {
 
     const title =
       body.title ||
-      (body.type === 'message' ? 'New message' : body.type === 'match' ? "It's a Match!" : 'Shift update');
+      (body.type === 'message'
+        ? 'New message'
+        : body.type === 'match'
+          ? "It's a Match!"
+          : body.type === 'request'
+            ? 'New request'
+            : 'Shift update');
 
     const notifBody =
       body.body ||
@@ -97,11 +105,37 @@ export async function POST(request: Request) {
         ? 'You received a new message.'
         : body.type === 'match'
           ? 'You have a new match.'
-          : 'A shift has been updated.');
+          : body.type === 'request'
+            ? 'You have a new request.'
+            : 'A shift has been updated.');
 
     const link =
       body.link ||
       (body.conversationId ? `/families/messages/${body.conversationId}` : '/families/messages');
+
+    const timestampSeed = Date.now();
+    await Promise.all(
+      targetUserIds.map((uid, index) =>
+        db
+          .collection('notifications')
+          .doc(uid)
+          .collection('items')
+          .doc(body.notificationId || `${body.type}_${timestampSeed}_${index}`)
+          .set(
+            {
+              type: body.type,
+              title,
+              body: notifBody,
+              href: link,
+              read: false,
+              readAt: null,
+              createdAt: new Date(),
+              data: body.data || {},
+            },
+            { merge: true }
+          )
+      )
+    );
 
     const response = await adminMessaging().sendEachForMulticast({
       tokens,
