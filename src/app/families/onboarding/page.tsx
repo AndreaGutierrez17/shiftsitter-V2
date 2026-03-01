@@ -5,7 +5,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { Input } from '@/components/ui/input';
@@ -337,6 +337,8 @@ function OnboardingForm() {
     setIsSaving(true);
     try {
       const userDocRef = doc(db, 'users', user.uid);
+      const profileDocRef = doc(db, 'profiles', user.uid);
+      const answersDocRef = doc(db, 'user_answers', user.uid);
       const interestsArray = data.interests.split(',').map((item) => item.trim()).filter(Boolean);
       const childrenAges = parseChildrenAges(data.childrenAgesText);
       const normalizedChildrenCount = parseNumericText(data.needChildrenCount);
@@ -386,8 +388,48 @@ function OnboardingForm() {
         maxTravelMinutes: normalizedTravelMinutes,
       };
 
+      const publicProfile = {
+        uid: user.uid,
+        role: 'family',
+        familyRole: data.role,
+        displayName: data.name,
+        photoURL: user.photoURL || null,
+        photoURLs: user.photoURL ? [user.photoURL] : [],
+        homeZip: data.zip,
+        workZip: normalizedNeedZipWork,
+        state: data.state,
+        city: data.city.trim(),
+        location: data.location,
+        onboardingComplete: true,
+        verificationStatus: 'unverified' as const,
+        updatedAt: serverTimestamp(),
+      };
+
+      const answers = {
+        family_role: data.role,
+        need_days: needDays,
+        need_shifts: needShifts,
+        give_days: offerDays,
+        give_shifts: offerShifts,
+        extras_need: data.needExtrasNeeded,
+        extras_offer: data.offerExtrasOffered,
+        smoke_free_required: data.requireSmokeFree ?? false,
+        smoke_free: data.smokeFree ?? false,
+        pets_in_home: data.needPetsInHome,
+        okay_with_pets: data.needOkWithPets ?? false,
+        setting_need: data.needSettingPreference,
+        setting_offer: data.offerSettingPreference,
+        handoff_need: data.needHandoffPreference,
+        handoff_offer: data.needHandoffPreference,
+        travel_max_minutes: normalizedTravelMinutes,
+        home_zip: data.zip,
+        work_zip: normalizedNeedZipWork,
+        interests: interestsArray,
+      };
+
       const userProfile = {
         id: user.uid,
+        uid: user.uid,
         email: user.email,
         name: data.name,
         photoURLs: user.photoURL ? [user.photoURL] : [],
@@ -418,11 +460,31 @@ function OnboardingForm() {
         specialNeedsOk: data.offerOkWithSpecialNeeds ?? false,
         need,
         offer,
+        onboardingComplete: true,
+        access: {
+          source: 'manual',
+          status: 'active',
+          updatedAt: serverTimestamp(),
+          notes: 'Family onboarding completed.',
+        },
+        updatedAt: serverTimestamp(),
         backgroundCheckStatus: 'not_started' as const,
         isDemo: false,
       };
 
-      await setDoc(userDocRef, userProfile, { merge: true });
+      const batch = writeBatch(db);
+      batch.set(userDocRef, userProfile, { merge: true });
+      batch.set(profileDocRef, publicProfile, { merge: true });
+      batch.set(
+        answersDocRef,
+        {
+          uid: user.uid,
+          answers,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      await batch.commit();
 
       toast({
         title: 'Profile Created!',

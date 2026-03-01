@@ -72,6 +72,19 @@ export async function POST(request: Request) {
       if (latestData?.status !== 'active' || latestData?.redeemedBy) throw new Error('invalid');
 
       transaction.set(
+        db.collection('users').doc(uid),
+        {
+          access: {
+            source: 'code',
+            status: 'active',
+            updatedAt: FieldValue.serverTimestamp(),
+            notes: `Redeemed employer code ${code}.`,
+          },
+        },
+        { merge: true }
+      );
+
+      transaction.set(
         codeRef,
         {
           status: 'redeemed',
@@ -85,6 +98,8 @@ export async function POST(request: Request) {
         code,
         employerId: data.employerId || null,
         userId: uid,
+        redeemedByUid: uid,
+        redeemedAt: FieldValue.serverTimestamp(),
         createdAt: FieldValue.serverTimestamp(),
       });
     });

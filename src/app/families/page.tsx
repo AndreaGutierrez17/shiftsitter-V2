@@ -109,6 +109,7 @@ export default function FamiliesPage() {
 
   async function ensureFamilyDocAndRedirect(uid: string) {
     const userDocRef = doc(db, "users", uid);
+    const profileDocRef = doc(db, "profiles", uid);
     const docSnap = await getDoc(userDocRef);
 
     if (!docSnap.exists()) {
@@ -124,15 +125,48 @@ export default function FamiliesPage() {
             createdAt: serverTimestamp(),
         };
         await setDoc(userDocRef, newUserPayload, { merge: true });
+        await setDoc(profileDocRef, {
+          uid,
+          role: 'family',
+          displayName: auth.currentUser?.displayName || '',
+          photoURL: auth.currentUser?.photoURL || null,
+          photoURLs: auth.currentUser?.photoURL ? [auth.currentUser.photoURL] : [],
+          onboardingComplete: false,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
         router.push("/families/onboarding");
         return;
     }
     
-    const data = docSnap.data() as UserProfile & { accountType?: string };
+    const data = docSnap.data() as UserProfile & {
+      accountType?: string;
+      profileComplete?: boolean;
+      onboardingComplete?: boolean;
+      state?: string;
+      city?: string;
+      zip?: string;
+      location?: string;
+    };
     if (data.accountType === 'employer') {
         router.push('/employers/dashboard');
         return;
     }
+
+    await setDoc(profileDocRef, {
+      uid,
+      role: 'family',
+      familyRole: data.role,
+      displayName: data.name || auth.currentUser?.displayName || '',
+      photoURL: data.photoURLs?.[0] || auth.currentUser?.photoURL || null,
+      photoURLs: Array.isArray(data.photoURLs) ? data.photoURLs : (auth.currentUser?.photoURL ? [auth.currentUser.photoURL] : []),
+      homeZip: data.zip || '',
+      state: data.state || '',
+      city: data.city || '',
+      location: data.location || '',
+      onboardingComplete: Boolean(data.onboardingComplete ?? data.profileComplete),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     if (!data.accountType) {
         await setDoc(
           userDocRef,

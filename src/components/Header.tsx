@@ -11,9 +11,9 @@ import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
 import {
   collection,
   doc,
+  getDocs,
   getDoc,
   limit,
-  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -39,12 +39,13 @@ const publicNavLinks = [
 
 const INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = "shiftsitter:last-activity-at";
+const ADMIN_LINK_CACHE_KEY = "shiftsitter:is-admin-link";
 
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [notifications, setNotifications] = useState<Array<{
     id: string;
@@ -58,6 +59,8 @@ export default function Header() {
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
 
   const navLinks = user ? (accountType === "employer" ? EMPLOYER_NAV_LINKS : NAV_LINKS) : publicNavLinks;
 
@@ -68,6 +71,7 @@ export default function Header() {
   useEffect(() => {
     if (!user) {
       setAccountType(null);
+      setIsAdmin(false);
       return;
     }
 
@@ -102,6 +106,49 @@ export default function Header() {
   }, [user]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (authLoading) {
+      return;
+    }
+
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
+    try {
+      if (window.localStorage.getItem(ADMIN_LINK_CACHE_KEY) === "1") {
+        setIsAdmin(true);
+      }
+    } catch {
+      // ignore storage issues
+    }
+
+    void (async () => {
+      try {
+        if (cancelled) return;
+        const tokenResult = await user.getIdTokenResult();
+        if (cancelled) return;
+        const nextIsAdmin = tokenResult.claims?.role === "admin";
+        setIsAdmin(nextIsAdmin);
+        try {
+          if (nextIsAdmin) window.localStorage.setItem(ADMIN_LINK_CACHE_KEY, "1");
+          else window.localStorage.removeItem(ADMIN_LINK_CACHE_KEY);
+        } catch {
+          // ignore storage issues
+        }
+      } catch {
+        if (!cancelled) setIsAdmin(Boolean(pathname?.startsWith("/admin")));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user, pathname]);
+
+  useEffect(() => {
     document.documentElement.style.overflowX = isMenuOpen ? "hidden" : "";
     document.body.style.overflowX = isMenuOpen ? "hidden" : "";
 
@@ -116,6 +163,7 @@ export default function Header() {
   const handleSignOut = async () => {
     try {
       window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+      window.localStorage.removeItem(ADMIN_LINK_CACHE_KEY);
     } catch {
       // ignore storage issues
     }
@@ -252,15 +300,18 @@ export default function Header() {
       return;
     }
 
+    let cancelled = false;
     const notificationsQuery = query(
       collection(db, "notifications", user.uid, "items"),
       orderBy("createdAt", "desc"),
       limit(24)
     );
 
-    const unsubscribe = onSnapshot(
-      notificationsQuery,
-      (snapshot) => {
+    const loadNotifications = async () => {
+      try {
+        const snapshot = await getDocs(notificationsQuery);
+        if (cancelled) return;
+
         const nextNotifications = snapshot.docs.map((notificationDoc) => {
           const data = notificationDoc.data() as {
             title?: string;
@@ -282,14 +333,23 @@ export default function Header() {
 
         setNotifications(nextNotifications);
         setUnreadCount(nextNotifications.filter((notification) => !isNotificationRead(notification)).length);
-      },
-      () => {
-        setNotifications([]);
-        setUnreadCount(0);
+      } catch {
+        if (!cancelled) {
+          setNotifications([]);
+          setUnreadCount(0);
+        }
       }
-    );
+    };
 
-    return () => unsubscribe();
+    void loadNotifications();
+    const intervalId = window.setInterval(() => {
+      void loadNotifications();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [user, pathname]);
 
   return (
@@ -308,6 +368,16 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          {showAdminLink ? (
+            <>
+              <Link href="/admin/dashboard" className="ss-nav-link">
+                Admin
+              </Link>
+              <Link href="/admin/verification" className="ss-nav-link">
+                Verification
+              </Link>
+            </>
+          ) : null}
         </nav>
 
         <div className="ss-header-actions ss-nav-desktop">
@@ -473,6 +543,16 @@ export default function Header() {
             {link.label}
           </Link>
         ))}
+        {showAdminLink ? (
+          <>
+            <Link href="/admin/dashboard" className="ss-mobile-link" onClick={handleNavClick}>
+              Admin
+            </Link>
+            <Link href="/admin/verification" className="ss-mobile-link" onClick={handleNavClick}>
+              Verification
+            </Link>
+          </>
+        ) : null}
 
         <div className="ss-mobile-actions">
            {user ? (

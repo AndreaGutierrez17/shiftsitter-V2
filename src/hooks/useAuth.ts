@@ -19,9 +19,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const syncAdminSession = async (nextUser: User | null) => {
+      try {
+        if (!nextUser) {
+          await fetch('/api/admin/session', {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          return;
+        }
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const token = await nextUser.getIdToken(attempt > 0);
+          const response = await fetch('/api/admin/session', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: 'include',
+          });
+
+          const payload = (await response.json().catch(() => ({}))) as { claimsUpdated?: boolean };
+          if (!response.ok || !payload.claimsUpdated) {
+            return;
+          }
+
+          await wait(750);
+        }
+      } catch (error) {
+        console.error('Admin session sync failed:', error);
+      }
+    };
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
+      void syncAdminSession(user);
     });
 
     return () => unsubscribe();

@@ -17,6 +17,7 @@ type VerificationRow = {
   verificationSubmittedAt?: unknown;
   verificationReviewedAt?: unknown;
   verificationReviewNotes?: string;
+  rejectReason?: string;
 };
 
 function formatTimestamp(value: unknown) {
@@ -90,6 +91,7 @@ export default function AdminVerificationPage() {
           userId: row.id,
           verificationStatus,
           verificationReviewNotes: notes[row.id] || '',
+          rejectReason: verificationStatus === 'rejected' ? notes[row.id] || '' : '',
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -108,7 +110,7 @@ export default function AdminVerificationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline text-2xl">Verification Review (Admin)</CardTitle>
-            <CardDescription>Review uploaded ID front + selfie and update verification status.</CardDescription>
+            <CardDescription>Manual review queue for uploaded ID front + selfie.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -116,7 +118,6 @@ export default function AdminVerificationPage() {
               <Button size="sm" variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button>
               <Button size="sm" variant={filter === 'pending' ? 'default' : 'outline'} onClick={() => setFilter('pending')}>Pending</Button>
               <Button size="sm" variant={filter === 'rejected' ? 'default' : 'outline'} onClick={() => setFilter('rejected')}>Rejected</Button>
-              <Button size="sm" variant={filter === 'verified' ? 'default' : 'outline'} onClick={() => setFilter('verified')}>Verified</Button>
             </div>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading queue...</p>
@@ -138,11 +139,37 @@ export default function AdminVerificationPage() {
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="rounded-lg border p-3">
                         <p className="text-xs text-muted-foreground mb-2">ID Front</p>
-                        {row.idFrontUrl ? <a className="text-primary underline" href={row.idFrontUrl} target="_blank" rel="noreferrer">Open ID file</a> : <span className="text-sm text-muted-foreground">Missing</span>}
+                        {row.idFrontUrl ? (
+                          <div className="space-y-3">
+                            <div className="overflow-hidden rounded-lg border bg-slate-50">
+                              <img
+                                src={row.idFrontUrl}
+                                alt={`ID front for ${row.name}`}
+                                className="h-48 w-full object-cover"
+                              />
+                            </div>
+                            <a className="text-primary underline" href={row.idFrontUrl} target="_blank" rel="noreferrer">Open ID file</a>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Missing</span>
+                        )}
                       </div>
                       <div className="rounded-lg border p-3">
                         <p className="text-xs text-muted-foreground mb-2">Selfie</p>
-                        {row.selfieUrl ? <a className="text-primary underline" href={row.selfieUrl} target="_blank" rel="noreferrer">Open selfie file</a> : <span className="text-sm text-muted-foreground">Missing</span>}
+                        {row.selfieUrl ? (
+                          <div className="space-y-3">
+                            <div className="overflow-hidden rounded-lg border bg-slate-50">
+                              <img
+                                src={row.selfieUrl}
+                                alt={`Selfie for ${row.name}`}
+                                className="h-48 w-full object-cover"
+                              />
+                            </div>
+                            <a className="text-primary underline" href={row.selfieUrl} target="_blank" rel="noreferrer">Open selfie file</a>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Missing</span>
+                        )}
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
@@ -159,6 +186,12 @@ export default function AdminVerificationPage() {
                       <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
                         <p className="font-medium">Current note</p>
                         <p className="mt-1 text-muted-foreground">{row.verificationReviewNotes}</p>
+                      </div>
+                    ) : null}
+                    {row.rejectReason ? (
+                      <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm">
+                        <p className="font-medium text-destructive">Reject reason</p>
+                        <p className="mt-1 text-muted-foreground">{row.rejectReason}</p>
                       </div>
                     ) : null}
                     <div className="mt-3">

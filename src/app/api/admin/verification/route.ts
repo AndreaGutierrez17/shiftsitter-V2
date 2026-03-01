@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     if ('error' in auth) return auth.error;
 
     const db = adminDb();
-    const snap = await db.collection('users').limit(200).get();
+    const snap = await db.collection('users').get();
     const users = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u: any) => {
@@ -95,6 +95,36 @@ export async function PATCH(request: Request) {
           ? (body.rejectReason || body.verificationReviewNotes || '').slice(0, 280)
           : (body.verificationReviewNotes || '').slice(0, 280),
     });
+
+    if (body.verificationStatus === 'verified' || body.verificationStatus === 'rejected') {
+      const notificationId = `verification_${body.verificationStatus}_${body.userId}_${Date.now()}`;
+      await db
+        .collection('notifications')
+        .doc(body.userId)
+        .collection('items')
+        .doc(notificationId)
+        .set(
+          {
+            type: 'verification',
+            title: body.verificationStatus === 'verified' ? 'Verification Approved' : 'Verification Rejected',
+            body:
+              body.verificationStatus === 'verified'
+                ? 'Your account has been verified successfully.'
+                : 'Your account has been rejected. Please upload your documents again.',
+            href:
+              body.verificationStatus === 'verified'
+                ? `/families/profile/${body.userId}`
+                : '/families/profile/edit',
+            read: false,
+            readAt: null,
+            createdAt: new Date(),
+            data: {
+              verificationStatus: body.verificationStatus,
+            },
+          },
+          { merge: true }
+        );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

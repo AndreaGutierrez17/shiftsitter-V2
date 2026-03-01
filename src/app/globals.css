@@ -2658,6 +2658,21 @@ button {
   }
 }
 
+@media (min-width: 1024px){
+  .profile-hero-wrap{
+    align-items:center;
+  }
+
+  .profile-hero-main{
+    align-items:center;
+    gap:1.35rem;
+  }
+
+  .profile-hero-avatar{
+    align-self:center;
+  }
+}
+
 @media (max-width: 640px){
   .profile-hero-name{
     font-size:2.55rem !important;

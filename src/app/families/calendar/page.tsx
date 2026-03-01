@@ -77,10 +77,6 @@ export default function CalendarPage() {
   const [submittingReviewShiftId, setSubmittingReviewShiftId] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null | undefined>(undefined);
   const autoCompletedShiftIdsRef = useRef<Set<string>>(new Set());
-  const createStartTimeRef = useRef<HTMLInputElement | null>(null);
-  const createEndTimeRef = useRef<HTMLInputElement | null>(null);
-  const editStartTimeRef = useRef<HTMLInputElement | null>(null);
-  const editEndTimeRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<ShiftFormValues>({
     resolver: zodResolver(shiftProposalSchema),
@@ -702,24 +698,8 @@ export default function CalendarPage() {
                             <FormItem>
                               <FormLabel>Start</FormLabel>
                               <FormControl>
-                                <Input
-                                  type="time"
-                                  {...field}
-                                  ref={(node) => {
-                                    field.ref(node);
-                                    createStartTimeRef.current = node;
-                                  }}
-                                />
+                                <Input type="time" {...field} />
                               </FormControl>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={() => createStartTimeRef.current?.blur()}
-                              >
-                                Confirm start
-                              </Button>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -731,24 +711,8 @@ export default function CalendarPage() {
                             <FormItem>
                               <FormLabel>End</FormLabel>
                               <FormControl>
-                                <Input
-                                  type="time"
-                                  {...field}
-                                  ref={(node) => {
-                                    field.ref(node);
-                                    createEndTimeRef.current = node;
-                                  }}
-                                />
+                                <Input type="time" {...field} />
                               </FormControl>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={() => createEndTimeRef.current?.blur()}
-                              >
-                                Confirm end
-                              </Button>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -862,17 +826,7 @@ export default function CalendarPage() {
                           type="time"
                           value={editStartTime}
                           onChange={(e) => setEditStartTime(e.target.value)}
-                          ref={editStartTimeRef}
                         />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => editStartTimeRef.current?.blur()}
-                        >
-                          Confirm start
-                        </Button>
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-medium text-foreground">New end</label>
@@ -880,17 +834,7 @@ export default function CalendarPage() {
                           type="time"
                           value={editEndTime}
                           onChange={(e) => setEditEndTime(e.target.value)}
-                          ref={editEndTimeRef}
                         />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => editEndTimeRef.current?.blur()}
-                        >
-                          Confirm end
-                        </Button>
                       </div>
                     </div>
                   </div>

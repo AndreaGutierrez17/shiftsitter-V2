@@ -140,7 +140,7 @@ export default function ChatPage() {
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [showDetails, setShowDetails] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
   const [muted, setMuted] = useState(false);
   const [relatedShifts, setRelatedShifts] = useState<Shift[]>([]);
   const [fullProfiles, setFullProfiles] = useState<{ current: UserProfile | null; other: UserProfile | null }>({
@@ -259,6 +259,13 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth >= 641) {
+      setShowDetails(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!user || !conversationId || !conversation || isClosingConversation) return;
     const unreadForMe = Number(messageUnreadCounts[conversationId] || conversation.unreadCount?.[user.uid] || 0);
     if (unreadForMe <= 0) return;
@@ -348,8 +355,7 @@ export default function ChatPage() {
     secureAccessProfile &&
     (
       secureAccessProfile.isDemo ||
-      secureAccessProfile.verificationStatus === 'verified' ||
-      (secureAccessProfile.idFrontUrl && secureAccessProfile.selfieUrl)
+      secureAccessProfile.verificationStatus === 'verified'
     )
   );
 
@@ -648,7 +654,7 @@ export default function ChatPage() {
             <div className="w-full max-w-2xl rounded-2xl border bg-white p-8 text-center shadow-sm">
               <h2 className="font-headline text-2xl">Secure Messages Locked</h2>
               <p className="mt-3 text-muted-foreground">
-                Upload your ID front and selfie before entering chat. Verification activates automatically as soon as both files are uploaded.
+                Upload your ID front and selfie, then wait for manual admin approval before entering chat.
               </p>
               <div className="mt-5 flex items-center justify-center gap-3">
                 <Button onClick={() => router.push('/families/profile/edit')}>Go to Profile Edit</Button>
@@ -720,11 +726,11 @@ export default function ChatPage() {
       <div className="chat-shell chat-shell--workspace">
         {/* Header */}
         <div className="chat-head chat-head--workspace">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="chat-conversation-head">
             <Button
               variant="ghost"
               size="icon"
-              className="mr-1 ss-pill-btn-outline md:hidden"
+              className="chat-quick-back ss-pill-btn-outline md:hidden"
               onClick={handleBack}
             >
               <ArrowLeft className="h-5 w-5" />
@@ -734,8 +740,8 @@ export default function ChatPage() {
               <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <h2 className="font-semibold text-lg text-[var(--navy)] truncate">{otherUserProfile.name}</h2>
-              <p className="text-xs text-muted-foreground">Secure chat</p>
+              <h2 className="chat-thread-name">{otherUserProfile.name}</h2>
+              <p className="chat-thread-subtitle">Secure chat</p>
             </div>
           </div>
           <div className="chat-toolbar">
@@ -785,7 +791,7 @@ export default function ChatPage() {
         <div className="chat-messages chat-messages--workspace">
           {messages.length === 0 && (
               <div className="text-center my-4">
-                  <Button variant="outline" className="ss-pill-btn-outline" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
+                  <Button variant="outline" className="ss-pill-btn-outline chat-empty-cta" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
                       <Sparkles className="mr-2 h-4 w-4 text-primary" />
                       Need help starting the care conversation?
                   </Button>
@@ -861,13 +867,13 @@ export default function ChatPage() {
               type="button"
               size="icon"
               variant="outline"
-              className="ss-pill-btn-outline"
+              className="ss-pill-btn-outline chat-assist-btn"
               onClick={() => setIsChatAssistantOpen(true)}
               title="Ask ShiftSitter Assistant"
             >
               <Sparkles className="h-5 w-5" />
             </Button>
-            <Button type="submit" size="icon" className="ss-pill-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
+            <Button type="submit" size="icon" className="ss-pill-btn chat-send-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
               <Send className="h-5 w-5" />
             </Button>
           </form>

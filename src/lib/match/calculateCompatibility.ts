@@ -21,10 +21,29 @@ type NeedOfferShape = {
   ageRanges?: string[];
   extrasNeeded?: string[];
   extrasOffered?: string[];
-  specialNeeds?: { has?: boolean; notes?: string };
-  okWithSpecialNeeds?: boolean;
   zipHome?: string;
   zipWork?: string;
+};
+
+type AnswersShape = {
+  need_days?: string[];
+  need_shifts?: string[];
+  give_days?: string[];
+  give_shifts?: string[];
+  extras_need?: string[];
+  extras_offer?: string[];
+  smoke_free_required?: boolean;
+  smoke_free?: boolean;
+  pets_in_home?: PetsInHome;
+  okay_with_pets?: boolean;
+  setting_need?: SettingPreference;
+  setting_offer?: SettingPreference;
+  handoff_need?: HandoffPreference;
+  handoff_offer?: HandoffPreference;
+  travel_max_minutes?: number;
+  home_zip?: string;
+  work_zip?: string;
+  interests?: string[];
 };
 
 type MatchProfile = UserProfile & {
@@ -32,11 +51,6 @@ type MatchProfile = UserProfile & {
   shiftsNeeded?: string[];
   scheduleDays?: string[];
   scheduleShifts?: string[];
-  travelRadiusMiles?: number;
-  smokeFree?: boolean;
-  petsOk?: boolean;
-  specialNeedsOk?: boolean;
-  kidsCapacity?: number;
   handoffPreference?: HandoffPreference;
   settingPreference?: SettingPreference;
   maxTravelMinutes?: number;
@@ -49,21 +63,15 @@ type MatchProfile = UserProfile & {
   extrasOffered?: string[];
   need?: NeedOfferShape;
   offer?: NeedOfferShape;
-  latitude?: number;
-  longitude?: number;
-  city?: string;
   state?: string;
+  answers?: AnswersShape;
 };
 
 export const COMPATIBILITY_WEIGHTS = {
-  schedule: 0.25,
-  distance: 0.2,
-  safety: 0.15,
-  capacity: 0.1,
-  handoff: 0.1,
-  age: 0.1,
-  reciprocity: 0.05,
-  extras: 0.05,
+  location: 0.3,
+  availability: 0.3,
+  needsValues: 0.25,
+  preferences: 0.15,
 } as const;
 
 type DimensionKey = keyof typeof COMPATIBILITY_WEIGHTS;
@@ -71,9 +79,9 @@ type DimensionKey = keyof typeof COMPATIBILITY_WEIGHTS;
 type DetailedBreakdownItem = {
   label: string;
   key: DimensionKey;
-  score10: number;
+  score: number;
   weight: number;
-  normalizedContribution: number;
+  weightedContribution: number;
 };
 
 export type CompatibilityCalculationResult = {
@@ -83,6 +91,10 @@ export type CompatibilityCalculationResult = {
   distanceKm: number | null;
   estimatedTravelMinutes: number | null;
   breakdown: {
+    location: number;
+    availability: number;
+    needsValues: number;
+    preferences: number;
     schedule: number;
     distance: number;
     safety: number;
@@ -100,207 +112,168 @@ const DEFAULT_RESULT: CompatibilityCalculationResult = {
   hardFilterFailures: ['Missing profile data'],
   distanceKm: null,
   estimatedTravelMinutes: null,
-  breakdown: { schedule: 0, distance: 0, safety: 0, kids: 0, handoff: 0 },
-  dimensions10: {
+  breakdown: {
+    location: 0,
+    availability: 0,
+    needsValues: 0,
+    preferences: 0,
     schedule: 0,
     distance: 0,
     safety: 0,
-    capacity: 0,
+    kids: 0,
     handoff: 0,
-    age: 0,
-    reciprocity: 0,
-    extras: 0,
+  },
+  dimensions10: {
+    location: 0,
+    availability: 0,
+    needsValues: 0,
+    preferences: 0,
   },
   detailedBreakdown: [],
   strengths: [],
 };
 
-const SCHEDULE_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const SHIFT_LABELS: ShiftBlock[] = ['Early', 'Day', 'Evening', 'Night'];
-
-function clamp(num: number, min = 0, max = 10) {
+function clamp(num: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, num));
 }
 
 function normalizeList(values?: string[]) {
-  return (values || []).map((v) => String(v).trim()).filter(Boolean);
+  return (values || []).map((value) => String(value).trim()).filter(Boolean);
 }
 
-function setIntersectionCount(a: string[], b: string[]) {
-  const setB = new Set(b);
-  return a.filter((v) => setB.has(v)).length;
+function overlapPercent(a?: string[], b?: string[]) {
+  const left = normalizeList(a);
+  const right = normalizeList(b);
+  if (left.length === 0 && right.length === 0) return 60;
+  if (left.length === 0 || right.length === 0) return 45;
+
+  const rightSet = new Set(right);
+  const intersection = left.filter((value) => rightSet.has(value)).length;
+  const base = Math.max(left.length, right.length) || 1;
+  return clamp(Math.round((intersection / base) * 100));
 }
 
-function jaccardScore10(a: string[], b: string[]) {
-  if (a.length === 0 && b.length === 0) return 5;
-  if (a.length === 0 || b.length === 0) return 3;
-  const setA = new Set(a);
-  const setB = new Set(b);
-  let intersection = 0;
-  setA.forEach((value) => {
-    if (setB.has(value)) intersection += 1;
-  });
-  const union = new Set([...setA, ...setB]).size || 1;
-  return clamp(Math.round((intersection / union) * 10));
+function averagePercent(values: number[]) {
+  if (values.length === 0) return 0;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-function avg(values: number[]) {
-  return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+function normalizeState(value?: string) {
+  const state = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(state) ? state : state;
 }
 
-function parseAgeTokensFromText(text?: string) {
-  if (!text) return [] as number[];
-  return text
-    .split(/[,/; ]+/)
-    .map((v) => Number(v))
-    .filter((n) => Number.isFinite(n) && n >= 0);
-}
-
-function parseListFromText(text?: string) {
-  if (!text) return [] as string[];
-  return text
-    .split(/[\n,;|]+/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function inferStateCode(profile: MatchProfile) {
-  const directState = String(profile.state || '').trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(directState)) return directState;
-
-  const location = String(profile.location || '').trim();
-  const match = location.match(/,\s*([A-Za-z]{2})(?:\s+\d{5})?$/);
-  if (!match) return '';
-  return match[1].toUpperCase();
-}
-
-function parseAgeRange(range: string): [number, number] | null {
-  const cleaned = range.toLowerCase().trim();
-  if (!cleaned) return null;
-  if (/infant/.test(cleaned)) return [0, 2];
-  if (/toddler/.test(cleaned)) return [1, 4];
-  const plus = cleaned.match(/(\d+)\s*\+/);
-  if (plus) return [Number(plus[1]), 99];
-  const span = cleaned.match(/(\d+)\s*[-to]+\s*(\d+)/);
-  if (span) return [Number(span[1]), Number(span[2])];
-  const single = cleaned.match(/(\d+)/);
-  if (single) {
-    const n = Number(single[1]);
-    return [n, n];
-  }
-  return null;
-}
-
-function anyAgeFitsRange(ages: number[], ranges: string[]) {
-  if (ages.length === 0 || ranges.length === 0) return null;
-  const parsedRanges = ranges.map(parseAgeRange).filter((r): r is [number, number] => !!r);
-  if (parsedRanges.length === 0) return null;
-  let matches = 0;
-  ages.forEach((age) => {
-    if (parsedRanges.some(([min, max]) => age >= min && age <= max)) matches += 1;
-  });
-  return matches / ages.length;
+function sameState(a?: string, b?: string) {
+  const left = normalizeState(a);
+  const right = normalizeState(b);
+  if (!left || !right) return null;
+  return left === right;
 }
 
 function deriveNeed(profile: MatchProfile): NeedOfferShape {
-  const childrenAges = profile.childrenAges ?? parseAgeTokensFromText(profile.childrenAgesText);
+  const answers = profile.answers;
   return {
-    days: normalizeList(profile.need?.days ?? profile.daysNeeded ?? profile.scheduleDays),
-    shifts: normalizeList(profile.need?.shifts ?? profile.shiftsNeeded ?? profile.scheduleShifts),
+    days: normalizeList(answers?.need_days ?? profile.need?.days ?? profile.daysNeeded ?? profile.scheduleDays),
+    shifts: normalizeList(answers?.need_shifts ?? profile.need?.shifts ?? profile.shiftsNeeded ?? profile.scheduleShifts),
     childrenCount: profile.need?.childrenCount ?? profile.numberOfChildren ?? 0,
-    childrenAges: profile.need?.childrenAges ?? childrenAges,
+    childrenAges: profile.need?.childrenAges ?? profile.childrenAges,
     smokeFree: profile.need?.smokeFree ?? profile.smokeFree,
-    requireSmokeFree: profile.need?.requireSmokeFree ?? profile.smokeFree,
-    petsInHome: profile.need?.petsInHome ?? 'unknown',
-    okWithPets: profile.need?.okWithPets ?? profile.petsOk,
-    handoffPreference: profile.need?.handoffPreference ?? profile.handoffPreference ?? 'either',
-    maxTravelMinutes: profile.need?.maxTravelMinutes ?? profile.maxTravelMinutes,
-    settingPreference: profile.need?.settingPreference ?? profile.settingPreference ?? 'either',
-    zipHome: profile.need?.zipHome ?? profile.zip,
-    zipWork: profile.need?.zipWork,
-    extrasNeeded: profile.need?.extrasNeeded ?? [],
-    specialNeeds: profile.need?.specialNeeds ?? { has: false },
+    requireSmokeFree: answers?.smoke_free_required ?? profile.need?.requireSmokeFree ?? profile.smokeFree,
+    petsInHome: answers?.pets_in_home ?? profile.need?.petsInHome ?? 'unknown',
+    okWithPets: answers?.okay_with_pets ?? profile.need?.okWithPets ?? profile.petsOk,
+    handoffPreference: answers?.handoff_need ?? profile.need?.handoffPreference ?? profile.handoffPreference ?? 'either',
+    maxTravelMinutes: answers?.travel_max_minutes ?? profile.need?.maxTravelMinutes ?? profile.maxTravelMinutes,
+    settingPreference: answers?.setting_need ?? profile.need?.settingPreference ?? profile.settingPreference ?? 'either',
+    zipHome: answers?.home_zip ?? profile.need?.zipHome ?? profile.zipHome ?? profile.zip,
+    zipWork: answers?.work_zip ?? profile.need?.zipWork ?? profile.zipWork,
+    extrasNeeded: answers?.extras_need ?? profile.need?.extrasNeeded ?? profile.extrasNeeded ?? [],
   };
 }
 
 function deriveOffer(profile: MatchProfile): NeedOfferShape {
+  const answers = profile.answers;
   return {
-    days: normalizeList(profile.offer?.days ?? profile.daysNeeded ?? profile.scheduleDays),
-    shifts: normalizeList(profile.offer?.shifts ?? profile.shiftsNeeded ?? profile.scheduleShifts),
-    maxChildrenTotal: profile.offer?.maxChildrenTotal ?? profile.kidsCapacity ?? (profile.role === 'sitter' ? 2 : profile.numberOfChildren ?? 2),
-    ageRanges: profile.offer?.ageRanges ?? profile.ageRanges ?? [],
-    smokeFree: profile.offer?.smokeFree ?? profile.smokeFree,
-    okWithPets: profile.offer?.okWithPets ?? profile.petsOk,
-    handoffPreference: profile.offer?.handoffPreference ?? profile.handoffPreference ?? 'either',
-    maxTravelMinutes: profile.offer?.maxTravelMinutes ?? profile.maxTravelMinutes,
-    settingPreference: profile.offer?.settingPreference ?? profile.settingPreference ?? 'either',
-    zipHome: profile.offer?.zipHome ?? profile.zip,
-    zipWork: profile.offer?.zipWork,
-    extrasOffered: profile.offer?.extrasOffered ?? parseListFromText(profile.offerSummary),
-    okWithSpecialNeeds: profile.offer?.okWithSpecialNeeds ?? profile.specialNeedsOk,
+    days: normalizeList(answers?.give_days ?? profile.offer?.days ?? profile.daysNeeded ?? profile.scheduleDays),
+    shifts: normalizeList(answers?.give_shifts ?? profile.offer?.shifts ?? profile.shiftsNeeded ?? profile.scheduleShifts),
+    maxChildrenTotal: profile.offer?.maxChildrenTotal,
+    ageRanges: profile.offer?.ageRanges ?? profile.ageRanges,
+    smokeFree: answers?.smoke_free ?? profile.offer?.smokeFree ?? profile.smokeFree,
+    okWithPets: answers?.okay_with_pets ?? profile.offer?.okWithPets ?? profile.petsOk,
+    handoffPreference: answers?.handoff_offer ?? profile.offer?.handoffPreference ?? profile.handoffPreference ?? 'either',
+    maxTravelMinutes: answers?.travel_max_minutes ?? profile.offer?.maxTravelMinutes ?? profile.maxTravelMinutes,
+    settingPreference: answers?.setting_offer ?? profile.offer?.settingPreference ?? profile.settingPreference ?? 'either',
+    zipHome: answers?.home_zip ?? profile.offer?.zipHome ?? profile.zipHome ?? profile.zip,
+    zipWork: answers?.work_zip ?? profile.offer?.zipWork ?? profile.zipWork,
+    extrasOffered: answers?.extras_offer ?? profile.offer?.extrasOffered ?? profile.extrasOffered ?? [],
   };
 }
 
+function estimateTravel(currentUser: MatchProfile, candidate: MatchProfile, myNeed: NeedOfferShape, candidateOffer: NeedOfferShape) {
+  const zipA = myNeed.zipHome || myNeed.zipWork || currentUser.zip;
+  const zipB = candidateOffer.zipHome || candidateOffer.zipWork || candidate.zip;
+  const stateMatch = sameState(currentUser.state, candidate.state);
+
+  if (zipA && zipB && zipA === zipB) {
+    return { minutes: 10, distanceKm: 3, locationScore: 100 };
+  }
+  if (stateMatch === true) {
+    return { minutes: 25, distanceKm: 24, locationScore: zipA && zipB ? 72 : 60 };
+  }
+  if (stateMatch === false) {
+    return { minutes: 45, distanceKm: 80, locationScore: 25 };
+  }
+
+  if (zipA || zipB) {
+    return { minutes: 30, distanceKm: 32, locationScore: 45 };
+  }
+
+  return { minutes: null, distanceKm: null, locationScore: 45 };
+}
+
 function settingCompatible(needSetting?: SettingPreference, offerSetting?: SettingPreference) {
-  const a = needSetting ?? 'either';
-  const b = offerSetting ?? 'either';
-  if (a === 'either' || b === 'either') return true;
-  if (a === 'my_home' && b === 'their_home') return true;
-  if (a === 'their_home' && b === 'my_home') return true;
-  return a === b;
+  const need = needSetting ?? 'either';
+  const offer = offerSetting ?? 'either';
+  if (need === 'either' || offer === 'either') return true;
+  if (need === 'my_home' && offer === 'their_home') return true;
+  if (need === 'their_home' && offer === 'my_home') return true;
+  return need === offer;
 }
 
-function handoffCompatible(needHandoff?: HandoffPreference, offerHandoff?: HandoffPreference) {
-  const a = needHandoff ?? 'either';
-  const b = offerHandoff ?? 'either';
-  if (a === 'either' || b === 'either') return true;
-  return a === b;
+function smokeCompatibility(myNeed: NeedOfferShape, candidateOffer: NeedOfferShape) {
+  if (!myNeed.requireSmokeFree) return typeof candidateOffer.smokeFree === 'boolean' ? 80 : 70;
+  return candidateOffer.smokeFree === false ? 0 : 100;
 }
 
-function travelHardFilterAndScore10(currentUser: MatchProfile, candidate: MatchProfile, need: NeedOfferShape, offer: NeedOfferShape) {
-  const targetMinutes = need.maxTravelMinutes ?? 30;
-  let estimatedMinutes: number | null = null;
-  let estimatedMiles: number | null = null;
-  const currentState = inferStateCode(currentUser);
-  const candidateState = inferStateCode(candidate);
+function petsCompatibility(myNeed: NeedOfferShape, candidateNeed: NeedOfferShape) {
+  if (myNeed.okWithPets !== false) return 75;
+  const petsInHome = candidateNeed.petsInHome;
+  if (!petsInHome || petsInHome === 'none' || petsInHome === 'unknown') return 100;
+  return 0;
+}
 
-  const zipA = need.zipHome || need.zipWork || currentUser.zip;
-  const zipB = offer.zipHome || offer.zipWork || candidate.zip;
-  if (zipA && zipB) {
-    if (zipA === zipB) estimatedMinutes = 10;
-    else if (currentState && candidateState && currentState === candidateState) estimatedMinutes = 25;
-    else estimatedMinutes = 55;
-  } else if (currentState && candidateState) {
-    estimatedMinutes = currentState === candidateState ? 35 : 75;
-  }
+function settingCompatibility(myNeed: NeedOfferShape, candidateOffer: NeedOfferShape) {
+  return settingCompatible(myNeed.settingPreference, candidateOffer.settingPreference) ? 100 : 20;
+}
 
-  if (estimatedMiles == null && estimatedMinutes != null) {
-    estimatedMiles = estimatedMinutes / 2.2;
-  }
-  const distanceKm = estimatedMiles == null ? null : Math.max(1, Math.round(estimatedMiles * 1.60934));
+function travelCompatibility(estimatedMinutes: number | null, myNeed: NeedOfferShape, candidateOffer: NeedOfferShape) {
+  if (estimatedMinutes == null) return 70;
 
-  if (estimatedMinutes == null) {
-    return {
-      pass: true,
-      score10: 5,
-      reason: null as string | null,
-      estimatedMinutes: null,
-      distanceKm,
-    };
-  }
-  if (estimatedMinutes > targetMinutes) {
-    return {
-      pass: false,
-      score10: 0,
-      reason: 'Travel distance exceeds max travel time',
-      estimatedMinutes,
-      distanceKm,
-    };
-  }
+  const limits = [myNeed.maxTravelMinutes, candidateOffer.maxTravelMinutes].filter(
+    (value): value is number => typeof value === 'number' && value > 0
+  );
+  if (limits.length === 0) return 70;
 
-  const ratio = targetMinutes <= 0 ? 1 : estimatedMinutes / targetMinutes;
-  const score10 = clamp(Math.round((1 - ratio) * 8 + 2));
-  return { pass: true, score10, reason: null as string | null, estimatedMinutes, distanceKm };
+  const withinCount = limits.filter((limit) => estimatedMinutes <= limit).length;
+  if (withinCount === limits.length) return 100;
+  if (withinCount > 0) return 65;
+  return 25;
+}
+
+function strengthLabel(key: DimensionKey) {
+  if (key === 'location') return 'Location alignment';
+  if (key === 'availability') return 'Availability overlap';
+  if (key === 'needsValues') return 'Needs and values fit';
+  return 'Preference compatibility';
 }
 
 export function calculateCompatibility(
@@ -308,203 +281,111 @@ export function calculateCompatibility(
   candidate: MatchProfile | null | undefined
 ): CompatibilityCalculationResult {
   if (!currentUser || !candidate) return DEFAULT_RESULT;
-  if (currentUser.isDemo || candidate.isDemo) {
-    return {
-      totalScore: 96,
-      hardFilterPassed: true,
-      hardFilterFailures: [],
-      distanceKm: 8,
-      estimatedTravelMinutes: 12,
-      breakdown: {
-        schedule: 95,
-        distance: 90,
-        safety: 95,
-        kids: 95,
-        handoff: 95,
-      },
-      dimensions10: {
-        schedule: 10,
-        distance: 9,
-        safety: 10,
-        capacity: 10,
-        handoff: 10,
-        age: 9,
-        reciprocity: 9,
-        extras: 9,
-      },
-      detailedBreakdown: [
-        { key: 'schedule', label: 'Schedule overlap', score10: 10, weight: COMPATIBILITY_WEIGHTS.schedule, normalizedContribution: 25 },
-        { key: 'distance', label: 'Distance / travel', score10: 9, weight: COMPATIBILITY_WEIGHTS.distance, normalizedContribution: 18 },
-        { key: 'safety', label: 'Safety alignment', score10: 10, weight: COMPATIBILITY_WEIGHTS.safety, normalizedContribution: 15 },
-        { key: 'capacity', label: 'Kids capacity', score10: 10, weight: COMPATIBILITY_WEIGHTS.capacity, normalizedContribution: 10 },
-        { key: 'handoff', label: 'Handoff / pickup', score10: 10, weight: COMPATIBILITY_WEIGHTS.handoff, normalizedContribution: 10 },
-        { key: 'age', label: 'Age fit', score10: 9, weight: COMPATIBILITY_WEIGHTS.age, normalizedContribution: 9 },
-        { key: 'reciprocity', label: 'Reciprocity balance', score10: 9, weight: COMPATIBILITY_WEIGHTS.reciprocity, normalizedContribution: 4.5 },
-        { key: 'extras', label: 'Extras fit', score10: 9, weight: COMPATIBILITY_WEIGHTS.extras, normalizedContribution: 4.5 },
-      ],
-      strengths: ['Great shift overlap', 'Safety aligned', 'Balanced exchange potential'],
-    };
-  }
 
   const myNeed = deriveNeed(currentUser);
   const myOffer = deriveOffer(currentUser);
   const candidateNeed = deriveNeed(candidate);
   const candidateOffer = deriveOffer(candidate);
 
-  const hardFilterFailures: string[] = [];
+  const travelEstimate = estimateTravel(currentUser, candidate, myNeed, candidateOffer);
 
-  const scheduleDaysA = normalizeList(myNeed.days);
-  const scheduleShiftsA = normalizeList(myNeed.shifts);
-  const scheduleDaysB = normalizeList(candidateOffer.days);
-  const scheduleShiftsB = normalizeList(candidateOffer.shifts);
+  const forwardDayOverlap = overlapPercent(myNeed.days, candidateOffer.days);
+  const forwardShiftOverlap = overlapPercent(myNeed.shifts, candidateOffer.shifts);
+  const reverseDayOverlap = overlapPercent(candidateNeed.days, myOffer.days);
+  const reverseShiftOverlap = overlapPercent(candidateNeed.shifts, myOffer.shifts);
 
-  const dayOverlapCount = setIntersectionCount(scheduleDaysA, scheduleDaysB);
-  const shiftOverlapCount = setIntersectionCount(scheduleShiftsA, scheduleShiftsB);
+  const availabilityScore = averagePercent([
+    averagePercent([forwardDayOverlap, forwardShiftOverlap]),
+    averagePercent([reverseDayOverlap, reverseShiftOverlap]),
+  ]);
 
-  if (scheduleDaysA.length && scheduleDaysB.length && dayOverlapCount < 1) {
-    hardFilterFailures.push('No overlapping days');
-  }
-  if (scheduleShiftsA.length && scheduleShiftsB.length && shiftOverlapCount < 1) {
-    hardFilterFailures.push('No overlapping shift blocks');
-  }
+  const extrasForward = overlapPercent(myNeed.extrasNeeded, candidateOffer.extrasOffered);
+  const extrasReverse = overlapPercent(candidateNeed.extrasNeeded, myOffer.extrasOffered);
+  const valuesOverlap = overlapPercent(
+    currentUser.answers?.interests ?? currentUser.interests,
+    candidate.answers?.interests ?? candidate.interests
+  );
 
-  const travelCheck = travelHardFilterAndScore10(currentUser, candidate, myNeed, candidateOffer);
-  if (!travelCheck.pass) hardFilterFailures.push(travelCheck.reason!);
+  const needsValuesScore = averagePercent([extrasForward, extrasReverse, valuesOverlap]);
 
-  if (!handoffCompatible(myNeed.handoffPreference, candidateOffer.handoffPreference)) {
-    hardFilterFailures.push('Handoff preference mismatch');
-  }
+  const preferencesScore = averagePercent([
+    smokeCompatibility(myNeed, candidateOffer),
+    petsCompatibility(myNeed, candidateNeed),
+    settingCompatibility(myNeed, candidateOffer),
+    travelCompatibility(travelEstimate.minutes, myNeed, candidateOffer),
+  ]);
 
-  if (!settingCompatible(myNeed.settingPreference, candidateOffer.settingPreference)) {
-    hardFilterFailures.push('Setting preference mismatch');
-  }
+  const locationScore = travelEstimate.locationScore;
 
-  if (myNeed.requireSmokeFree && candidateOffer.smokeFree === false) {
-    hardFilterFailures.push('Smoke-free requirement mismatch');
-  }
+  const weightedLocation = locationScore * COMPATIBILITY_WEIGHTS.location;
+  const weightedAvailability = availabilityScore * COMPATIBILITY_WEIGHTS.availability;
+  const weightedNeedsValues = needsValuesScore * COMPATIBILITY_WEIGHTS.needsValues;
+  const weightedPreferences = preferencesScore * COMPATIBILITY_WEIGHTS.preferences;
 
-  if (myNeed.okWithPets === false && (candidateNeed.petsInHome && candidateNeed.petsInHome !== 'none' && candidateNeed.petsInHome !== 'unknown')) {
-    hardFilterFailures.push('Pet compatibility mismatch');
-  }
-
-  if (myNeed.specialNeeds?.has && candidateOffer.okWithSpecialNeeds === false) {
-    hardFilterFailures.push('Special-needs support mismatch');
-  }
-
-  const childrenCount = myNeed.childrenCount ?? 0;
-  const capacity = candidateOffer.maxChildrenTotal;
-  if (typeof capacity === 'number' && childrenCount > capacity) {
-    hardFilterFailures.push('Children count exceeds offered capacity');
-  }
-
-  const hardFilterPassed = hardFilterFailures.length === 0;
-
-  const scheduleFit10 = clamp(Math.round(avg([
-    jaccardScore10(scheduleDaysA, scheduleDaysB),
-    jaccardScore10(scheduleShiftsA, scheduleShiftsB),
-  ])));
-
-  const distanceFit10 = travelCheck.score10;
-
-  const safetySignals: number[] = [];
-  if (myNeed.requireSmokeFree) safetySignals.push(candidateOffer.smokeFree ? 10 : 0);
-  else if (typeof candidateOffer.smokeFree === 'boolean') safetySignals.push(candidateOffer.smokeFree ? 8 : 6);
-  if (myNeed.okWithPets === false) {
-    const noPets = !candidateNeed.petsInHome || candidateNeed.petsInHome === 'none' || candidateNeed.petsInHome === 'unknown';
-    safetySignals.push(noPets ? 10 : 0);
-  } else if (typeof candidateOffer.okWithPets === 'boolean') {
-    safetySignals.push(candidateOffer.okWithPets ? 8 : 5);
-  }
-  if (myNeed.specialNeeds?.has) {
-    safetySignals.push(candidateOffer.okWithSpecialNeeds ? 10 : 0);
-  }
-  const safetyFit10 = clamp(Math.round(safetySignals.length ? avg(safetySignals) : 6));
-
-  let capacityFit10 = 6;
-  if (typeof capacity === 'number') {
-    if (childrenCount <= 0) capacityFit10 = 8;
-    else if (capacity >= childrenCount) {
-      capacityFit10 = clamp(Math.round(8 + Math.min(2, (capacity - childrenCount) * 0.5)));
-    } else {
-      capacityFit10 = 0;
-    }
-  }
-
-  const handoffFit10 = handoffCompatible(myNeed.handoffPreference, candidateOffer.handoffPreference)
-    ? ((myNeed.handoffPreference === 'either' || candidateOffer.handoffPreference === 'either') ? 8 : 10)
-    : 0;
-
-  const ageMatchRatio = anyAgeFitsRange(myNeed.childrenAges || [], candidateOffer.ageRanges || []);
-  const ageFit10 = ageMatchRatio == null ? 5 : clamp(Math.round(ageMatchRatio * 10));
-
-  const myExtrasNeeded = normalizeList(myNeed.extrasNeeded);
-  const candidateExtrasOffered = normalizeList(candidateOffer.extrasOffered);
-  const extrasFit10 = clamp(Math.round(jaccardScore10(myExtrasNeeded, candidateExtrasOffered)));
-
-  const reverseDayFit = jaccardScore10(normalizeList(candidateNeed.days), normalizeList(myOffer.days));
-  const reverseShiftFit = jaccardScore10(normalizeList(candidateNeed.shifts), normalizeList(myOffer.shifts));
-  const reciprocityBalanceFit10 = clamp(Math.round(avg([reverseDayFit, reverseShiftFit])));
-
-  const dimensions10: Record<DimensionKey, number> = {
-    schedule: scheduleFit10,
-    distance: distanceFit10,
-    safety: safetyFit10,
-    capacity: capacityFit10,
-    handoff: handoffFit10,
-    age: ageFit10,
-    reciprocity: reciprocityBalanceFit10,
-    extras: extrasFit10,
-  };
+  const totalScore = Math.round(
+    clamp(weightedLocation + weightedAvailability + weightedNeedsValues + weightedPreferences)
+  );
 
   const detailedBreakdown: DetailedBreakdownItem[] = [
-    { key: 'schedule', label: 'Schedule overlap', score10: dimensions10.schedule, weight: COMPATIBILITY_WEIGHTS.schedule, normalizedContribution: 0 },
-    { key: 'distance', label: 'Distance / travel', score10: dimensions10.distance, weight: COMPATIBILITY_WEIGHTS.distance, normalizedContribution: 0 },
-    { key: 'safety', label: 'Safety alignment', score10: dimensions10.safety, weight: COMPATIBILITY_WEIGHTS.safety, normalizedContribution: 0 },
-    { key: 'capacity', label: 'Kids capacity', score10: dimensions10.capacity, weight: COMPATIBILITY_WEIGHTS.capacity, normalizedContribution: 0 },
-    { key: 'handoff', label: 'Handoff / pickup', score10: dimensions10.handoff, weight: COMPATIBILITY_WEIGHTS.handoff, normalizedContribution: 0 },
-    { key: 'age', label: 'Age fit', score10: dimensions10.age, weight: COMPATIBILITY_WEIGHTS.age, normalizedContribution: 0 },
-    { key: 'reciprocity', label: 'Reciprocity balance', score10: dimensions10.reciprocity, weight: COMPATIBILITY_WEIGHTS.reciprocity, normalizedContribution: 0 },
-    { key: 'extras', label: 'Extras fit', score10: dimensions10.extras, weight: COMPATIBILITY_WEIGHTS.extras, normalizedContribution: 0 },
+    {
+      key: 'location',
+      label: 'Location',
+      score: locationScore,
+      weight: COMPATIBILITY_WEIGHTS.location,
+      weightedContribution: Math.round(weightedLocation * 100) / 100,
+    },
+    {
+      key: 'availability',
+      label: 'Availability',
+      score: availabilityScore,
+      weight: COMPATIBILITY_WEIGHTS.availability,
+      weightedContribution: Math.round(weightedAvailability * 100) / 100,
+    },
+    {
+      key: 'needsValues',
+      label: 'Needs & Values',
+      score: needsValuesScore,
+      weight: COMPATIBILITY_WEIGHTS.needsValues,
+      weightedContribution: Math.round(weightedNeedsValues * 100) / 100,
+    },
+    {
+      key: 'preferences',
+      label: 'Preferences',
+      score: preferencesScore,
+      weight: COMPATIBILITY_WEIGHTS.preferences,
+      weightedContribution: Math.round(weightedPreferences * 100) / 100,
+    },
   ];
 
-  let weightedTotal = 0;
-  for (const item of detailedBreakdown) {
-    const contribution = (item.score10 / 10) * item.weight * 100;
-    item.normalizedContribution = Math.round(contribution * 100) / 100;
-    weightedTotal += contribution;
-  }
-
-  const totalScore = hardFilterPassed ? Math.round(clamp(weightedTotal, 0, 100)) : 0;
-
   const strengths = detailedBreakdown
-    .filter((item) => item.score10 >= 7)
-    .sort((a, b) => b.normalizedContribution - a.normalizedContribution)
+    .filter((item) => item.score >= 60)
+    .sort((a, b) => b.weightedContribution - a.weightedContribution)
     .slice(0, 3)
-    .map((item) => {
-      if (item.key === 'schedule') return 'Great shift overlap';
-      if (item.key === 'distance') return 'Close proximity';
-      if (item.key === 'safety') return 'Safety aligned';
-      if (item.key === 'capacity') return 'Kids capacity fit';
-      if (item.key === 'handoff') return 'Pickup/handoff aligned';
-      if (item.key === 'age') return 'Good age-range fit';
-      if (item.key === 'reciprocity') return 'Balanced exchange potential';
-      return 'Helpful extras match';
-    });
+    .map((item) => strengthLabel(item.key));
 
   return {
     totalScore,
-    hardFilterPassed,
-    hardFilterFailures,
-    distanceKm: travelCheck.distanceKm,
-    estimatedTravelMinutes: travelCheck.estimatedMinutes,
+    hardFilterPassed: true,
+    hardFilterFailures: [],
+    distanceKm: travelEstimate.distanceKm,
+    estimatedTravelMinutes: travelEstimate.minutes,
     breakdown: {
-      schedule: Math.round((dimensions10.schedule / 10) * 100),
-      distance: Math.round((dimensions10.distance / 10) * 100),
-      safety: Math.round((dimensions10.safety / 10) * 100),
-      kids: Math.round((dimensions10.capacity / 10) * 100),
-      handoff: Math.round((dimensions10.handoff / 10) * 100),
+      location: locationScore,
+      availability: availabilityScore,
+      needsValues: needsValuesScore,
+      preferences: preferencesScore,
+      schedule: availabilityScore,
+      distance: locationScore,
+      safety: needsValuesScore,
+      kids: preferencesScore,
+      handoff: preferencesScore,
     },
-    dimensions10,
+    dimensions10: {
+      location: Math.round(locationScore / 10),
+      availability: Math.round(availabilityScore / 10),
+      needsValues: Math.round(needsValuesScore / 10),
+      preferences: Math.round(preferencesScore / 10),
+    },
     detailedBreakdown,
     strengths,
   };

@@ -155,7 +155,7 @@ export default function MessagesPage() {
                 </div>
                 <Link
                   href="/families/matches"
-                  className="inline-flex rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+                  className="messages-link-btn"
                 >
                   View My Matches
                 </Link>
@@ -171,7 +171,7 @@ export default function MessagesPage() {
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">To unlock messages, upload your ID front and selfie first.</p>
                   <p className="text-muted-foreground mt-1">Verification activates automatically as soon as both files are uploaded.</p>
-                  <Link href="/families/profile/edit" className="inline-flex mt-4 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent">
+                  <Link href="/families/profile/edit" className="messages-link-btn mt-4">
                     Go to Profile Edit
                   </Link>
                 </div>

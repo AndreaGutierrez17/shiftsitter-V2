@@ -16,7 +16,7 @@ import { Trash2, Upload, Loader2, FileText, AlertTriangle, BellRing, Users, Badg
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { auth, db, storage } from '@/lib/firebase/client';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { deleteUser } from 'firebase/auth';
 import { UserProfile } from '@/lib/types';
@@ -35,6 +35,9 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { AuthGuard } from '@/components/AuthGuard';
+
+const VERIFICATION_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
+const VERIFICATION_MAX_BYTES = 5 * 1024 * 1024;
 
 const profileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -210,7 +213,16 @@ export default function EditProfilePage() {
 
     const filePath = `${path}/${user.uid}/${Date.now()}_${fileToUpload.name}`;
     const storageRef = ref(storage, filePath);
-    const snapshot = await uploadBytes(storageRef, fileToUpload);
+    const metadata = path === 'verification_docs'
+      ? {
+          contentType: fileToUpload.type,
+          customMetadata: {
+            uploadedAt: new Date().toISOString(),
+            uploaderUid: user.uid,
+          },
+        }
+      : undefined;
+    const snapshot = await uploadBytes(storageRef, fileToUpload, metadata);
     return getDownloadURL(snapshot.ref);
   };
   
@@ -371,12 +383,12 @@ export default function EditProfilePage() {
     const nextSelfie = partial.selfieUrl ?? selfieUrl ?? undefined;
     const hasBoth = !!nextIdFront && !!nextSelfie;
 
-    const nextStatus: UserProfile['verificationStatus'] = hasBoth ? 'verified' : 'unverified';
+    const nextStatus: UserProfile['verificationStatus'] = hasBoth ? 'pending' : 'unverified';
     const payload: Record<string, unknown> = {
       ...partial,
       verificationStatus: nextStatus,
       verificationSubmittedAt: hasBoth ? new Date() : null,
-      verificationReviewedAt: hasBoth ? new Date() : null,
+      verificationReviewedAt: null,
     };
 
     await updateDoc(doc(db, 'users', user.uid), payload);
@@ -396,6 +408,12 @@ export default function EditProfilePage() {
     setLoading(true);
 
     try {
+      if (!VERIFICATION_ALLOWED_TYPES.has(file.type)) {
+        throw new Error('Only JPEG and PNG images are allowed for manual verification.');
+      }
+      if (file.size > VERIFICATION_MAX_BYTES) {
+        throw new Error('Verification images must be 5MB or smaller.');
+      }
       const url = await handleFileUpload(file, 'verification_docs');
       if (kind === 'idFront') {
         await upsertVerificationAfterUpload({ idFrontUrl: url });
@@ -404,7 +422,7 @@ export default function EditProfilePage() {
       }
       toast({
         title: kind === 'idFront' ? 'ID uploaded successfully' : 'Selfie uploaded successfully',
-        description: 'Verification file saved. Once both files are uploaded, verification is activated automatically.',
+        description: 'Verification file saved. Once both files are uploaded, your status moves to pending for manual admin review.',
       });
     } catch (error: any) {
       console.error('Verification upload error:', error);
@@ -423,18 +441,42 @@ export default function EditProfilePage() {
     if (!user) return;
     setIsSaving(true);
     
+    const interestsArray = values.interests.split(',').map(i => i.trim()).filter(Boolean);
     const updatedProfileData = {
       ...values,
-      interests: values.interests.split(',').map(i => i.trim()),
+      interests: interestsArray,
       numberOfChildren: values.numberOfChildren || null,
       childAge: values.childAge || null,
       childrenAgesText: values.childrenAgesText?.trim() || '',
       workplace: values.workplace || '',
       offerSummary: values.offerSummary?.trim() || '',
+      updatedAt: serverTimestamp(),
     };
       
     try {
-        await updateDoc(doc(db, 'users', user.uid), updatedProfileData);
+        const userRef = doc(db, 'users', user.uid);
+        const profileRef = doc(db, 'profiles', user.uid);
+        const currentPhoto = photos[0] || user.photoURL || null;
+        const batch = writeBatch(db);
+
+        batch.update(userRef, updatedProfileData);
+        batch.set(
+          profileRef,
+          {
+            uid: user.uid,
+            role: 'family',
+            familyRole: userRole || 'reciprocal',
+            displayName: values.name,
+            photoURL: currentPhoto,
+            photoURLs: photos,
+            location: values.location,
+            onboardingComplete: true,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        await batch.commit();
         toast({
           title: "Profile Updated",
           description: "Your changes have been saved successfully.",
@@ -664,7 +706,7 @@ export default function EditProfilePage() {
                             <div>
                               <h3 className="text-lg font-semibold text-foreground">Identity Verification (Required for Match)</h3>
                               <p className="text-sm text-muted-foreground mb-4">
-                                Upload one government ID (front only) and one selfie to unlock secure messaging and calendar access. After both files are uploaded, your verification activates automatically.
+                                Upload one government ID (front only) and one selfie to send your profile into manual admin review. Secure messaging and calendar access unlock only after approval.
                               </p>
                             </div>
                             <span
@@ -703,17 +745,43 @@ export default function EditProfilePage() {
                               ) : (
                                 <p className="text-sm text-muted-foreground mb-3">Required</p>
                               )}
-                              <label className={cn("mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
-                                {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                {isUploadingIdFront ? 'Uploading...' : (idFrontUrl ? 'Replace ID Front' : 'Upload ID Front')}
+                              <label className={cn("mt-2 inline-flex md:hidden items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
+                                {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                {isUploadingIdFront ? 'Uploading...' : 'Use Camera'}
                                 <input
                                   type="file"
                                   className="sr-only"
-                                  accept="image/*,.pdf,application/pdf"
+                                  accept="image/*"
+                                  capture="environment"
                                   onChange={(e) => handleVerificationUpload(e, 'idFront')}
                                   disabled={isUploadingIdFront}
                                 />
                               </label>
+                              <div className="mt-2 hidden md:flex flex-wrap gap-2">
+                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
+                                  {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                  {isUploadingIdFront ? 'Uploading...' : 'Use Camera'}
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={(e) => handleVerificationUpload(e, 'idFront')}
+                                    disabled={isUploadingIdFront}
+                                  />
+                                </label>
+                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
+                                  {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                  {isUploadingIdFront ? 'Uploading...' : 'Upload Document'}
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="image/*"
+                                    onChange={(e) => handleVerificationUpload(e, 'idFront')}
+                                    disabled={isUploadingIdFront}
+                                  />
+                                </label>
+                              </div>
                             </div>
 
                             <div className="rounded-lg border p-4">
@@ -731,22 +799,58 @@ export default function EditProfilePage() {
                               ) : (
                                 <p className="text-sm text-muted-foreground mb-3">Required</p>
                               )}
-                              <label className={cn("mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
-                                {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                {isUploadingSelfie ? 'Uploading...' : (selfieUrl ? 'Replace Selfie' : 'Upload Selfie')}
+                              <label className={cn("mt-2 inline-flex md:hidden items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
+                                {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                {isUploadingSelfie ? 'Uploading...' : 'Use Camera'}
                                 <input
                                   type="file"
                                   className="sr-only"
                                   accept="image/*"
+                                  capture="user"
                                   onChange={(e) => handleVerificationUpload(e, 'selfie')}
                                   disabled={isUploadingSelfie}
                                 />
                               </label>
+                              <div className="mt-2 hidden md:flex flex-wrap gap-2">
+                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
+                                  {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                  {isUploadingSelfie ? 'Uploading...' : 'Use Camera'}
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="image/*"
+                                    capture="user"
+                                    onChange={(e) => handleVerificationUpload(e, 'selfie')}
+                                    disabled={isUploadingSelfie}
+                                  />
+                                </label>
+                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
+                                  {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                                  {isUploadingSelfie ? 'Uploading...' : 'Upload Document'}
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="image/*"
+                                    onChange={(e) => handleVerificationUpload(e, 'selfie')}
+                                    disabled={isUploadingSelfie}
+                                  />
+                                </label>
+                              </div>
                             </div>
                           </div>
+                          {verificationStatus === 'rejected' ? (
+                            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                              Your verification was rejected. Re-upload your ID and selfie to send a fresh manual review request.
+                            </div>
+                          ) : null}
                           {verificationStatus === 'unverified' ? (
                             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                              Secure messages and calendar stay locked until both documents are uploaded.
+                              Secure messages and calendar stay locked until an admin reviews and approves your verification.
+                            </div>
+                          ) : null}
+                          {verificationStatus === 'pending' ? (
+                            <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
+                              Your documents are in pending review. An admin must approve them before messages and calendar unlock.
                             </div>
                           ) : null}
                         </div>

@@ -58,6 +58,12 @@ export default function AccountSetupPage() {
           isActive: true,
           profileComplete: false,
           accountType,
+          access: {
+            source: 'manual',
+            status: accountType === 'employer' ? 'active' : 'inactive',
+            updatedAt: serverTimestamp(),
+            notes: accountType === 'employer' ? 'Employer account created manually.' : 'Awaiting family activation.',
+          },
           createdAt: existingCreatedAt ?? serverTimestamp(),
           updatedAt: serverTimestamp(),
         },
