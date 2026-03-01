@@ -203,7 +203,16 @@ service cloud.firestore {
         && request.resource.data.fromUid == resource.data.fromUid
         && request.resource.data.toUid == resource.data.toUid
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.status in ['pending', 'accepted', 'declined'];
+        && (
+          (
+            resource.data.fromUid == request.auth.uid
+            && request.resource.data.status in ['pending', 'cancelled']
+          )
+          || (
+            resource.data.toUid == request.auth.uid
+            && request.resource.data.status in ['accepted', 'declined']
+          )
+        );
       allow delete: if false;
     }
 

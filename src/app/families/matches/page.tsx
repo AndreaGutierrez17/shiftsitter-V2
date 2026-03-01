@@ -140,8 +140,13 @@ export default function MyMatchesPage() {
           const pendingDocs = snapshot.docs
             .filter((row) => row.data().status === 'pending')
             .filter((row) => Boolean((row.data() as { fromUid?: string }).fromUid));
+          const uniquePendingDocs = Array.from(
+            new Map(
+              pendingDocs.map((row) => [String((row.data() as { fromUid?: string }).fromUid), row])
+            ).values()
+          );
           const requesters = await Promise.all(
-            pendingDocs.map(async (row) => {
+            uniquePendingDocs.map(async (row) => {
               const data = row.data() as { fromUid?: string };
               const fromUid = String(data.fromUid);
               const legacySnap = await getDoc(doc(db, 'users', fromUid));
@@ -178,9 +183,14 @@ export default function MyMatchesPage() {
           const pendingDocs = snapshot.docs
             .filter((row) => row.data().status === 'pending')
             .filter((row) => Boolean((row.data() as { toUid?: string }).toUid));
+          const uniquePendingDocs = Array.from(
+            new Map(
+              pendingDocs.map((row) => [String((row.data() as { toUid?: string }).toUid), row])
+            ).values()
+          );
 
           const requesters = await Promise.all(
-            pendingDocs.map(async (row) => {
+            uniquePendingDocs.map(async (row) => {
               const data = row.data() as { toUid?: string };
               const toUid = String(data.toUid);
               const legacySnap = await getDoc(doc(db, 'users', toUid));
@@ -398,6 +408,27 @@ export default function MyMatchesPage() {
     }
   };
 
+  const handleCancelSentRequest = async (requestRow: SentRequestRow) => {
+    if (!user || busyRowId) return;
+
+    const confirmed = window.confirm(`Cancel your request to ${requestRow.otherUser.name}?`);
+    if (!confirmed) return;
+
+    setBusyRowId(requestRow.id);
+    try {
+      await updateDoc(doc(db, 'match_requests', requestRow.id), {
+        status: 'cancelled',
+        updatedAt: serverTimestamp(),
+      });
+
+      setSentRequests((current) => current.filter((row) => row.id !== requestRow.id));
+    } catch (error) {
+      console.error('Could not cancel sent match request:', error);
+    } finally {
+      setBusyRowId(null);
+    }
+  };
+
   const handleDeclineRequest = async (requestRow: PendingRequestRow) => {
     if (!user || busyRowId) return;
 
@@ -506,6 +537,15 @@ export default function MyMatchesPage() {
                               onClick={() => router.push(`/families/profile/${requestRow.otherUser.id}`)}
                             >
                               View Profile
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="rounded-full px-3 py-2 text-sm font-medium text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                              onClick={() => handleCancelSentRequest(requestRow)}
+                              disabled={busyRowId === requestRow.id}
+                            >
+                              {busyRowId === requestRow.id ? 'Working...' : 'Cancel Request'}
                             </Button>
                           </div>
                         </div>

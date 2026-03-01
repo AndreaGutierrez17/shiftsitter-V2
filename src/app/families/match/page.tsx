@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, RotateCcw, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, X, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
@@ -18,7 +18,9 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -70,10 +72,7 @@ function normalizeFamilyRole(value: unknown): UserProfile['role'] {
   if (value === 'parent' || value === 'sitter' || value === 'reciprocal') return value;
   return 'reciprocal';
 }
-
-function normalizeFamilyState(value: unknown) {
-  return asString(value).trim().toUpperCase();
-}
+const COMPATIBILITY_WARNING_THRESHOLD = 50;
 
 function mergeCandidate(uid: string, publicProfile?: GenericDoc, legacyUser?: GenericDoc, answersDoc?: GenericDoc): UserProfile {
   const answers = ((answersDoc?.answers as GenericDoc | undefined) || {}) as GenericDoc;
@@ -173,7 +172,14 @@ const SwipeCard = ({
   const needsText = userProfile.needs || userProfile.workplace || 'Open to coordinate care schedules.';
   const { totalScore, breakdown, distanceKm, strengths } = calculateCompatibility(currentUserProfile ?? undefined, userProfile);
   const isVerified = userProfile.verificationStatus === 'verified';
-  const matchTier = totalScore >= 85 ? 'Ideal Match' : totalScore >= 65 ? 'Good Match' : 'Maybe Match';
+  const isCompatible = totalScore >= COMPATIBILITY_WARNING_THRESHOLD;
+  const matchTier = isCompatible
+    ? totalScore >= 85
+      ? 'Ideal Match'
+      : totalScore >= 65
+        ? 'Good Match'
+        : 'Compatible'
+    : 'Low Compatibility';
 
   useEffect(() => {
     setImageSrc(preferredPhoto);
@@ -266,13 +272,30 @@ const SwipeCard = ({
             )}
             <div className="mt-3 rounded-xl border border-white/20 bg-[rgba(28,33,44,.58)] p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-semibold text-white">
+                <div
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                    isCompatible
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}
+                >
                   {totalScore}% Match
                 </div>
-                <div className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/90">
+                <div
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                    isCompatible
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                  }`}
+                >
                   {matchTier}
                 </div>
               </div>
+              {!isCompatible ? (
+                <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  This person is not strongly compatible with your profile.
+                </p>
+              ) : null}
               <div className="space-y-2 text-xs text-white/90">
                 {[
                   ['Location', breakdown.location],
@@ -287,7 +310,7 @@ const SwipeCard = ({
                     </div>
                     <div className="h-1.5 rounded-full bg-white/10">
                       <div
-                        className="h-1.5 rounded-full bg-emerald-300"
+                        className={`h-1.5 rounded-full ${Number(value) >= COMPATIBILITY_WARNING_THRESHOLD ? 'bg-emerald-300' : 'bg-rose-300'}`}
                         style={{ width: barWidth(Number(value)) }}
                       />
                     </div>
@@ -315,7 +338,6 @@ export default function MatchPage() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingLikeId, setSavingLikeId] = useState<string | null>(null);
-  const [refreshNonce, setRefreshNonce] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [noProfilesMessage, setNoProfilesMessage] = useState<{ title: string; description: string } | null>(null);
@@ -341,17 +363,19 @@ export default function MatchPage() {
           currentAnswersSnap,
           profileCandidatesSnap,
           legacyCandidatesSnap,
-          outgoingRequestsSnap,
-          incomingRequestsSnap,
-          activeMatchesSnap,
+          matchesByUid1Snap,
+          matchesByUid2Snap,
+          legacyMatchesUsersSnap,
+          matchesByUserIdsSnap,
         ] = await Promise.all([
           getDoc(doc(db, 'profiles', user.uid)),
           getDoc(doc(db, 'users', user.uid)),
           getDoc(doc(db, 'user_answers', user.uid)),
           getDocs(query(collection(db, 'profiles'), where('role', '==', 'family'), where('onboardingComplete', '==', true), limit(80))),
-          getDocs(query(collection(db, 'users'), where('profileComplete', '==', true), limit(80))),
-          getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', user.uid))),
-          getDocs(query(collection(db, 'match_requests'), where('toUid', '==', user.uid))),
+          getDocs(query(collection(db, 'users'), limit(80))),
+          getDocs(query(collection(db, 'matches'), where('uid1', '==', user.uid))),
+          getDocs(query(collection(db, 'matches'), where('uid2', '==', user.uid))),
+          getDocs(query(collection(db, 'matches'), where('users', 'array-contains', user.uid))),
           getDocs(query(collection(db, 'matches'), where('userIds', 'array-contains', user.uid))),
         ]);
 
@@ -373,23 +397,6 @@ export default function MatchPage() {
           return;
         }
 
-        const requestHiddenIds = new Set<string>();
-        outgoingRequestsSnap.docs.forEach((row) => {
-          const data = row.data() as { toUid?: string; status?: string };
-          if (data.toUid && data.status !== 'declined') requestHiddenIds.add(data.toUid);
-        });
-        incomingRequestsSnap.docs.forEach((row) => {
-          const data = row.data() as { fromUid?: string; status?: string };
-          if (data.fromUid && data.status === 'pending') requestHiddenIds.add(data.fromUid);
-        });
-
-        const matchedIds = new Set<string>();
-        activeMatchesSnap.docs.forEach((row) => {
-          const data = row.data() as { userIds?: string[]; uids?: string[] };
-          const ids = Array.isArray(data.userIds) ? data.userIds : Array.isArray(data.uids) ? data.uids : [];
-          ids.filter((id) => id !== user.uid).forEach((id) => matchedIds.add(id));
-        });
-
         const legacyUsersById = new Map<string, GenericDoc>();
         legacyCandidatesSnap.docs.forEach((row) => {
           const data = row.data() as GenericDoc;
@@ -405,12 +412,40 @@ export default function MatchPage() {
           publicProfilesById.set(row.id, row.data() as GenericDoc);
         });
 
-        const candidateIds = Array.from(new Set([...publicProfilesById.keys(), ...legacyUsersById.keys()]))
-          .filter((candidateId) => candidateId !== user.uid)
-          .filter((candidateId) => !requestHiddenIds.has(candidateId))
-          .filter((candidateId) => !matchedIds.has(candidateId));
+        const matchDocs = [
+          ...matchesByUid1Snap.docs,
+          ...matchesByUid2Snap.docs,
+          ...legacyMatchesUsersSnap.docs,
+          ...matchesByUserIdsSnap.docs,
+        ];
 
-        const viewerState = normalizeFamilyState(currentMerged.state);
+        const matchedUserIds = new Set(
+          Array.from(new Map(matchDocs.map((row) => [row.id, row])).values())
+            .map((row) => {
+              const data = row.data() as {
+                uid1?: string;
+                uid2?: string;
+                users?: unknown[];
+                userIds?: unknown[];
+              };
+
+              if (typeof data.uid1 === 'string' || typeof data.uid2 === 'string') {
+                return data.uid1 === user.uid ? data.uid2 : data.uid1;
+              }
+
+              const members = Array.isArray(data.userIds)
+                ? data.userIds
+                : Array.isArray(data.users)
+                  ? data.users
+                  : [];
+
+              return members.map((member) => String(member)).find((member) => member && member !== user.uid);
+            })
+            .filter((candidateId): candidateId is string => Boolean(candidateId))
+        );
+
+        const candidateIds = Array.from(new Set([...publicProfilesById.keys(), ...legacyUsersById.keys()]))
+          .filter((candidateId) => candidateId !== user.uid && !matchedUserIds.has(candidateId));
 
         const mergedProfiles = candidateIds
           .map((candidateId) =>
@@ -421,13 +456,7 @@ export default function MatchPage() {
               undefined
             )
           )
-          .filter((profile) => profile.profileComplete)
           .filter((profile) => !profile.isDemo)
-          .filter((profile) => {
-            const candidateState = normalizeFamilyState(profile.state);
-            if (!viewerState || !candidateState) return true;
-            return viewerState === candidateState;
-          })
           .map((profile) => ({
             profile,
             compatibility: calculateCompatibility(currentMerged, profile),
@@ -445,7 +474,7 @@ export default function MatchPage() {
         if (mergedProfiles.length === 0) {
           setNoProfilesMessage({
             title: 'No family profiles available right now',
-            description: 'Try Refine Match Search after updating onboarding answers, or wait for more families to complete onboarding.',
+            description: 'There are no real family profiles available right now. Please check back later.',
           });
         }
       } catch (error: unknown) {
@@ -467,9 +496,13 @@ export default function MatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [refreshNonce, router, user]);
+  }, [router, user]);
 
   const currentProfile = useMemo(() => profiles[currentIndex] ?? null, [currentIndex, profiles]);
+  const currentCompatibility = useMemo(
+    () => calculateCompatibility(currentUserProfile ?? undefined, currentProfile ?? undefined),
+    [currentProfile, currentUserProfile]
+  );
 
   const removeCurrentProfile = () => {
     if (!currentProfile) return;
@@ -489,8 +522,108 @@ export default function MatchPage() {
   const handleLike = async (swipedUserId: string) => {
     if (!user || !currentProfile || currentProfile.id !== swipedUserId || savingLikeId) return;
 
+    if (currentCompatibility.totalScore < COMPATIBILITY_WARNING_THRESHOLD) {
+      const proceed = window.confirm(
+        `${currentProfile.name || 'This person'} is not compatible with your profile (${currentCompatibility.totalScore}%). Do you want to continue anyway?`
+      );
+      if (!proceed) return;
+    }
+
     setSavingLikeId(swipedUserId);
     try {
+      const userIds = [user.uid, swipedUserId].sort();
+      const matchId = `${userIds[0]}_${userIds[1]}`;
+      const [meSnap, otherSnap, matchSnap, outgoingRequestsSnap, incomingRequestsSnap] = await Promise.all([
+        getDoc(doc(db, 'users', user.uid)),
+        getDoc(doc(db, 'users', swipedUserId)),
+        getDoc(doc(db, 'matches', matchId)),
+        getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', user.uid))),
+        getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', swipedUserId))),
+      ]);
+
+      const existingOutgoing = outgoingRequestsSnap.docs.find((row) => {
+        const data = row.data() as { toUid?: string };
+        return data.toUid === swipedUserId;
+      });
+      const existingIncoming = incomingRequestsSnap.docs.find((row) => {
+        const data = row.data() as { toUid?: string; status?: string };
+        return data.toUid === user.uid && data.status === 'pending';
+      });
+
+      const meData = meSnap.exists() ? (meSnap.data() as Record<string, unknown>) : {};
+      const otherData = otherSnap.exists() ? (otherSnap.data() as Record<string, unknown>) : {};
+      const conversationPayload = {
+        userIds: [user.uid, swipedUserId],
+        createdAt: serverTimestamp(),
+        lastMessage: '',
+        lastMessageAt: serverTimestamp(),
+        lastMessageSenderId: '',
+        userProfiles: {
+          [user.uid]: {
+            name: (typeof meData.name === 'string' && meData.name) || currentUserProfile?.name || user.displayName || 'You',
+            photoURLs: Array.isArray(meData.photoURLs)
+              ? meData.photoURLs
+              : Array.isArray(currentUserProfile?.photoURLs)
+                ? currentUserProfile.photoURLs
+                : [],
+          },
+          [swipedUserId]: {
+            name: (typeof otherData.name === 'string' && otherData.name) || currentProfile.name || 'Family',
+            photoURLs: Array.isArray(otherData.photoURLs)
+              ? otherData.photoURLs
+              : Array.isArray(currentProfile.photoURLs)
+                ? currentProfile.photoURLs
+                : [],
+          },
+        },
+      };
+
+      if (matchSnap.exists()) {
+        await setDoc(doc(db, 'conversations', matchId), conversationPayload, { merge: true });
+        removeCurrentProfile();
+        router.push(`/families/messages/${matchId}`);
+        return;
+      }
+
+      if (existingIncoming) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'match_requests', existingIncoming.id), {
+          status: 'accepted',
+          updatedAt: serverTimestamp(),
+        });
+        batch.set(
+          doc(db, 'matches', matchId),
+          {
+            uids: userIds,
+            userIds,
+            uid1: userIds[0],
+            uid2: userIds[1],
+            createdAt: serverTimestamp(),
+            lastMessageAt: null,
+            status: 'confirmed',
+          },
+          { merge: true }
+        );
+        batch.set(doc(db, 'conversations', matchId), conversationPayload, { merge: true });
+        await batch.commit();
+
+        removeCurrentProfile();
+        router.push(`/families/messages/${matchId}`);
+        return;
+      }
+
+      if (existingOutgoing) {
+        const existingOutgoingData = existingOutgoing.data() as { status?: string };
+        if (existingOutgoingData.status !== 'pending') {
+          await updateDoc(doc(db, 'match_requests', existingOutgoing.id), {
+            status: 'pending',
+            updatedAt: serverTimestamp(),
+          });
+        }
+        removeCurrentProfile();
+        return;
+      }
+
       const requestRef = await addDoc(collection(db, 'match_requests'), {
         fromUid: user.uid,
         toUid: swipedUserId,
@@ -556,10 +689,6 @@ export default function MatchPage() {
     void handleLike(swipedUserId);
   };
 
-  const refreshProfiles = () => {
-    setRefreshNonce((value) => value + 1);
-  };
-
   const handleOpenProfile = (profileId: string) => {
     router.push(`/families/profile/${profileId}`);
   };
@@ -576,12 +705,6 @@ export default function MatchPage() {
     <AuthGuard>
       <div className="match-shell">
         <div className="match-inner">
-          <div className="mb-4 flex justify-end">
-            <button type="button" className="match-btn match-refine-btn" onClick={refreshProfiles}>
-              <RotateCcw className="h-4 w-4" />
-              Refine Match Search
-            </button>
-          </div>
           <div className="match-deck-wrap">
             <AnimatePresence>
               {currentProfile ? (
@@ -598,10 +721,6 @@ export default function MatchPage() {
                     <CardContent className="match-foot text-center">
                       <h3 className="match-title">{noProfilesMessage.title}</h3>
                       <p className="text-muted-foreground mt-2">{noProfilesMessage.description}</p>
-                      <button type="button" className="match-btn match-refine-btn mt-3" onClick={refreshProfiles}>
-                        <RotateCcw className="h-4 w-4" />
-                        Refine Match Search
-                      </button>
                     </CardContent>
                   </Card>
                 )
