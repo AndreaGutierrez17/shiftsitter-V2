@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Heart, X, RotateCcw, MapPin, ArrowRight, CalendarDays, Baby } from 'lucide-react';
+import { Heart, X, RotateCcw, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { UserProfile } from '@/lib/types';
@@ -614,8 +614,10 @@ export default function MatchPage() {
               className="match-nav-btn"
               onClick={handleBackProfile}
               disabled={loading || currentIndex <= 0 || Boolean(savingLikeId)}
+              title="Regresar"
+              aria-label="Regresar"
             >
-              Regresar
+              <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               type="button"
@@ -638,8 +640,10 @@ export default function MatchPage() {
               className="match-nav-btn"
               onClick={handleNextProfile}
               disabled={!currentProfile || loading || Boolean(savingLikeId) || currentIndex >= profiles.length - 1}
+              title="Siguiente"
+              aria-label="Siguiente"
             >
-              Siguiente
+              <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </div>

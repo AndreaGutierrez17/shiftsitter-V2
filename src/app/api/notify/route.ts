@@ -84,11 +84,6 @@ export async function POST(request: Request) {
       }
     });
 
-    const tokens = Array.from(tokenSet);
-    if (!tokens.length) {
-      return NextResponse.json({ ok: true, sent: 0 });
-    }
-
     const title =
       body.title ||
       (body.type === 'message'
@@ -113,6 +108,7 @@ export async function POST(request: Request) {
       body.link ||
       (body.conversationId ? `/families/messages/${body.conversationId}` : '/families/messages');
 
+    const tokens = Array.from(tokenSet);
     const timestampSeed = Date.now();
     await Promise.all(
       targetUserIds.map((uid, index) =>
@@ -136,6 +132,10 @@ export async function POST(request: Request) {
           )
       )
     );
+
+    if (!tokens.length) {
+      return NextResponse.json({ ok: true, sent: 0, stored: targetUserIds.length });
+    }
 
     const response = await adminMessaging().sendEachForMulticast({
       tokens,

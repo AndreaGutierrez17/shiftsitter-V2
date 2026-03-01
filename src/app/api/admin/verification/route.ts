@@ -1,40 +1,26 @@
 import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
+import { requireAdminBearer } from '@/lib/admin/server';
 
 export const runtime = 'nodejs';
 
-function getAllowedAdminEmails() {
-  const env = process.env.ADMIN_VERIFICATION_EMAILS || process.env.ADMIN_EMAILS || '';
-  return env
-    .split(',')
-    .map((v) => v.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function requireAdmin(request: Request) {
-  const authHeader = request.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!token) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  const decoded = await adminAuth().verifyIdToken(token);
-  const email = String(decoded.email || '').toLowerCase();
-  const allowlist = getAllowedAdminEmails();
-  if (!email || (allowlist.length > 0 && !allowlist.includes(email))) {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { uid: decoded.uid, email };
-}
-
 export async function GET(request: Request) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminBearer(request);
     if ('error' in auth) return auth.error;
 
     const db = adminDb();
     const snap = await db.collection('users').limit(200).get();
     const users = snap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((u: any) => u.idFrontUrl || u.selfieUrl || u.verificationStatus)
+      .filter((u: any) => {
+        const status = String(u.verificationStatus || 'unverified');
+        const hasIdFront = typeof u.idFrontUrl === 'string' && u.idFrontUrl.trim().length > 0;
+        const hasSelfie = typeof u.selfieUrl === 'string' && u.selfieUrl.trim().length > 0;
+        const hasVerificationDocs = hasIdFront || hasSelfie;
+        return hasVerificationDocs && ['pending', 'rejected', 'unverified'].includes(status);
+      })
       .map((u: any) => ({
         id: u.id,
         name: u.name || 'Unknown',
@@ -44,11 +30,17 @@ export async function GET(request: Request) {
         selfieUrl: u.selfieUrl || null,
         verificationSubmittedAt: u.verificationSubmittedAt || null,
         verificationReviewNotes: u.verificationReviewNotes || '',
+        rejectReason: u.rejectReason || '',
         verificationReviewedAt: u.verificationReviewedAt || null,
       }))
       .sort((a: any, b: any) => {
-        const rank = (s: string) => (s === 'pending' ? 0 : s === 'rejected' ? 1 : s === 'verified' ? 2 : 3);
-        return rank(a.verificationStatus) - rank(b.verificationStatus);
+        const rank = (s: string) => (s === 'pending' ? 0 : s === 'rejected' ? 1 : 2);
+        const aDocs = Number(Boolean(a.idFrontUrl)) + Number(Boolean(a.selfieUrl));
+        const bDocs = Number(Boolean(b.idFrontUrl)) + Number(Boolean(b.selfieUrl));
+        if (rank(a.verificationStatus) !== rank(b.verificationStatus)) {
+          return rank(a.verificationStatus) - rank(b.verificationStatus);
+        }
+        return bDocs - aDocs;
       });
 
     return NextResponse.json({ items: users });
@@ -60,13 +52,14 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminBearer(request);
     if ('error' in auth) return auth.error;
 
     const body = (await request.json()) as {
       userId?: string;
       verificationStatus?: 'pending' | 'verified' | 'rejected' | 'unverified';
       verificationReviewNotes?: string;
+      rejectReason?: string;
     };
     if (!body.userId || !body.verificationStatus) {
       return NextResponse.json({ error: 'Missing userId or verificationStatus' }, { status: 400 });
@@ -82,10 +75,26 @@ export async function PATCH(request: Request) {
       {
         verificationStatus: body.verificationStatus,
         verificationReviewNotes: (body.verificationReviewNotes || '').slice(0, 280),
+        rejectReason:
+          body.verificationStatus === 'rejected'
+            ? (body.rejectReason || body.verificationReviewNotes || '').slice(0, 280)
+            : '',
         verificationReviewedAt: isFinalReview ? FieldValue.serverTimestamp() : null,
       },
       { merge: true }
     );
+
+    await db.collection('verification_audit').add({
+      targetUid: body.userId,
+      action: body.verificationStatus === 'verified' ? 'approve' : body.verificationStatus === 'rejected' ? 'reject' : 'update',
+      byAdminUid: auth.uid,
+      byAdminEmail: auth.email,
+      at: FieldValue.serverTimestamp(),
+      reason:
+        body.verificationStatus === 'rejected'
+          ? (body.rejectReason || body.verificationReviewNotes || '').slice(0, 280)
+          : (body.verificationReviewNotes || '').slice(0, 280),
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

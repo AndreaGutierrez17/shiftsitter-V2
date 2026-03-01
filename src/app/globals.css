@@ -1055,9 +1055,9 @@ button {
     padding:.7rem 0 .2rem;
   }
   .match-nav-btn{
-    min-width:92px;
-    padding:.68rem .85rem;
-    font-size:.85rem;
+    width:52px;
+    height:52px;
+    min-width:52px;
   }
   .match-action-btn.pass,
   .match-action-btn.like{
@@ -1675,8 +1675,10 @@ button {
   border-radius:999px;
   background:#fff;
   color:var(--navy);
-  min-width:104px;
-  padding:.78rem 1rem;
+  width:58px;
+  height:58px;
+  min-width:58px;
+  padding:0;
   font-weight:700;
   box-shadow:0 10px 24px rgba(34,49,75,.09);
   border:1px solid rgba(34,49,75,.1);
