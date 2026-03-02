@@ -111,14 +111,27 @@ export async function POST(request: Request) {
     const tokens = Array.from(tokenSet);
     const timestampSeed = Date.now();
     await Promise.all(
-      targetUserIds.map((uid, index) =>
-        db
+      targetUserIds.map((uid, index) => {
+        if (process.env.NODE_ENV !== 'production') {
+          const event =
+            body.type === 'match'
+              ? 'accept'
+              : body.type === 'request' && title === 'Match Request Declined'
+                ? 'decline'
+                : body.type === 'request' && title === 'New Match Request'
+                  ? 'like'
+                  : body.type;
+          console.log('[notify]', { event, recipientUid: uid, actorUid: callerUid });
+        }
+
+        return db
           .collection('notifications')
           .doc(uid)
           .collection('items')
           .doc(body.notificationId || `${body.type}_${timestampSeed}_${index}`)
           .set(
             {
+              userId: uid,
               type: body.type,
               title,
               body: notifBody,
@@ -129,8 +142,8 @@ export async function POST(request: Request) {
               data: body.data || {},
             },
             { merge: true }
-          )
-      )
+          );
+      })
     );
 
     if (!tokens.length) {

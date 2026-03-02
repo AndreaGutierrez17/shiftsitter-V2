@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Heart, X, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,6 +25,7 @@ import {
 import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useRouter } from 'next/navigation';
+import MatchModal from '@/components/MatchModal';
 
 type FirestoreError = { code?: string; message?: string };
 
@@ -189,7 +190,6 @@ const SwipeCard = ({
 
   return (
     <motion.div
-      key={userProfile.id}
       drag="x"
       dragConstraints={{ left: 0, right: 0 }}
       onDragEnd={(e, { offset, velocity }) => {
@@ -341,6 +341,10 @@ export default function MatchPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [noProfilesMessage, setNoProfilesMessage] = useState<{ title: string; description: string } | null>(null);
+  const [refreshSeed, setRefreshSeed] = useState(0);
+  const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
+  const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
+  const [matchedConversationId, setMatchedConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -363,6 +367,8 @@ export default function MatchPage() {
           currentAnswersSnap,
           profileCandidatesSnap,
           legacyCandidatesSnap,
+          outgoingRequestsSnap,
+          incomingRequestsSnap,
           matchesByUid1Snap,
           matchesByUid2Snap,
           legacyMatchesUsersSnap,
@@ -373,6 +379,8 @@ export default function MatchPage() {
           getDoc(doc(db, 'user_answers', user.uid)),
           getDocs(query(collection(db, 'profiles'), where('role', '==', 'family'), where('onboardingComplete', '==', true), limit(80))),
           getDocs(query(collection(db, 'users'), limit(80))),
+          getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', user.uid))),
+          getDocs(query(collection(db, 'match_requests'), where('toUid', '==', user.uid))),
           getDocs(query(collection(db, 'matches'), where('uid1', '==', user.uid))),
           getDocs(query(collection(db, 'matches'), where('uid2', '==', user.uid))),
           getDocs(query(collection(db, 'matches'), where('users', 'array-contains', user.uid))),
@@ -444,8 +452,31 @@ export default function MatchPage() {
             .filter((candidateId): candidateId is string => Boolean(candidateId))
         );
 
+        const blockedRequestUserIds = new Set(
+          [
+            ...outgoingRequestsSnap.docs.map((row) => {
+              const data = row.data() as { toUid?: unknown };
+              return typeof data.toUid === 'string' ? data.toUid : '';
+            }),
+            ...incomingRequestsSnap.docs
+              .filter((row) => {
+                const data = row.data() as { status?: unknown };
+                return data.status !== 'pending';
+              })
+              .map((row) => {
+                const data = row.data() as { fromUid?: unknown };
+                return typeof data.fromUid === 'string' ? data.fromUid : '';
+              }),
+          ].filter((candidateId): candidateId is string => Boolean(candidateId))
+        );
+
         const candidateIds = Array.from(new Set([...publicProfilesById.keys(), ...legacyUsersById.keys()]))
-          .filter((candidateId) => candidateId !== user.uid && !matchedUserIds.has(candidateId));
+          .filter(
+            (candidateId) =>
+              candidateId !== user.uid &&
+              !matchedUserIds.has(candidateId) &&
+              !blockedRequestUserIds.has(candidateId)
+          );
 
         const mergedProfiles = candidateIds
           .map((candidateId) =>
@@ -496,7 +527,7 @@ export default function MatchPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, user]);
+  }, [refreshSeed, router, user]);
 
   const currentProfile = useMemo(() => profiles[currentIndex] ?? null, [currentIndex, profiles]);
   const currentCompatibility = useMemo(
@@ -504,14 +535,38 @@ export default function MatchPage() {
     [currentProfile, currentUserProfile]
   );
 
+  useEffect(() => {
+    if (!user || loading || savingLikeId || currentProfile) return;
+
+    const timeout = window.setTimeout(() => {
+      setRefreshSeed((previous) => previous + 1);
+    }, 15000);
+
+    return () => window.clearTimeout(timeout);
+  }, [currentProfile, loading, savingLikeId, user]);
+
   const removeCurrentProfile = () => {
     if (!currentProfile) return;
     const nextLength = profiles.length - 1;
     setProfiles((previous) => previous.filter((profile) => profile.id !== currentProfile.id));
+    if (nextLength <= 0) {
+      setNoProfilesMessage({
+        title: 'You reviewed all available profiles',
+        description: 'Refresh the feed to check for newly available matches.',
+      });
+    }
     setCurrentIndex((previous) => {
       if (nextLength <= 0) return 0;
       return previous >= nextLength ? nextLength - 1 : previous;
     });
+  };
+
+  const handleRefreshFeed = () => {
+    if (loading || savingLikeId) return;
+    setCurrentIndex(0);
+    setProfiles([]);
+    setNoProfilesMessage(null);
+    setRefreshSeed((previous) => previous + 1);
   };
 
   const handlePass = (swipedUserId: string) => {
@@ -533,10 +588,9 @@ export default function MatchPage() {
     try {
       const userIds = [user.uid, swipedUserId].sort();
       const matchId = `${userIds[0]}_${userIds[1]}`;
-      const [meSnap, otherSnap, matchSnap, outgoingRequestsSnap, incomingRequestsSnap] = await Promise.all([
+      const [meSnap, otherSnap, outgoingRequestsSnap, incomingRequestsSnap] = await Promise.all([
         getDoc(doc(db, 'users', user.uid)),
         getDoc(doc(db, 'users', swipedUserId)),
-        getDoc(doc(db, 'matches', matchId)),
         getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', user.uid))),
         getDocs(query(collection(db, 'match_requests'), where('fromUid', '==', swipedUserId))),
       ]);
@@ -578,14 +632,8 @@ export default function MatchPage() {
         },
       };
 
-      if (matchSnap.exists()) {
-        await setDoc(doc(db, 'conversations', matchId), conversationPayload, { merge: true });
-        removeCurrentProfile();
-        router.push(`/families/messages/${matchId}`);
-        return;
-      }
-
       if (existingIncoming) {
+        const matchedProfile = currentProfile;
         const batch = writeBatch(db);
         batch.update(doc(db, 'match_requests', existingIncoming.id), {
           status: 'accepted',
@@ -607,8 +655,35 @@ export default function MatchPage() {
         batch.set(doc(db, 'conversations', matchId), conversationPayload, { merge: true });
         await batch.commit();
 
+        try {
+          const idToken = await user.getIdToken();
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              type: 'match',
+              notificationId: `match_accepted_${matchId}_${swipedUserId}`,
+              targetUserIds: [swipedUserId],
+              title: 'Match Accepted',
+              body: `${currentUserProfile?.name || user.displayName || 'A family'} accepted your match request.`,
+              link: `/families/messages/${matchId}`,
+              data: {
+                matchId,
+                otherUserUid: user.uid,
+              },
+            }),
+          });
+        } catch (notifyError) {
+          console.error('Could not send match accepted notification:', notifyError);
+        }
+
         removeCurrentProfile();
-        router.push(`/families/messages/${matchId}`);
+        setMatchedUser(matchedProfile);
+        setMatchedConversationId(matchId);
+        setIsMatchModalOpen(true);
         return;
       }
 
@@ -706,26 +781,32 @@ export default function MatchPage() {
       <div className="match-shell">
         <div className="match-inner">
           <div className="match-deck-wrap">
-            <AnimatePresence>
-              {currentProfile ? (
-                <SwipeCard
-                  key={currentProfile.id}
-                  userProfile={currentProfile}
-                  currentUserProfile={currentUserProfile}
-                  onSwipe={handleSwipe}
-                  onOpenProfile={handleOpenProfile}
-                />
-              ) : (
-                !loading && noProfilesMessage && (
-                  <Card className="match-card w-full">
-                    <CardContent className="match-foot text-center">
-                      <h3 className="match-title">{noProfilesMessage.title}</h3>
-                      <p className="text-muted-foreground mt-2">{noProfilesMessage.description}</p>
-                    </CardContent>
-                  </Card>
-                )
-              )}
-            </AnimatePresence>
+            {currentProfile ? (
+              <SwipeCard
+                key={currentProfile.id}
+                userProfile={currentProfile}
+                currentUserProfile={currentUserProfile}
+                onSwipe={handleSwipe}
+                onOpenProfile={handleOpenProfile}
+              />
+            ) : (
+              !loading && noProfilesMessage && (
+                <Card className="match-card w-full">
+                  <CardContent className="match-foot text-center">
+                    <h3 className="match-title">{noProfilesMessage.title}</h3>
+                    <p className="text-muted-foreground mt-2">{noProfilesMessage.description}</p>
+                    <button
+                      type="button"
+                      className="mt-4 inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
+                      onClick={handleRefreshFeed}
+                      disabled={loading || Boolean(savingLikeId)}
+                    >
+                      Refresh Feed
+                    </button>
+                  </CardContent>
+                </Card>
+              )
+            )}
           </div>
           <div className="match-action-row">
             <button
@@ -766,6 +847,13 @@ export default function MatchPage() {
             </button>
           </div>
         </div>
+        <MatchModal
+          open={isMatchModalOpen}
+          onOpenChange={setIsMatchModalOpen}
+          currentUser={currentUserProfile}
+          matchedUser={matchedUser}
+          conversationId={matchedConversationId}
+        />
       </div>
     </AuthGuard>
   );

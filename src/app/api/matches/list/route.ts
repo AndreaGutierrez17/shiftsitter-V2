@@ -105,7 +105,12 @@ export async function GET(request: Request) {
           id: `${callerUid}_${otherUserId}`,
           otherUser: {
             id: otherUserId,
-            name: typeof userData.name === 'string' ? userData.name : 'Unknown user',
+            name:
+              typeof userData.name === 'string'
+                ? userData.name
+                : typeof userData.displayName === 'string'
+                  ? userData.displayName
+                  : 'Unknown user',
             location: typeof userData.location === 'string' ? userData.location : '',
             photoURLs: Array.isArray(userData.photoURLs) ? userData.photoURLs : [],
           },

@@ -76,6 +76,7 @@ function minimalProfile(uid: string, publicProfile?: Record<string, unknown>, le
     id: uid,
     name:
       (typeof publicProfile?.displayName === 'string' && publicProfile.displayName) ||
+      (typeof legacyUser?.displayName === 'string' && legacyUser.displayName) ||
       (typeof legacyUser?.name === 'string' && legacyUser.name) ||
       'Family',
     location,
@@ -149,14 +150,17 @@ export default function MyMatchesPage() {
             uniquePendingDocs.map(async (row) => {
               const data = row.data() as { fromUid?: string };
               const fromUid = String(data.fromUid);
-              const legacySnap = await getDoc(doc(db, 'users', fromUid));
+              const [legacySnap, publicSnap] = await Promise.all([
+                getDoc(doc(db, 'users', fromUid)),
+                getDoc(doc(db, 'profiles', fromUid)).catch(() => null),
+              ]);
 
               return {
                 id: row.id,
                 fromUid,
                 otherUser: minimalProfile(
                   fromUid,
-                  undefined,
+                  publicSnap?.exists() ? (publicSnap.data() as Record<string, unknown>) : undefined,
                   legacySnap.exists() ? (legacySnap.data() as Record<string, unknown>) : undefined
                 ),
               } satisfies PendingRequestRow;
@@ -193,14 +197,17 @@ export default function MyMatchesPage() {
             uniquePendingDocs.map(async (row) => {
               const data = row.data() as { toUid?: string };
               const toUid = String(data.toUid);
-              const legacySnap = await getDoc(doc(db, 'users', toUid));
+              const [legacySnap, publicSnap] = await Promise.all([
+                getDoc(doc(db, 'users', toUid)),
+                getDoc(doc(db, 'profiles', toUid)).catch(() => null),
+              ]);
 
               return {
                 id: row.id,
                 toUid,
                 otherUser: minimalProfile(
                   toUid,
-                  undefined,
+                  publicSnap?.exists() ? (publicSnap.data() as Record<string, unknown>) : undefined,
                   legacySnap.exists() ? (legacySnap.data() as Record<string, unknown>) : undefined
                 ),
               } satisfies SentRequestRow;
