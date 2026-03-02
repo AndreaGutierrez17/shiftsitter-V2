@@ -98,6 +98,16 @@ export default function CalendarPage() {
   };
 
   useEffect(() => {
+    if (modalOpen) return;
+
+    const timeout = window.setTimeout(() => {
+      resetProposalForm();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [modalOpen]);
+
+  useEffect(() => {
     if (!user) return;
     const unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
       setCurrentUserProfile(snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as UserProfile) : null);
@@ -641,10 +651,7 @@ export default function CalendarPage() {
               </div>
               <Dialog
                 open={modalOpen}
-                onOpenChange={(open) => {
-                  setModalOpen(open);
-                  if (!open) resetProposalForm();
-                }}
+                onOpenChange={setModalOpen}
               >
                 <DialogTrigger asChild>
                   <Button className="calendar-primary-btn" disabled={!canAccessSecureCalendar}>

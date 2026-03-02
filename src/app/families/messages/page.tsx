@@ -144,23 +144,31 @@ export default function MessagesPage() {
     <AuthGuard>
       <div className="ss-page-shell">
         <div className="messages-shell-wrap">
-          <Card className="messages-panel">
-            <CardHeader className="messages-head-block">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <CardTitle className="font-headline messages-title">Messages</CardTitle>
-                  <CardDescription className="messages-subtitle">
-                    {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Upload your documents before opening secure conversations.'}
-                  </CardDescription>
+            <Card className="messages-panel">
+              <CardHeader className="messages-head-block">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <CardTitle className="font-headline messages-title">Messages</CardTitle>
+                    <CardDescription className="messages-subtitle">
+                      {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Upload your documents before opening secure conversations.'}
+                    </CardDescription>
+                  </div>
                 </div>
-                <Link
-                  href="/families/matches"
-                  className="messages-link-btn"
-                >
-                  View My Matches
-                </Link>
-              </div>
-            </CardHeader>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Link
+                    href="/families/messages"
+                    className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-medium text-white"
+                  >
+                    Chats
+                  </Link>
+                  <Link
+                    href="/families/matches"
+                    className="inline-flex rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
+                  >
+                    Matches
+                  </Link>
+                </div>
+              </CardHeader>
             <CardContent className="pt-0 messages-scroll-area">
               {loadError && (
                 <div className="text-center py-4">

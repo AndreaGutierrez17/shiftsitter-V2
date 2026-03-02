@@ -343,7 +343,7 @@ export default function FamiliesPage() {
                  <button type="button" className="ss-btn w-100 auth-primary" onClick={handleLogin} disabled={busy}>{busy ? "Please wait…" : "Sign In"}</button>
                  <button
                    type="button"
-                   className="mt-3 text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-60"
+                   className="mt-3 block w-full py-1 text-left text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-60"
                    onClick={handleForgotPassword}
                    disabled={busy}
                  >

@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Send, Sparkles, MoreVertical, Paperclip, FileText, ImageIcon, CalendarDays, Info } from 'lucide-react';
+import { ArrowLeft, BellOff, CalendarDays, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -763,6 +763,7 @@ export default function ChatPage() {
                   View Details
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setMuted(v => !v)}>
+                  <BellOff className="mr-2 h-4 w-4" />
                   {muted ? 'Unmute Notifications' : 'Mute Notifications'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -771,6 +772,7 @@ export default function ChatPage() {
                   View Shifts
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleClearChat} disabled={isClearingChat}>
+                  <Eraser className="mr-2 h-4 w-4" />
                   {isClearingChat ? 'Clearing Chat...' : 'Clear Chat'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -779,6 +781,7 @@ export default function ChatPage() {
                   disabled={isEndingMatch}
                   className="text-destructive focus:text-destructive"
                 >
+                  <Unlink className="mr-2 h-4 w-4" />
                   {isEndingMatch ? 'Ending Match...' : 'End Match'}
                 </DropdownMenuItem>
               </DropdownMenuContent>

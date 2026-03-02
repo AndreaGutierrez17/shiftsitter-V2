@@ -504,14 +504,30 @@ export default function MyMatchesPage() {
       <div className="ss-page-shell">
         <div className="ss-page-inner">
           <Card className="ss-soft-card">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle className="font-headline">My Matches</CardTitle>
-                <CardDescription>Incoming requests must be accepted before chat is unlocked.</CardDescription>
+            <CardHeader className="space-y-4">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <CardTitle className="font-headline">My Matches</CardTitle>
+                  <CardDescription>Incoming requests must be accepted before chat is unlocked.</CardDescription>
+                </div>
+                <Link href="/families/messages" className="inline-flex rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent">
+                  Back to Messages
+                </Link>
               </div>
-              <Link href="/families/messages" className="inline-flex rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent">
-                Back to Messages
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/families/messages"
+                  className="inline-flex rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
+                >
+                  Chats
+                </Link>
+                <Link
+                  href="/families/matches"
+                  className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-medium text-white"
+                >
+                  Matches
+                </Link>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
