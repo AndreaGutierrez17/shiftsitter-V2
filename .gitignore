@@ -24,6 +24,7 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+firebase-debug.log*
 
 # local env files
 .env.local
@@ -37,5 +38,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local implementation notes
+IMPLEMENTATION_NOTES.md
+IMPLEMENTATION_VERIFICATION_PHASE1_PLAN.md
+IMPLEMENTATION_VERIFICATION_PHASE2_PLAN.md
 
 scripts/serviceAccountKey.json

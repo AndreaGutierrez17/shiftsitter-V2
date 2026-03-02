@@ -7,6 +7,8 @@ import {
   signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   signOut,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -228,6 +230,31 @@ export default function FamiliesPage() {
     }
   }
 
+  async function handleForgotPassword() {
+    setMsg(null);
+    if (!email) {
+      setMsg("Enter your email first, then tap Forgot password.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setMsg("Password reset email sent. Check your inbox.");
+    } catch (e: any) {
+      const code = e?.code as string | undefined;
+      if (code === "auth/invalid-email") {
+        setMsg("Please enter a valid email address.");
+      } else if (code === "auth/user-not-found") {
+        setMsg("No account found with this email.");
+      } else {
+        setMsg(e?.message ?? "We couldn’t send the reset email. Please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleSignup() {
     setMsg(null);
     setBusy(true);
@@ -238,7 +265,10 @@ export default function FamiliesPage() {
       if (!pwdRules.isValid) {
         throw new Error(passwordHelpText());
       }
-      await createUserWithEmailAndPassword(auth, email, password);
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      if (!credential.user.emailVerified) {
+        await sendEmailVerification(credential.user);
+      }
     } catch (e: any) {
       const code = e?.code as string | undefined;
       if (code === "auth/email-already-in-use") {
@@ -311,6 +341,14 @@ export default function FamiliesPage() {
                 </div>
                  {msg && <div className="auth-msg q-error">{msg}</div>}
                  <button type="button" className="ss-btn w-100 auth-primary" onClick={handleLogin} disabled={busy}>{busy ? "Please wait…" : "Sign In"}</button>
+                 <button
+                   type="button"
+                   className="mt-3 text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-60"
+                   onClick={handleForgotPassword}
+                   disabled={busy}
+                 >
+                   Forgot password?
+                 </button>
             </TabsContent>
             <TabsContent value="signup" className="pt-4">
                  <div className="auth-card-head">
