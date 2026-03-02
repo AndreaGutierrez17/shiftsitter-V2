@@ -669,7 +669,7 @@ export default function ChatPage() {
 
   return (
     <AuthGuard>
-      <div className="ss-page-shell">
+      <div className="ss-page-shell ss-page-shell--messages-page">
       <div className="messages-shell-wrap">
       <div className={cn('chat-workspace', showDetails && 'chat-workspace--details')}>
       <aside className="chat-sidebar">
@@ -801,6 +801,8 @@ export default function ChatPage() {
           {messages.map((message) => {
             const isSender = message.senderId === user?.uid;
             const profile = isSender ? currentUserProfile : otherUserProfile;
+            const isImageAttachment =
+              Boolean(message.attachmentUrl) && (message.attachmentType || '').startsWith('image/');
             return (
               <div key={message.id} className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}>
                 {!isSender && (
@@ -810,7 +812,17 @@ export default function ChatPage() {
                   </Avatar>
                 )}
                   <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
-                  {message.attachmentUrl && (
+                  {isImageAttachment ? (
+                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-image-link">
+                      <img
+                        src={message.attachmentUrl}
+                        alt={message.attachmentName || 'Chat attachment'}
+                        className="chat-image-preview"
+                        loading="lazy"
+                      />
+                    </a>
+                  ) : null}
+                  {message.attachmentUrl && !isImageAttachment && (
                     <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-attachment-link">
                       {(message.attachmentType || '').startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                       <span className="truncate">{message.attachmentName || 'Attachment'}</span>

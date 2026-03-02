@@ -244,6 +244,7 @@ export default async function AdminDashboardPage() {
     recentMessagesSnap,
     shiftsSnap,
     reviewsSnap,
+    accountDeletionsSnap,
     accessCodesSnap,
     redemptionsSnap,
   ] = await Promise.all([
@@ -254,6 +255,7 @@ export default async function AdminDashboardPage() {
     recentMessagesPromise,
     db.collection('shifts').get(),
     db.collection('reviews').get(),
+    db.collection('account_deletions').orderBy('deletedAt', 'desc').limit(200).get().catch(async () => db.collection('account_deletions').limit(200).get()),
     db.collection('access_codes').get(),
     db.collection('redemptions').orderBy('createdAt', 'desc').limit(20).get().catch(async () => db.collection('redemptions').limit(20).get()),
   ]);
@@ -263,6 +265,7 @@ export default async function AdminDashboardPage() {
   const conversations = conversationsSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
   const shifts = shiftsSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
   const reviews = reviewsSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
+  const accountDeletions = accountDeletionsSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
   const codes = accessCodesSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
   const redemptions = redemptionsSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
   const allMessageRows = recentMessagesSnap.docs.map((row) => ({ id: row.id, ...row.data() })) as GenericRow[];
@@ -371,6 +374,10 @@ export default async function AdminDashboardPage() {
   }));
 
   const userTrend = buildTrendBuckets(users, 'createdAt', 7);
+  const accountDeletionTrend = buildTrendBuckets(accountDeletions.map((row) => ({
+    ...row,
+    createdAt: row.deletedAt || row.createdAt || null,
+  })), 'createdAt', 7);
   const matchTrend = buildTrendBuckets(matches, 'createdAt', 7);
   const messageTrend = buildTrendBuckets(allMessageRows, 'createdAt', 7);
   const shiftTrend = buildTrendBuckets(shifts, 'createdAt', 7);
@@ -403,6 +410,20 @@ export default async function AdminDashboardPage() {
             { label: 'Pending', value: String(verification.pending) },
             { label: 'Rejected', value: String(verification.rejected) },
             { label: 'Unverified', value: String(verification.unverified) },
+          ]}
+        />
+
+        <AdminMetricCard
+          title="Deleted Accounts"
+          description="Self-service account deletions captured for audit."
+          seriesLabel="Deleted"
+          seriesColor="#dc2626"
+          points={accountDeletionTrend.map((point) => ({ label: point.label, value: point.total }))}
+          rows={[
+            { label: 'Total deleted records', value: String(accountDeletions.length) },
+            { label: 'Last 7 days', value: String(accountDeletions.filter((row) => toMillis(row.deletedAt || row.createdAt) >= sevenDaysAgo).length) },
+            { label: 'Families deleted', value: String(accountDeletions.filter((row) => String(row.accountType || row.role || '') === 'family' || ['parent', 'sitter', 'reciprocal'].includes(String(row.role || ''))).length) },
+            { label: 'Employers deleted', value: String(accountDeletions.filter((row) => String(row.accountType || '') === 'employer').length) },
           ]}
         />
 

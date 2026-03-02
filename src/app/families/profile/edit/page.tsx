@@ -16,9 +16,9 @@ import { Trash2, Upload, Loader2, FileText, AlertTriangle, BellRing, Users, Badg
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { auth, db, storage } from '@/lib/firebase/client';
-import { doc, getDoc, serverTimestamp, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { deleteUser } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { UserProfile } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { enableWebPush } from '@/lib/firebase/push';
@@ -498,19 +498,29 @@ export default function EditProfilePage() {
     setIsDeleting(true);
     
     try {
-      // Delete all user-related storage files
-      const photoDeletionPromises = photos.map(url => deleteObject(ref(storage, url)));
-      const cvDeletionPromise = cvUrl ? deleteObject(ref(storage, cvUrl)) : Promise.resolve();
-      await Promise.all([...photoDeletionPromises, cvDeletionPromise]);
-      
-      // Delete the user's Firestore document
-      await deleteDoc(doc(db, 'users', user.uid));
-      
-      // Delete the user from Firebase Authentication
       const currentUser = auth.currentUser;
-      if (currentUser && currentUser.uid === user.uid) {
-        await deleteUser(currentUser);
+      if (!currentUser || currentUser.uid !== user.uid) {
+        throw new Error('You must be signed in to delete your account.');
       }
+
+      await Promise.allSettled([
+        ...photos.map((url) => deleteObject(ref(storage, url))),
+        ...(cvUrl ? [deleteObject(ref(storage, cvUrl))] : []),
+      ]);
+
+      const idToken = await currentUser.getIdToken(true);
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+      const payload = await response.json().catch(() => ({} as { error?: string }));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Could not delete your account.');
+      }
+
+      await signOut(auth);
 
       toast({
         title: "Account Deleted",
@@ -521,14 +531,10 @@ export default function EditProfilePage() {
 
     } catch (error: any) {
       console.error("Error deleting account:", error);
-       let description = 'An unexpected error occurred. Please try again.';
-      if (error.code === 'auth/requires-recent-login') {
-        description = 'This is a sensitive operation. Please sign out and sign back in before trying to delete your account.';
-      }
       toast({
         variant: 'destructive',
         title: 'Error Deleting Account',
-        description,
+        description: error?.message || 'An unexpected error occurred. Please try again.',
         duration: 9000,
       });
     } finally {

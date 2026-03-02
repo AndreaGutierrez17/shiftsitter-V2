@@ -56,6 +56,7 @@ export default function Header() {
     readAt: unknown | null;
   }>>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
@@ -276,20 +277,42 @@ export default function Header() {
   };
 
   const markAllNotificationsRead = async () => {
-    if (!user || unreadCount === 0) return;
+    if (!user || unreadCount === 0 || isMarkingAllRead) return;
+
+    const unreadIds = notifications
+      .filter((notification) => !isNotificationRead(notification))
+      .map((notification) => notification.id);
+
+    if (unreadIds.length === 0) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const previousNotifications = notifications;
+    const optimisticNotifications = notifications.map((notification) =>
+      unreadIds.includes(notification.id)
+        ? { ...notification, read: true, readAt: new Date() }
+        : notification
+    );
+
+    setIsMarkingAllRead(true);
+    setNotifications(optimisticNotifications);
+    setUnreadCount(0);
+
     try {
       const batch = writeBatch(db);
-      notifications
-        .filter((notification) => !isNotificationRead(notification))
-        .forEach((notification) => {
-          batch.update(doc(db, "notifications", user.uid, "items", notification.id), {
+      unreadIds.forEach((id) => {
+        batch.update(doc(db, "notifications", user.uid, "items", id), {
             read: true,
             readAt: serverTimestamp(),
           });
-        });
+      });
       await batch.commit();
     } catch {
-      // silent
+      setNotifications(previousNotifications);
+      setUnreadCount(previousNotifications.filter((notification) => !isNotificationRead(notification)).length);
+    } finally {
+      setIsMarkingAllRead(false);
     }
   };
 
@@ -408,10 +431,10 @@ export default function Header() {
                         type="button"
                         className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
                         onClick={markAllNotificationsRead}
-                        disabled={unreadCount === 0}
+                        disabled={unreadCount === 0 || isMarkingAllRead}
                       >
                         <CheckCheck className="h-3.5 w-3.5" />
-                        Mark all read
+                        {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
                       </button>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
@@ -485,10 +508,10 @@ export default function Header() {
                     type="button"
                     className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
                     onClick={markAllNotificationsRead}
-                    disabled={unreadCount === 0}
+                    disabled={unreadCount === 0 || isMarkingAllRead}
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
-                    Mark all read
+                    {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
                   </button>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

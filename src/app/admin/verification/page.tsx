@@ -18,7 +18,11 @@ type VerificationRow = {
   verificationReviewedAt?: unknown;
   verificationReviewNotes?: string;
   rejectReason?: string;
+  verificationAttemptCount?: number;
+  rejectionCount?: number;
 };
+
+type VerificationFilter = 'all' | 'pending' | 'verified' | 'rejected' | 'resubmit';
 
 function formatTimestamp(value: unknown) {
   if (!value) return 'Not available';
@@ -44,7 +48,7 @@ export default function AdminVerificationPage() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<'all' | VerificationRow['verificationStatus']>('all');
+  const [filter, setFilter] = useState<VerificationFilter>('all');
 
   const loadQueue = async () => {
     if (!user) return;
@@ -70,7 +74,13 @@ export default function AdminVerificationPage() {
     }
   };
 
-  const filteredItems = items.filter((row) => filter === 'all' || row.verificationStatus === filter);
+  const filteredItems = items.filter((row) => {
+    if (filter === 'all') return row.verificationStatus !== 'verified';
+    if (filter === 'resubmit') {
+      return row.verificationStatus === 'rejected' || row.verificationStatus === 'unverified';
+    }
+    return row.verificationStatus === filter;
+  });
 
   useEffect(() => {
     loadQueue();
@@ -117,7 +127,9 @@ export default function AdminVerificationPage() {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>All</Button>
               <Button size="sm" variant={filter === 'pending' ? 'default' : 'outline'} onClick={() => setFilter('pending')}>Pending</Button>
+              <Button size="sm" variant={filter === 'verified' ? 'default' : 'outline'} onClick={() => setFilter('verified')}>Accepted</Button>
               <Button size="sm" variant={filter === 'rejected' ? 'default' : 'outline'} onClick={() => setFilter('rejected')}>Rejected</Button>
+              <Button size="sm" variant={filter === 'resubmit' ? 'default' : 'outline'} onClick={() => setFilter('resubmit')}>Need Reupload</Button>
             </div>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading queue...</p>
@@ -125,7 +137,9 @@ export default function AdminVerificationPage() {
               <p className="text-sm text-muted-foreground">No verification submissions match this filter.</p>
             ) : (
               <div className="space-y-4">
-                {filteredItems.map((row) => (
+                {filteredItems.map((row) => {
+                  const isVerified = row.verificationStatus === 'verified';
+                  return (
                   <div key={row.id} className="rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -182,6 +196,16 @@ export default function AdminVerificationPage() {
                         <p className="mt-1">{formatTimestamp(row.verificationReviewedAt)}</p>
                       </div>
                     </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div className="rounded-lg border p-3">
+                        <p className="font-medium text-foreground">Verification attempts</p>
+                        <p className="mt-1">{row.verificationAttemptCount || 1}</p>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="font-medium text-foreground">Previous rejections</p>
+                        <p className="mt-1">{row.rejectionCount || 0}</p>
+                      </div>
+                    </div>
                     {row.verificationReviewNotes ? (
                       <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
                         <p className="font-medium">Current note</p>
@@ -194,21 +218,29 @@ export default function AdminVerificationPage() {
                         <p className="mt-1 text-muted-foreground">{row.rejectReason}</p>
                       </div>
                     ) : null}
-                    <div className="mt-3">
-                      <Textarea
-                        value={notes[row.id] || ''}
-                        onChange={(e) => setNotes((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                        placeholder="Admin notes (optional)"
-                        maxLength={280}
-                      />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => updateStatus(row, 'verified')} disabled={savingId === row.id}>Approve (Verified)</Button>
-                      <Button size="sm" variant="destructive" onClick={() => updateStatus(row, 'rejected')} disabled={savingId === row.id}>Reject</Button>
-                      <Button size="sm" variant="secondary" onClick={() => updateStatus(row, 'pending')} disabled={savingId === row.id}>Reset to Pending</Button>
-                    </div>
+                    {!isVerified ? (
+                      <>
+                        <div className="mt-3">
+                          <Textarea
+                            value={notes[row.id] || ''}
+                            onChange={(e) => setNotes((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                            placeholder="Admin notes (optional)"
+                            maxLength={280}
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" onClick={() => updateStatus(row, 'verified')} disabled={savingId === row.id}>Approve (Verified)</Button>
+                          <Button size="sm" variant="destructive" onClick={() => updateStatus(row, 'rejected')} disabled={savingId === row.id}>Reject</Button>
+                          <Button size="sm" variant="secondary" onClick={() => updateStatus(row, 'pending')} disabled={savingId === row.id}>Reset to Pending</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                        This verification is already approved. This view is read-only.
+                      </div>
+                    )}
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </CardContent>

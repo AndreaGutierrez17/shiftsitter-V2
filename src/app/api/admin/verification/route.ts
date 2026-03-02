@@ -11,30 +11,50 @@ export async function GET(request: Request) {
     if ('error' in auth) return auth.error;
 
     const db = adminDb();
-    const snap = await db.collection('users').get();
-    const users = snap.docs
+    const [usersSnap, auditSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('verification_audit').get().catch(() => null),
+    ]);
+    const attemptsByUid = new Map<string, { attempts: number; rejections: number }>();
+
+    auditSnap?.docs.forEach((doc) => {
+      const data = doc.data() as { targetUid?: unknown; action?: unknown } | undefined;
+      const targetUid = String(data?.targetUid || '');
+      if (!targetUid) return;
+      const current = attemptsByUid.get(targetUid) || { attempts: 0, rejections: 0 };
+      current.attempts += 1;
+      if (String(data?.action || '') === 'reject') current.rejections += 1;
+      attemptsByUid.set(targetUid, current);
+    });
+
+    const users = usersSnap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((u: any) => {
         const status = String(u.verificationStatus || 'unverified');
         const hasIdFront = typeof u.idFrontUrl === 'string' && u.idFrontUrl.trim().length > 0;
         const hasSelfie = typeof u.selfieUrl === 'string' && u.selfieUrl.trim().length > 0;
         const hasVerificationDocs = hasIdFront || hasSelfie;
-        return hasVerificationDocs && ['pending', 'rejected', 'unverified'].includes(status);
+        return hasVerificationDocs && ['pending', 'rejected', 'unverified', 'verified'].includes(status);
       })
-      .map((u: any) => ({
-        id: u.id,
-        name: u.name || 'Unknown',
-        email: u.email || null,
-        verificationStatus: u.verificationStatus || 'unverified',
-        idFrontUrl: u.idFrontUrl || null,
-        selfieUrl: u.selfieUrl || null,
-        verificationSubmittedAt: u.verificationSubmittedAt || null,
-        verificationReviewNotes: u.verificationReviewNotes || '',
-        rejectReason: u.rejectReason || '',
-        verificationReviewedAt: u.verificationReviewedAt || null,
-      }))
+      .map((u: any) => {
+        const attempts = attemptsByUid.get(String(u.id || '')) || { attempts: 0, rejections: 0 };
+        return {
+          id: u.id,
+          name: u.name || 'Unknown',
+          email: u.email || null,
+          verificationStatus: u.verificationStatus || 'unverified',
+          idFrontUrl: u.idFrontUrl || null,
+          selfieUrl: u.selfieUrl || null,
+          verificationSubmittedAt: u.verificationSubmittedAt || null,
+          verificationReviewNotes: u.verificationReviewNotes || '',
+          rejectReason: u.rejectReason || '',
+          verificationReviewedAt: u.verificationReviewedAt || null,
+          verificationAttemptCount: Math.max(1, attempts.attempts),
+          rejectionCount: attempts.rejections,
+        };
+      })
       .sort((a: any, b: any) => {
-        const rank = (s: string) => (s === 'pending' ? 0 : s === 'rejected' ? 1 : 2);
+        const rank = (s: string) => (s === 'pending' ? 0 : s === 'rejected' ? 1 : s === 'unverified' ? 2 : 3);
         const aDocs = Number(Boolean(a.idFrontUrl)) + Number(Boolean(a.selfieUrl));
         const bDocs = Number(Boolean(b.idFrontUrl)) + Number(Boolean(b.selfieUrl));
         if (rank(a.verificationStatus) !== rank(b.verificationStatus)) {

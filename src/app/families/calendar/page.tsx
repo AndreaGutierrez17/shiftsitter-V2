@@ -88,6 +88,15 @@ export default function CalendarPage() {
     },
   });
 
+  const resetProposalForm = () => {
+    form.reset({
+      accepterId: '',
+      date: format(new Date(), 'yyyy-MM-dd'),
+      startTime: '',
+      endTime: '',
+    });
+  };
+
   useEffect(() => {
     if (!user) return;
     const unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
@@ -242,12 +251,6 @@ export default function CalendarPage() {
 
       toast({ title: 'Success', description: 'Shift proposal sent successfully!' });
       setModalOpen(false);
-      form.reset({
-        accepterId: '',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        startTime: '',
-        endTime: '',
-      });
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -636,7 +639,13 @@ export default function CalendarPage() {
                     : 'Request, review, and manage shift proposals with your matches.'}
                 </CardDescription>
               </div>
-              <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+              <Dialog
+                open={modalOpen}
+                onOpenChange={(open) => {
+                  setModalOpen(open);
+                  if (!open) resetProposalForm();
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button className="calendar-primary-btn" disabled={!canAccessSecureCalendar}>
                     <PlusCircle className="mr-2 h-4 w-4" />
@@ -660,10 +669,7 @@ export default function CalendarPage() {
                               <select
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={field.value}
-                                onChange={(e) => {
-                                  field.onChange(e.target.value);
-                                  setSelectedMatchFilterId(e.target.value);
-                                }}
+                                onChange={(e) => field.onChange(e.target.value)}
                               >
                                 <option value="">Select a match</option>
                                 {conversationOptions.map((option) => (

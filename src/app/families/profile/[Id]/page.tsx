@@ -16,6 +16,7 @@ import type { Review, UserProfile } from '@/lib/types';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useToast } from '@/hooks/use-toast';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 
 export default function ProfilePage() {
@@ -31,6 +32,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [isUploadingMainPhoto, setIsUploadingMainPhoto] = useState(false);
   const [recentReviews, setRecentReviews] = useState<Review[]>([]);
+  const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState<{ url: string; index: number } | null>(null);
 
   const isOwnProfile = user?.uid === profileId;
 
@@ -526,7 +528,14 @@ export default function ProfilePage() {
                     {gallerySlots.map((url, index) => (
                       <div key={`gallery-slot-${index}`} className="relative aspect-square overflow-hidden rounded-xl border bg-card">
                         {url ? (
-                          <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover" />
+                          <button
+                            type="button"
+                            className="h-full w-full cursor-zoom-in"
+                            onClick={() => setSelectedGalleryPhoto({ url, index })}
+                            aria-label={`Open photo ${index + 1}`}
+                          >
+                            <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover transition-transform duration-200 hover:scale-[1.02]" />
+                          </button>
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">No photo</div>
                         )}
@@ -546,6 +555,25 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+        <Dialog open={Boolean(selectedGalleryPhoto)} onOpenChange={(open) => !open && setSelectedGalleryPhoto(null)}>
+          <DialogContent className="w-[92vw] max-w-[720px] rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+            <DialogTitle className="pr-8 text-base">
+              {selectedGalleryPhoto ? `Photo ${selectedGalleryPhoto.index + 1} of 5` : 'Photo preview'}
+            </DialogTitle>
+            {selectedGalleryPhoto ? (
+              <div className="relative mt-2 h-[60vh] min-h-[280px] max-h-[520px] w-full overflow-hidden rounded-xl bg-slate-100">
+                <Image
+                  src={selectedGalleryPhoto.url}
+                  alt={`Photo ${selectedGalleryPhoto.index + 1}`}
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 640px) 92vw, 720px"
+                  priority
+                />
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
       </div>
     </AuthGuard>
   );
