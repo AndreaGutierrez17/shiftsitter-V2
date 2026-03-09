@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Heart, X, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 import { UserProfile } from '@/lib/types';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { db } from '@/lib/firebase/client';
@@ -26,6 +27,7 @@ import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useRouter } from 'next/navigation';
 import MatchModal from '@/components/MatchModal';
+import AppBackButton from '@/components/AppBackButton';
 
 type FirestoreError = { code?: string; message?: string };
 
@@ -158,12 +160,10 @@ const SwipeCard = ({
   userProfile,
   currentUserProfile,
   onSwipe,
-  onOpenProfile,
 }: {
   userProfile: UserProfile,
   currentUserProfile?: UserProfile | null,
   onSwipe: (id: string, direction: 'left' | 'right') => void,
-  onOpenProfile: (id: string) => void,
 }) => {
   const primaryPhoto = userProfile.photoURLs?.[0] || '';
   const fallbackPhoto = '/ShiftSitter.jpeg';
@@ -206,8 +206,7 @@ const SwipeCard = ({
       className="relative w-full"
     >
       <Card
-        className="relative w-full min-h-[820px] md:min-h-[900px] rounded-2xl overflow-hidden shadow-lg cursor-pointer"
-        onClick={() => onOpenProfile(userProfile.id)}
+        className="relative w-full min-h-[820px] md:min-h-[900px] rounded-2xl overflow-hidden shadow-lg"
       >
         <img
           src={imageSrc}
@@ -259,7 +258,7 @@ const SwipeCard = ({
                 <p><Baby size={16} /> <span>Child&apos;s Age</span> {userProfile.childAge} years old</p>
               )}
               {userProfile.availability && (
-                <p><CalendarDays size={16} /> <span>Availability</span> {userProfile.availability}</p>
+                <p><CalendarDays size={16} /> <span>Normally Available</span> {userProfile.availability}</p>
               )}
               <p className="match-hero-needs-row"><Heart size={16} /> <span>Needs</span> {needsText}</p>
             </div>
@@ -335,6 +334,7 @@ const SwipeCard = ({
 export default function MatchPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingLikeId, setSavingLikeId] = useState<string | null>(null);
@@ -504,8 +504,8 @@ export default function MatchPage() {
 
         if (mergedProfiles.length === 0) {
           setNoProfilesMessage({
-            title: 'No family profiles available right now',
-            description: 'There are no real family profiles available right now. Please check back later.',
+            title: 'No families available right now',
+            description: 'Refresh to check again or review your preferences to broaden your discovery feed.',
           });
         }
       } catch (error: unknown) {
@@ -552,7 +552,7 @@ export default function MatchPage() {
     if (nextLength <= 0) {
       setNoProfilesMessage({
         title: 'You reviewed all available profiles',
-        description: 'Refresh the feed to check for newly available matches.',
+        description: 'Refresh to check again or review your preferences to broaden your discovery feed.',
       });
     }
     setCurrentIndex((previous) => {
@@ -684,6 +684,10 @@ export default function MatchPage() {
         setMatchedUser(matchedProfile);
         setMatchedConversationId(matchId);
         setIsMatchModalOpen(true);
+        toast({
+          title: 'Match confirmed',
+          description: `You and ${matchedProfile.name || 'this family'} can now message each other.`,
+        });
         return;
       }
 
@@ -696,6 +700,10 @@ export default function MatchPage() {
           });
         }
         removeCurrentProfile();
+        toast({
+          title: 'Like saved',
+          description: `Your request to connect with ${currentProfile.name || 'this family'} is still pending.`,
+        });
         return;
       }
 
@@ -733,6 +741,10 @@ export default function MatchPage() {
       }
 
       removeCurrentProfile();
+      toast({
+        title: 'Like sent',
+        description: `Match request sent to ${currentProfile.name || 'this family'}.`,
+      });
     } catch (error: unknown) {
       const firestoreError = error as FirestoreError;
       console.error('Could not create match request:', firestoreError.code, firestoreError.message ?? error);
@@ -764,10 +776,6 @@ export default function MatchPage() {
     void handleLike(swipedUserId);
   };
 
-  const handleOpenProfile = (profileId: string) => {
-    router.push(`/families/profile/${profileId}`);
-  };
-
   if (loading || authLoading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-64px)]">
@@ -780,6 +788,13 @@ export default function MatchPage() {
     <AuthGuard>
       <div className="match-shell">
         <div className="match-inner">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Discovery</p>
+              <h1 className="font-headline text-3xl font-semibold text-foreground">Find a Sitter</h1>
+            </div>
+            <AppBackButton fallbackHref="/families" label="Back" />
+          </div>
           <div className="match-deck-wrap">
             {currentProfile ? (
               <SwipeCard
@@ -787,7 +802,6 @@ export default function MatchPage() {
                 userProfile={currentProfile}
                 currentUserProfile={currentUserProfile}
                 onSwipe={handleSwipe}
-                onOpenProfile={handleOpenProfile}
               />
             ) : (
               !loading && noProfilesMessage && (
@@ -795,14 +809,23 @@ export default function MatchPage() {
                   <CardContent className="match-foot text-center">
                     <h3 className="match-title">{noProfilesMessage.title}</h3>
                     <p className="text-muted-foreground mt-2">{noProfilesMessage.description}</p>
-                    <button
-                      type="button"
-                      className="mt-4 inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
-                      onClick={handleRefreshFeed}
-                      disabled={loading || Boolean(savingLikeId)}
-                    >
-                      Refresh Feed
-                    </button>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
+                        onClick={handleRefreshFeed}
+                        disabled={loading || Boolean(savingLikeId)}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
+                        onClick={() => router.push('/families/profile/edit')}
+                      >
+                        Review Preferences
+                      </button>
+                    </div>
                   </CardContent>
                 </Card>
               )

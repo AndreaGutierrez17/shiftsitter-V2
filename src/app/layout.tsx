@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Header from "@/components/Header";
+import AppFooter from "@/components/AppFooter";
 import { AuthProvider } from "@/hooks/useAuth";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <Header />
           <main className="ss-main">{children}</main>
+          <AppFooter />
           <Toaster />
         </AuthProvider>
       </body>

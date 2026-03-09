@@ -6,11 +6,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
 import { Loader2, PlusCircle, Star } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,13 +20,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
 import type { Conversation, Review, Shift, UserProfile } from '@/lib/types';
 import { shiftProposalSchema } from './schemas';
+import AppBackButton from '@/components/AppBackButton';
+import type { z } from 'zod';
 
-type ShiftFormValues = {
-  accepterId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-};
+type ShiftFormValues = z.input<typeof shiftProposalSchema>;
 
 const CANCELLATION_CUTOFF_HOURS = 4;
 const CANCELLATION_REASON_OPTIONS = [
@@ -50,7 +48,13 @@ function buildShiftDateTime(date: string, time: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+const TIME_OPTIONS = Array.from({ length: 18 }, (_, index) => {
+  const hour = index + 6;
+  return `${String(hour).padStart(2, '0')}:00`;
+});
+
 export default function CalendarPage() {
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -76,7 +80,9 @@ export default function CalendarPage() {
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; comment: string }>>({});
   const [submittingReviewShiftId, setSubmittingReviewShiftId] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [acceptConfirmShift, setAcceptConfirmShift] = useState<Shift | null>(null);
   const autoCompletedShiftIdsRef = useRef<Set<string>>(new Set());
+  const focusedShiftId = searchParams.get('shift') || '';
 
   const form = useForm<ShiftFormValues>({
     resolver: zodResolver(shiftProposalSchema),
@@ -85,6 +91,11 @@ export default function CalendarPage() {
       date: format(new Date(), 'yyyy-MM-dd'),
       startTime: '',
       endTime: '',
+      numberOfChildren: undefined,
+      careLocation: undefined,
+      extras: '',
+      primaryPhone: '',
+      emergencyContact: '',
     },
   });
 
@@ -94,18 +105,13 @@ export default function CalendarPage() {
       date: format(new Date(), 'yyyy-MM-dd'),
       startTime: '',
       endTime: '',
+      numberOfChildren: undefined,
+      careLocation: undefined,
+      extras: '',
+      primaryPhone: '',
+      emergencyContact: '',
     });
   };
-
-  useEffect(() => {
-    if (modalOpen) return;
-
-    const timeout = window.setTimeout(() => {
-      resetProposalForm();
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
-  }, [modalOpen]);
 
   useEffect(() => {
     if (!user) return;
@@ -189,6 +195,10 @@ export default function CalendarPage() {
     );
   }, [conversations, user?.uid]);
 
+  const handleAcceptClick = (shift: Shift) => {
+    setAcceptConfirmShift(shift);
+  };
+
   const handleRespond = async (shiftId: string, response: 'accepted' | 'rejected') => {
     setRespondingShiftId(shiftId);
     try {
@@ -245,7 +255,7 @@ export default function CalendarPage() {
       if (!startAt || !endAt || endAt.getTime() <= startAt.getTime()) {
         throw new Error('End time must be after the start time.');
       }
-      await addDoc(collection(db, 'shifts'), {
+      const shiftPayload = {
         proposerId: user.uid,
         accepterId: validated.data.accepterId,
         userIds: [user.uid, validated.data.accepterId],
@@ -257,7 +267,13 @@ export default function CalendarPage() {
         status: 'proposed',
         createdAt: serverTimestamp(),
         cancellationWindowHours: CANCELLATION_CUTOFF_HOURS,
-      });
+        ...(typeof validated.data.numberOfChildren === 'number' ? { numberOfChildren: validated.data.numberOfChildren } : {}),
+        ...(validated.data.careLocation ? { careLocation: validated.data.careLocation } : {}),
+        ...(validated.data.extras?.trim() ? { extras: validated.data.extras.trim().slice(0, 120) } : {}),
+        ...(validated.data.primaryPhone?.trim() ? { primaryPhone: validated.data.primaryPhone.trim().slice(0, 40) } : {}),
+        ...(validated.data.emergencyContact?.trim() ? { emergencyContact: validated.data.emergencyContact.trim().slice(0, 120) } : {}),
+      };
+      await addDoc(collection(db, 'shifts'), shiftPayload);
 
       toast({ title: 'Success', description: 'Shift proposal sent successfully!' });
       setModalOpen(false);
@@ -642,23 +658,32 @@ export default function CalendarPage() {
           <Card className="ss-soft-card">
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
+                {focusedShiftId ? <AppBackButton fallbackHref="/families/calendar" label="Back" className="mb-3" /> : null}
                 <CardTitle className="font-headline text-3xl">Shifts</CardTitle>
                 <CardDescription>
                   {selectedMatchName
                     ? `Showing shifts with ${selectedMatchName}.`
                     : 'Request, review, and manage shift proposals with your matches.'}
                 </CardDescription>
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  ShiftSitter facilitates connections between families but is not responsible for childcare agreements.
+                </p>
               </div>
+              <Button
+                className="calendar-primary-btn"
+                disabled={!canAccessSecureCalendar}
+                onClick={() => setModalOpen(true)}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Propose Shift
+              </Button>
               <Dialog
                 open={modalOpen}
-                onOpenChange={setModalOpen}
+                onOpenChange={(open) => {
+                  setModalOpen(open);
+                  if (!open) resetProposalForm();
+                }}
               >
-                <DialogTrigger asChild>
-                  <Button className="calendar-primary-btn" disabled={!canAccessSecureCalendar}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Propose Shift
-                  </Button>
-                </DialogTrigger>
                 <DialogContent className="border shadow-lg">
                   <DialogHeader>
                     <DialogTitle>Propose a shift</DialogTitle>
@@ -709,9 +734,20 @@ export default function CalendarPage() {
                           name="startTime"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Start</FormLabel>
+                              <FormLabel>Start time</FormLabel>
                               <FormControl>
-                                <Input type="time" {...field} />
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={field.value}
+                                  onChange={(e) => field.onChange(e.target.value)}
+                                >
+                                  <option value="">Select start time</option>
+                                  {TIME_OPTIONS.map((time) => (
+                                    <option key={`start-${time}`} value={time}>
+                                      {time}
+                                    </option>
+                                  ))}
+                                </select>
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -722,9 +758,102 @@ export default function CalendarPage() {
                           name="endTime"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>End</FormLabel>
+                              <FormLabel>End time</FormLabel>
                               <FormControl>
-                                <Input type="time" {...field} />
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={field.value}
+                                  onChange={(e) => field.onChange(e.target.value)}
+                                >
+                                  <option value="">Select end time</option>
+                                  {TIME_OPTIONS.map((time) => (
+                                    <option key={`end-${time}`} value={time}>
+                                      {time}
+                                    </option>
+                                  ))}
+                                </select>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="numberOfChildren"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Number of children</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={typeof field.value === 'number' ? field.value : ''}
+                                  onChange={(e) => field.onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="careLocation"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Care location</FormLabel>
+                              <FormControl>
+                                <select
+                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  value={field.value ?? ''}
+                                  onChange={(e) => field.onChange(e.target.value || undefined)}
+                                >
+                                  <option value="">Select location</option>
+                                  <option value="my_home">My home</option>
+                                  <option value="their_home">Their home</option>
+                                </select>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name="extras"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Extras</FormLabel>
+                            <FormControl>
+                              <Input {...field} value={field.value ?? ''} maxLength={120} placeholder="Meals, bedtime routine, school drop-off..." />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="primaryPhone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Primary phone (optional)</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ''} maxLength={40} placeholder="555-123-4567" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="emergencyContact"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Emergency contact (optional)</FormLabel>
+                              <FormControl>
+                                <Input {...field} value={field.value ?? ''} maxLength={120} placeholder="Name and phone" />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -922,8 +1051,12 @@ export default function CalendarPage() {
                   const editEligibility = canEditShift(shift);
                   const canRespondToSwap = shift.status === 'swap_proposed' && shift.swapDetails?.proposerId !== user?.uid;
                   const isWaitingOnSwapResponse = shift.status === 'swap_proposed' && shift.swapDetails?.proposerId === user?.uid;
+                  const isFocusedShift = focusedShiftId === shift.id;
                   return (
-                    <div key={shift.id} className="rounded-xl border border-border/90 bg-white p-4 shadow-sm">
+                    <div
+                      key={shift.id}
+                      className={`rounded-xl border bg-white p-4 shadow-sm ${isFocusedShift ? 'border-primary ring-2 ring-primary/20' : 'border-border/90'}`}
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="font-semibold">{format(parseISO(shift.date), 'EEEE, MMM d')}</p>
@@ -947,7 +1080,7 @@ export default function CalendarPage() {
                             type="button"
                             size="sm"
                             disabled={isThisUserResponding}
-                            onClick={() => handleRespond(shift.id, 'accepted')}
+                            onClick={() => void handleAcceptClick(shift)}
                           >
                             {isThisUserResponding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             Accept
@@ -995,6 +1128,23 @@ export default function CalendarPage() {
                           {!editEligibility.allowed ? (
                             <p className="text-xs text-muted-foreground">{editEligibility.reason}</p>
                           ) : null}
+                        </div>
+                      ) : null}
+                      {shift.status === 'accepted' && (shift.numberOfChildren || shift.careLocation || shift.extras) ? (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900">
+                          <p className="font-medium">Shift details</p>
+                          <div className="mt-2 space-y-1 text-sm text-slate-700">
+                            {typeof shift.numberOfChildren === 'number' ? <p>Children: {shift.numberOfChildren}</p> : null}
+                            {shift.careLocation ? <p>Care location: {shift.careLocation === 'my_home' ? 'My home' : 'Their home'}</p> : null}
+                            {shift.extras ? <p>Extras: {shift.extras}</p> : null}
+                          </div>
+                        </div>
+                      ) : null}
+                      {shift.status === 'accepted' && (shift.primaryPhone || shift.emergencyContact) ? (
+                        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                          <p className="font-medium">Accepted shift contacts</p>
+                          {shift.primaryPhone ? <p className="mt-1">Primary phone: {shift.primaryPhone}</p> : null}
+                          {shift.emergencyContact ? <p className="mt-1">Emergency contact: {shift.emergencyContact}</p> : null}
                         </div>
                       ) : null}
                       {shift.status === 'swap_proposed' && shift.swapDetails ? (
@@ -1085,6 +1235,33 @@ export default function CalendarPage() {
               )}
             </CardContent>
           </Card>
+          <Dialog open={Boolean(acceptConfirmShift)} onOpenChange={(open) => !open && setAcceptConfirmShift(null)}>
+            <DialogContent className="border shadow-lg">
+              <DialogHeader>
+                <DialogTitle>Accept this shift?</DialogTitle>
+                <DialogDescription>
+                  By accepting this shift you agree to provide the coverage requested to the best of your ability.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setAcceptConfirmShift(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={!acceptConfirmShift || respondingShiftId === acceptConfirmShift.id}
+                  onClick={() => {
+                    if (!acceptConfirmShift) return;
+                    void handleRespond(acceptConfirmShift.id, 'accepted');
+                    setAcceptConfirmShift(null);
+                  }}
+                >
+                  {acceptConfirmShift && respondingShiftId === acceptConfirmShift.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Confirm accept
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </AuthGuard>

@@ -5,6 +5,11 @@ export const shiftProposalSchema = z.object({
   date: z.string().min(1, { message: 'Date is required.' }),
   startTime: z.string().min(1, { message: 'Start time is required.' }),
   endTime: z.string().min(1, { message: 'End time is required.' }),
+  numberOfChildren: z.coerce.number().int().min(0).optional(),
+  careLocation: z.enum(['my_home', 'their_home']).optional(),
+  extras: z.string().max(120).optional(),
+  primaryPhone: z.string().max(40).optional(),
+  emergencyContact: z.string().max(120).optional(),
 }).refine(data => data.endTime > data.startTime, {
   message: 'End time must be after start time.',
   path: ['endTime'],

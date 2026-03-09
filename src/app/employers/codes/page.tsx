@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Timestamp, collection, doc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
+import { Timestamp, collection, doc, getDoc, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,10 +19,16 @@ type AccessCodeDoc = {
   createdAt?: Timestamp;
 };
 
+type RedeemedUserInfo = {
+  name: string;
+  email: string;
+};
+
 export default function EmployerCodesPage() {
   const guard = useRequireRole('employer');
   const { user } = useAuth();
   const [codes, setCodes] = useState<AccessCodeDoc[]>([]);
+  const [redeemedUsers, setRedeemedUsers] = useState<Record<string, RedeemedUserInfo>>({});
   const [quantity, setQuantity] = useState(25);
   const [expiryDays, setExpiryDays] = useState('');
   const [creating, setCreating] = useState(false);
@@ -51,6 +57,41 @@ export default function EmployerCodesPage() {
 
     return () => unsubscribe();
   }, [user]);
+
+  useEffect(() => {
+    const redeemedIds = Array.from(
+      new Set(codes.map((row) => row.redeemedBy).filter((value): value is string => Boolean(value)))
+    );
+
+    if (redeemedIds.length === 0) {
+      setRedeemedUsers({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const nextEntries = await Promise.all(
+        redeemedIds.map(async (uid) => {
+          try {
+            const snap = await getDoc(doc(db, 'users', uid));
+            const data = snap.exists() ? (snap.data() as { name?: string; email?: string }) : {};
+            return [uid, { name: data.name || 'Unknown user', email: data.email || 'No email' }] as const;
+          } catch {
+            return [uid, { name: 'Unknown user', email: 'No email' }] as const;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setRedeemedUsers(Object.fromEntries(nextEntries));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [codes]);
 
   const activeCount = useMemo(() => codes.filter((row) => row.status === 'active').length, [codes]);
   const redeemedCount = useMemo(() => codes.filter((row) => row.status === 'redeemed').length, [codes]);
@@ -122,7 +163,7 @@ export default function EmployerCodesPage() {
       <div className="ss-page-inner grid gap-5">
         <Card className="ss-soft-card">
           <CardHeader>
-            <CardTitle className="font-headline">Access Codes</CardTitle>
+            <CardTitle className="font-headline">Codes</CardTitle>
             <CardDescription>Create batches, track redemptions, and revoke access when needed.</CardDescription>
           </CardHeader>
           <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
@@ -185,13 +226,13 @@ export default function EmployerCodesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="min-w-[720px] w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="px-3 py-3 font-medium">Code</th>
                       <th className="px-3 py-3 font-medium">Status</th>
-                      <th className="px-3 py-3 font-medium">Redeemed by</th>
-                      <th className="px-3 py-3 font-medium">Redeemed at</th>
+                      <th className="px-3 py-3 font-medium">Redeemed By</th>
+                      <th className="px-3 py-3 font-medium">Redeemed On</th>
                       <th className="px-3 py-3 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -200,9 +241,16 @@ export default function EmployerCodesPage() {
                       <tr key={row.id} className="border-b last:border-0">
                         <td className="px-3 py-3 font-medium text-[var(--navy)]">{row.code}</td>
                         <td className="px-3 py-3 capitalize">{row.status}</td>
-                        <td className="px-3 py-3">{row.redeemedBy || 'â€”'}</td>
                         <td className="px-3 py-3">
-                          {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : 'â€”'}
+                          {row.redeemedBy ? (
+                            <div>
+                              <p className="font-medium text-foreground">{redeemedUsers[row.redeemedBy]?.name || 'Loading...'}</p>
+                              <p className="text-xs text-muted-foreground">{redeemedUsers[row.redeemedBy]?.email || ''}</p>
+                            </div>
+                          ) : '--'}
+                        </td>
+                        <td className="px-3 py-3">
+                          {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : '--'}
                         </td>
                         <td className="px-3 py-3">
                           <button

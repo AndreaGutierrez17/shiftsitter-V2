@@ -137,8 +137,8 @@ export default function EmployerSettingsPage() {
       <div className="ss-page-inner">
         <Card className="ss-soft-card">
           <CardHeader>
-            <CardTitle className="font-headline">Company Settings</CardTitle>
-            <CardDescription>Maintain the basic employer profile used for access code management.</CardDescription>
+            <CardTitle className="font-headline">Company Profile</CardTitle>
+            <CardDescription>Maintain the employer profile used for access codes and employee support.</CardDescription>
           </CardHeader>
           <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
           <CardContent className="pt-6">
@@ -148,7 +148,7 @@ export default function EmployerSettingsPage() {
                 <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.companyName} onChange={(e) => setForm((prev) => ({ ...prev, companyName: e.target.value }))} required />
               </div>
               <div className="form-field">
-                <label>Company email</label>
+                <label>Contact email</label>
                 <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" type="email" value={form.companyEmail} onChange={(e) => setForm((prev) => ({ ...prev, companyEmail: e.target.value }))} required />
               </div>
               <div className="form-field">
@@ -169,19 +169,19 @@ export default function EmployerSettingsPage() {
                 <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.industriesText} onChange={(e) => setForm((prev) => ({ ...prev, industriesText: e.target.value }))} placeholder="Healthcare, Manufacturing" />
               </div>
               <div className="form-field">
-                <label>Primary state</label>
+                <label>Company address state</label>
                 <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.state} onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value }))} placeholder="MD" />
               </div>
               <div className="form-field">
-                <label>Primary city</label>
+                <label>Company address city</label>
                 <input className="ss-input border border-emerald-300/80 bg-white shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/10" value={form.city} onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))} placeholder="Baltimore" />
               </div>
               {error ? <p className="md:col-span-2 text-sm text-destructive">{error}</p> : null}
-              {saved ? <p className="md:col-span-2 text-sm text-emerald-600">Company settings saved.</p> : null}
+              {saved ? <p className="md:col-span-2 text-sm text-emerald-600">Company profile saved.</p> : null}
               <div className="md:col-span-2 mt-2 h-0.5 rounded-full bg-emerald-300/80" />
               <div className="md:col-span-2 pt-1">
                 <Button type="submit" className="ss-pill-btn" disabled={saving}>
-                  {saving ? 'Saving...' : 'Save settings'}
+                  {saving ? 'Saving...' : 'Save company profile'}
                 </Button>
               </div>
             </form>

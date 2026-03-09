@@ -17,6 +17,7 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { useToast } from '@/hooks/use-toast';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import AppBackButton from '@/components/AppBackButton';
 
 
 export default function ProfilePage() {
@@ -70,14 +71,6 @@ export default function ProfilePage() {
       event.target.value = '';
     }
   };
-  const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.push('/families/match');
-  };
-
   useEffect(() => {
     if (!user?.uid) {
       setViewerProfile(null);
@@ -179,7 +172,7 @@ export default function ProfilePage() {
             <AlertCircle className="h-12 w-12 text-destructive mb-4" />
             <h1 className="text-2xl font-bold">Profile Not Found</h1>
             <p className="text-muted-foreground">This user either doesn't exist or hasn't completed their profile yet.</p>
-            <Button onClick={handleBack} className="mt-6">Go Back</Button>
+            <AppBackButton fallbackHref="/families/match" label="Back" className="mt-6" />
         </div>
     );
   }
@@ -300,6 +293,9 @@ export default function ProfilePage() {
     <AuthGuard>
       <div className="ss-page-shell profile-premium-shell">
         <div className="ss-page-inner max-w-6xl">
+          <div className="mb-4">
+            <AppBackButton fallbackHref="/families/match" label="Back" />
+          </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="overflow-hidden shadow-lg">
               <div className="relative h-40 bg-gradient-to-r from-primary/20 via-accent to-primary/10">
@@ -418,7 +414,7 @@ export default function ProfilePage() {
                   <div className="rounded-xl border bg-white p-4 shadow-sm">
                     <h3 className="font-headline flex items-center gap-2 text-lg font-semibold text-foreground">
                       <CalendarDays className="h-4 w-4 text-primary" />
-                      Availability
+                      Normally Available
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">{userProfile.availability || 'Not provided yet.'}</p>
                   </div>

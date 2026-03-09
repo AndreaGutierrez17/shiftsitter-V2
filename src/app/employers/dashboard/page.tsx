@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
@@ -14,11 +14,17 @@ type AccessCodeRow = {
   code: string;
 };
 
+type EmployerProfile = {
+  companyEmail?: string;
+  locations?: Array<{ state?: string; city?: string }>;
+};
+
 export default function EmployerDashboardPage() {
   const guard = useRequireRole('employer');
   const { user } = useAuth();
   const [codes, setCodes] = useState<AccessCodeRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [employerProfile, setEmployerProfile] = useState<EmployerProfile | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -37,6 +43,19 @@ export default function EmployerDashboardPage() {
     );
 
     return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    void (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'employers', user.uid));
+        setEmployerProfile(snap.exists() ? (snap.data() as EmployerProfile) : null);
+      } catch (error) {
+        console.error('Error loading employer profile:', error);
+      }
+    })();
   }, [user]);
 
   const activeCount = useMemo(() => codes.filter((row) => row.status === 'active').length, [codes]);
@@ -87,7 +106,7 @@ export default function EmployerDashboardPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/employers/codes" className="ss-btn text-center">
-                Create codes
+                Open Codes
               </Link>
               <button type="button" className="ss-btn-outline" onClick={handleCopyCodes} disabled={!codes.length}>
                 Copy codes
@@ -110,6 +129,18 @@ export default function EmployerDashboardPage() {
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Code inventory</p>
               <p className="mt-2 text-3xl font-semibold text-[var(--navy)]">{codes.length}</p>
             </div>
+            <div className="rounded-2xl border bg-white p-5">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Company address</p>
+              <p className="mt-2 text-base font-medium text-[var(--navy)]">
+                {employerProfile?.locations?.[0]
+                  ? [employerProfile.locations[0]?.city, employerProfile.locations[0]?.state].filter(Boolean).join(', ')
+                  : 'Not added yet'}
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-white p-5">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Contact email</p>
+              <p className="mt-2 text-base font-medium text-[var(--navy)]">{employerProfile?.companyEmail || user?.email || 'Not added yet'}</p>
+            </div>
             {loadError ? (
               <div className="md:col-span-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
                 {loadError}
@@ -118,9 +149,9 @@ export default function EmployerDashboardPage() {
             {!codes.length ? (
               <div className="md:col-span-3 rounded-2xl border bg-white p-6">
                 <p className="font-medium text-[var(--navy)]">No access codes yet</p>
-                <p className="mt-2 text-sm text-muted-foreground">Create a batch of access codes to start employer redemptions.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Open the Codes page to create your first batch and start employer redemptions.</p>
                 <Link href="/employers/codes" className="ss-btn mt-4 inline-flex">
-                  Create codes
+                  Open Codes
                 </Link>
               </div>
             ) : null}

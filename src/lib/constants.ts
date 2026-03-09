@@ -13,7 +13,7 @@ export const NAV_LINKS = [
 export const EMPLOYER_NAV_LINKS = [
   { href: '/employers/dashboard', label: 'Dashboard', icon: Heart },
   { href: '/employers/codes', label: 'Codes', icon: MessageSquare },
-  { href: '/employers/settings', label: 'Settings', icon: User },
+  { href: '/employers/settings', label: 'Company Profile', icon: User },
 ];
 
 export const ONBOARDING_STEPS = [

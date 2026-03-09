@@ -160,6 +160,11 @@ export interface Shift {
   startReminderSent?: boolean;
   startReminderSentAt?: Timestamp;
   completedAt?: Timestamp;
+  numberOfChildren?: number;
+  careLocation?: SettingPreference;
+  extras?: string;
+  primaryPhone?: string;
+  emergencyContact?: string;
   swapDetails?: {
     proposerId: string;
     newDate: string;

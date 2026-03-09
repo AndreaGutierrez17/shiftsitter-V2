@@ -257,6 +257,12 @@ export default function HomePage() {
           </div>
 
           <div className="small">
+            <div className="mb-2">
+              <strong>Support</strong> {" · "}
+              <a className="contact-email" href="mailto:info@shiftsitter.com">
+                info@shiftsitter.com
+              </a>
+            </div>
             (c) {new Date().getFullYear()} ShiftSitter. All rights reserved.
           </div>
         </div>
