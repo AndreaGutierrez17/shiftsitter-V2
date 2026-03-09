@@ -271,16 +271,16 @@ export default function HomePage() {
 
       {/* Privacy Policy */}
       <div
-        className="modal fade"
+        className="modal fade ss-legal-modal"
         id="privacyModal"
         tabIndex={-1}
         aria-labelledby="privacyModalLabel"
         aria-hidden="true"
       >
         <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title" id="privacyModalLabel">
+          <div className="modal-content ss-legal-modal-card">
+            <div className="modal-header ss-legal-modal-header">
+              <h5 className="modal-title ss-legal-modal-title" id="privacyModalLabel">
                 Privacy Policy — ShiftSitter
               </h5>
               <button
@@ -290,9 +290,9 @@ export default function HomePage() {
                 aria-label="Close"
               ></button>
             </div>
-            <div className="modal-body small">
-              <p>
-                <strong>Last updated:</strong> 02 Nov 2025
+            <div className="modal-body small ss-legal-modal-body">
+              <p className="ss-legal-modal-updated">
+                <strong>Last updated:</strong> March 9, 2026
               </p>
               <p>
                 ShiftSitter (“we”, “our”, “us”) collects and processes the
@@ -316,7 +316,7 @@ export default function HomePage() {
                 consent anytime by emailing{" "}
                 <a
                   href="mailto:info@shiftsitter.com"
-                  className="link-primary"
+                  className="ss-legal-link"
                 >
                   info@shiftsitter.com
                 </a>
@@ -342,7 +342,7 @@ export default function HomePage() {
                 parents/guardians for matching purposes.
               </p>
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer ss-legal-modal-footer">
               <button
                 type="button"
                 className="ss-btn-outline"
@@ -357,16 +357,16 @@ export default function HomePage() {
 
       {/* Terms Modal */}
       <div
-        className="modal fade"
+        className="modal fade ss-legal-modal"
         id="termsModal"
         tabIndex={-1}
         aria-labelledby="termsModalLabel"
         aria-hidden="true"
       >
         <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title" id="termsModalLabel">
+          <div className="modal-content ss-legal-modal-card">
+            <div className="modal-header ss-legal-modal-header">
+              <h5 className="modal-title ss-legal-modal-title" id="termsModalLabel">
                 Terms &amp; Conditions — ShiftSitter
               </h5>
               <button
@@ -377,7 +377,10 @@ export default function HomePage() {
               ></button>
             </div>
 
-            <div className="modal-body small">
+            <div className="modal-body small ss-legal-modal-body">
+              <p className="ss-legal-modal-updated">
+                <strong>Last updated:</strong> March 9, 2026
+              </p>
               <p>
                 <strong>1. Purpose.</strong> This site is a pre-launch / Early
                 Access experience for ShiftSitter. Features are subject to
@@ -404,14 +407,14 @@ export default function HomePage() {
               <p>
                 <strong>6. Contact.</strong> For any question about these terms
                 write to{" "}
-                <a href="mailto:info@shiftsitter.com" className="link-primary">
+                <a href="mailto:info@shiftsitter.com" className="ss-legal-link">
                   info@shiftsitter.com
                 </a>
                 .
               </p>
             </div>
 
-            <div className="modal-footer">
+            <div className="modal-footer ss-legal-modal-footer">
                <button
                 type="button"
                 className="ss-btn-outline"
@@ -425,16 +428,16 @@ export default function HomePage() {
       </div>
 
       <div
-        className="modal fade"
+        className="modal fade ss-legal-modal"
         id="contactModal"
         tabIndex={-1}
         aria-labelledby="contactModalLabel"
         aria-hidden="true"
       >
-        <div className="modal-dialog">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h5 className="modal-title" id="contactModalLabel">
+        <div className="modal-dialog modal-dialog-centered">
+          <div className="modal-content ss-legal-modal-card">
+            <div className="modal-header ss-legal-modal-header">
+              <h5 className="modal-title ss-legal-modal-title" id="contactModalLabel">
                 Contact
               </h5>
               <button
@@ -444,15 +447,20 @@ export default function HomePage() {
                 aria-label="Close"
               />
             </div>
-            <div className="modal-body">
-              <p className="text-muted-strong mb-2">
-                Email us at{" "}
-                <a className="contact-email" href="mailto:info@shiftsitter.com">
-                  info@shiftsitter.com
-                </a>
-              </p>
+            <div className="modal-body ss-legal-modal-body">
+              <div className="ss-contact-card">
+                <p className="text-muted-strong mb-2">
+                  Email us at{" "}
+                  <a className="contact-email ss-contact-link" href="mailto:info@shiftsitter.com">
+                    info@shiftsitter.com
+                  </a>
+                </p>
+                <p className="ss-contact-note">
+                  Reach out for support, partnerships, or general product questions.
+                </p>
+              </div>
             </div>
-             <div className="modal-footer">
+             <div className="modal-footer ss-legal-modal-footer">
                <button
                 type="button"
                 className="ss-btn-outline"

@@ -604,6 +604,137 @@ button {
   color: var(--ink-2) !important;
 }
 
+.ss-legal-modal .modal-dialog {
+  max-width: min(820px, calc(100vw - 2rem));
+}
+
+.ss-legal-modal .ss-legal-modal-card {
+  border: 0 !important;
+  border-radius: 30px !important;
+  background:
+    radial-gradient(circle at top right, rgba(60, 194, 178, 0.2), transparent 32%),
+    linear-gradient(180deg, #fffaf5 0%, #fef2e8 100%) !important;
+  box-shadow: 0 28px 72px rgba(10, 24, 43, 0.3) !important;
+  overflow: hidden;
+}
+
+.ss-legal-modal .ss-legal-modal-card::before {
+  content: "";
+  display: block;
+  height: 8px;
+  background: linear-gradient(90deg, var(--teal), #79dbc8, var(--navy));
+}
+
+.ss-legal-modal .ss-legal-modal-header {
+  padding: 1.35rem 1.75rem 1.15rem;
+  border-bottom: 1px solid rgba(32, 63, 105, 0.1);
+  background: linear-gradient(135deg, var(--navy) 0%, #294c78 55%, #2f7e8d 100%) !important;
+}
+
+.ss-legal-modal .ss-legal-modal-title {
+  font-size: clamp(1.55rem, 2vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff !important;
+}
+
+.ss-legal-modal .ss-legal-modal-header .btn-close {
+  filter: invert(1) brightness(1.4);
+  opacity: 0.95;
+}
+
+.ss-legal-modal .ss-legal-modal-body {
+  padding: 1.75rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28));
+  color: var(--ink);
+}
+
+.ss-legal-modal .ss-legal-modal-body p {
+  margin: 0 0 1rem;
+  line-height: 1.76;
+  color: #334155;
+  font-size: 1rem;
+}
+
+.ss-legal-modal .ss-legal-modal-body strong {
+  color: var(--navy);
+}
+
+.ss-legal-modal .ss-legal-modal-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 1.25rem !important;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(60, 194, 178, 0.18), rgba(255, 255, 255, 0.92));
+  border: 1px solid rgba(60, 194, 178, 0.32);
+  color: var(--navy) !important;
+  font-weight: 800;
+}
+
+.ss-legal-link,
+.ss-contact-link {
+  color: #0f8f87;
+  font-weight: 800;
+  text-decoration: none;
+  border-bottom: 2px solid rgba(15, 143, 135, 0.24);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.ss-legal-link:hover,
+.ss-contact-link:hover {
+  color: var(--navy);
+  border-bottom-color: rgba(32, 63, 105, 0.42);
+}
+
+.ss-legal-modal .ss-legal-modal-footer {
+  padding: 0 1.75rem 1.5rem;
+  border-top: 1px solid rgba(32, 63, 105, 0.08);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.ss-contact-card {
+  padding: 1.2rem 1.25rem;
+  border: 1px solid rgba(32, 63, 105, 0.1);
+  border-left: 4px solid var(--teal);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.ss-contact-card .text-muted-strong {
+  margin-bottom: 0.6rem !important;
+  color: var(--navy);
+  font-size: 1.05rem;
+}
+
+.ss-contact-note {
+  margin: 0;
+  font-size: 0.96rem;
+  line-height: 1.65;
+  color: #526072;
+}
+
+@media (max-width: 640px) {
+  .ss-legal-modal .ss-legal-modal-header {
+    padding: 1.15rem 1.2rem 1rem;
+  }
+
+  .ss-legal-modal .ss-legal-modal-title {
+    font-size: 1.35rem;
+  }
+
+  .ss-legal-modal .ss-legal-modal-body {
+    padding: 1.2rem;
+  }
+
+  .ss-legal-modal .ss-legal-modal-footer {
+    padding: 0 1.2rem 1.2rem;
+  }
+}
+
 .hero-split {
   position: relative;
   height: clamp(520px, 70vh, 740px);

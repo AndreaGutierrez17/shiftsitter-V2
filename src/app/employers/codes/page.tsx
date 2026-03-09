@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
 import { useRequireRole } from '@/lib/auth/requireRole';
+import { useToast } from '@/hooks/use-toast';
 
 type AccessCodeDoc = {
   id: string;
@@ -24,9 +25,27 @@ type RedeemedUserInfo = {
   email: string;
 };
 
+function formatTimestamp(value?: Timestamp | null) {
+  return typeof value?.toDate === 'function' ? value.toDate().toLocaleString() : '--';
+}
+
+function downloadCsv(rows: string[][], filename: string) {
+  const csv = rows
+    .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function EmployerCodesPage() {
   const guard = useRequireRole('employer');
   const { user } = useAuth();
+  const { toast } = useToast();
   const [codes, setCodes] = useState<AccessCodeDoc[]>([]);
   const [redeemedUsers, setRedeemedUsers] = useState<Record<string, RedeemedUserInfo>>({});
   const [quantity, setQuantity] = useState(25);
@@ -122,10 +141,39 @@ export default function EmployerCodesPage() {
         }),
       });
 
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            codes?: string[];
+            filename?: string;
+            createdAt?: string;
+            expiresAt?: string | null;
+          }
+        | null;
+
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(payload?.error || 'Could not create access codes.');
       }
+
+      const nextCodes = Array.isArray(payload?.codes) ? payload.codes : [];
+      if (nextCodes.length > 0) {
+        downloadCsv(
+          [
+            ['Code', 'Created On', 'Expires On'],
+            ...nextCodes.map((code) => [
+              code,
+              payload?.createdAt ? new Date(payload.createdAt).toLocaleString() : '',
+              payload?.expiresAt ? new Date(payload.expiresAt).toLocaleString() : 'No expiration',
+            ]),
+          ],
+          payload?.filename || `shiftsitter-codes-${Date.now()}.csv`
+        );
+      }
+
+      toast({
+        title: 'Code batch created',
+        description: `${nextCodes.length} codes were generated and the file download started.`,
+      });
     } catch (createError) {
       console.error('Create codes failed:', createError);
       setError(createError instanceof Error ? createError.message : 'Could not create access codes.');
@@ -226,11 +274,13 @@ export default function EmployerCodesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-[720px] w-full text-sm">
+                <table className="min-w-[920px] w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-muted-foreground">
                       <th className="px-3 py-3 font-medium">Code</th>
                       <th className="px-3 py-3 font-medium">Status</th>
+                      <th className="px-3 py-3 font-medium">Created On</th>
+                      <th className="px-3 py-3 font-medium">Expires On</th>
                       <th className="px-3 py-3 font-medium">Redeemed By</th>
                       <th className="px-3 py-3 font-medium">Redeemed On</th>
                       <th className="px-3 py-3 font-medium">Actions</th>
@@ -241,6 +291,8 @@ export default function EmployerCodesPage() {
                       <tr key={row.id} className="border-b last:border-0">
                         <td className="px-3 py-3 font-medium text-[var(--navy)]">{row.code}</td>
                         <td className="px-3 py-3 capitalize">{row.status}</td>
+                        <td className="px-3 py-3">{formatTimestamp(row.createdAt)}</td>
+                        <td className="px-3 py-3">{formatTimestamp(row.expiresAt)}</td>
                         <td className="px-3 py-3">
                           {row.redeemedBy ? (
                             <div>

@@ -11,6 +11,15 @@ type Body = {
   expiryDays?: number | null;
 };
 
+function buildBatchFilename(createdAt: Date) {
+  const yyyy = createdAt.getFullYear();
+  const mm = String(createdAt.getMonth() + 1).padStart(2, '0');
+  const dd = String(createdAt.getDate()).padStart(2, '0');
+  const hh = String(createdAt.getHours()).padStart(2, '0');
+  const min = String(createdAt.getMinutes()).padStart(2, '0');
+  return `shiftsitter-codes-${yyyy}${mm}${dd}-${hh}${min}.csv`;
+}
+
 async function getUidFromRequest(request: Request) {
   const authHeader = request.headers.get('authorization') || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
@@ -69,10 +78,14 @@ export async function POST(request: Request) {
     }
 
     const nextCodes = await generateUniqueCodes(quantity);
+    const createdAtDate = new Date();
+    const createdAt = Timestamp.fromDate(createdAtDate);
     const expiresAt =
       expiryDays !== null
-        ? Timestamp.fromDate(new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000))
+        ? Timestamp.fromDate(new Date(createdAtDate.getTime() + expiryDays * 24 * 60 * 60 * 1000))
         : null;
+    const batchRef = db.collection('access_code_batches').doc();
+    const filename = buildBatchFilename(createdAtDate);
 
     const batch = db.batch();
     nextCodes.forEach((code) => {
@@ -84,13 +97,30 @@ export async function POST(request: Request) {
         redeemedBy: null,
         redeemedAt: null,
         expiresAt,
-        createdAt: Timestamp.now(),
+        createdAt,
+        batchId: batchRef.id,
       });
+    });
+    batch.set(batchRef, {
+      employerId: callerUid,
+      filename,
+      quantity: nextCodes.length,
+      codes: nextCodes,
+      createdAt,
+      expiresAt,
     });
 
     await batch.commit();
 
-    return NextResponse.json({ ok: true, count: nextCodes.length, codes: nextCodes });
+    return NextResponse.json({
+      ok: true,
+      count: nextCodes.length,
+      codes: nextCodes,
+      batchId: batchRef.id,
+      filename,
+      createdAt: createdAt.toDate().toISOString(),
+      expiresAt: expiresAt ? expiresAt.toDate().toISOString() : null,
+    });
   } catch (error) {
     console.error('access-codes create API error:', error);
     return NextResponse.json({ error: 'Could not create access codes.' }, { status: 500 });

@@ -19,8 +19,13 @@ export default function AppFooter() {
             info@shiftsitter.com
           </a>
         </div>
-        <Link href="/" className="text-foreground hover:text-primary">
-          ShiftSitter
+        <Link href="/" className="inline-flex items-center gap-2 text-foreground hover:text-primary">
+          <img
+            src="/logo-shiftsitter.png"
+            alt="ShiftSitter logo"
+            className="h-8 w-8 rounded-full object-cover"
+          />
+          <span>ShiftSitter</span>
         </Link>
       </div>
     </footer>

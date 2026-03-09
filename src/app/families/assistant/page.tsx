@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Send, Loader2 } from 'lucide-react';
+import AppBackButton from '@/components/AppBackButton';
 
 type AssistantMessage = {
   id: string;
@@ -89,6 +90,7 @@ export default function AssistantPage() {
         <div className="ss-page-inner max-w-4xl">
           <Card className="ss-soft-card">
             <CardHeader>
+              <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
               <CardTitle className="font-headline flex items-center gap-2 text-3xl">
                 <Sparkles className="h-7 w-7 text-primary" />
                 ShiftSitter Assistant

@@ -10,6 +10,7 @@ import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import type { Timestamp } from 'firebase/firestore';
 import { AuthGuard } from '@/components/AuthGuard';
+import AppBackButton from '@/components/AppBackButton';
 
 export default function MessagesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -148,6 +149,7 @@ export default function MessagesPage() {
               <CardHeader className="messages-head-block">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
+                    <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
                     <CardTitle className="font-headline messages-title">Messages</CardTitle>
                     <CardDescription className="messages-subtitle">
                       {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Upload your documents before opening secure conversations.'}

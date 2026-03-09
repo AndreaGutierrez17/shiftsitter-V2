@@ -655,10 +655,10 @@ export default function CalendarPage() {
     <AuthGuard>
       <div className="ss-page-shell">
         <div className="ss-page-inner max-w-4xl">
-          <Card className="ss-soft-card">
-            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                {focusedShiftId ? <AppBackButton fallbackHref="/families/calendar" label="Back" className="mb-3" /> : null}
+            <Card className="ss-soft-card">
+              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
                 <CardTitle className="font-headline text-3xl">Shifts</CardTitle>
                 <CardDescription>
                   {selectedMatchName
