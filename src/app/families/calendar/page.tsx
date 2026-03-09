@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
@@ -53,7 +53,7 @@ const TIME_OPTIONS = Array.from({ length: 18 }, (_, index) => {
   return `${String(hour).padStart(2, '0')}:00`;
 });
 
-export default function CalendarPage() {
+function CalendarPageContent() {
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -1265,5 +1265,24 @@ export default function CalendarPage() {
         </div>
       </div>
     </AuthGuard>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-background px-4 py-10">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading calendar...
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <CalendarPageContent />
+    </Suspense>
   );
 }
