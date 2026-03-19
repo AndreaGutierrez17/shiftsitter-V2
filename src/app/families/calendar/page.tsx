@@ -21,6 +21,12 @@ import { db } from '@/lib/firebase/client';
 import type { Conversation, Review, Shift, UserProfile } from '@/lib/types';
 import { shiftProposalSchema } from './schemas';
 import AppBackButton from '@/components/AppBackButton';
+import {
+  VERIFICATION_COMING_SOON_MESSAGE,
+  VERIFICATION_COMING_SOON_NOTE,
+  VERIFICATION_COMING_SOON_TITLE,
+  isUserVerifiedForBeta,
+} from '@/lib/constants';
 import type { z } from 'zod';
 
 type ShiftFormValues = z.input<typeof shiftProposalSchema>;
@@ -46,6 +52,11 @@ function normalizeConversation(conversation: Conversation): Conversation {
 function buildShiftDateTime(date: string, time: string) {
   const parsed = new Date(`${date}T${time}:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatShiftDateLabel(date: string) {
+  const parsed = parseISO(date);
+  return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : format(parsed, 'EEEE, MMM d');
 }
 
 const TIME_OPTIONS = Array.from({ length: 18 }, (_, index) => {
@@ -372,7 +383,7 @@ function CalendarPageContent() {
     const otherUserId = (shift.userIds || []).find((id) => id !== user?.uid);
     if (!otherUserId) return { id: null, name: 'Unknown match' };
     const fromConversation = conversationOptions.find((option) => option.userId === otherUserId);
-    return { id: otherUserId, name: fromConversation?.name || 'Match' };
+    return { id: otherUserId, name: fromConversation?.name || 'Shifter' };
   };
 
   const getReviewDraft = (shiftId: string) => reviewDrafts[shiftId] || { rating: 0, comment: '' };
@@ -590,14 +601,7 @@ function CalendarPageContent() {
       setRespondingSwapShiftId(null);
     }
   };
-  const canAccessSecureCalendar = Boolean(
-    currentUserProfile &&
-    (
-      currentUserProfile.isDemo ||
-      currentUserProfile.verificationStatus === 'verified' ||
-      (currentUserProfile.idFrontUrl && currentUserProfile.selfieUrl)
-    )
-  );
+  const canAccessSecureCalendar = isUserVerifiedForBeta(currentUserProfile);
 
   useEffect(() => {
     if (!user || !canAccessSecureCalendar || shifts.length === 0) return;
@@ -655,7 +659,7 @@ function CalendarPageContent() {
     <AuthGuard>
       <div className="ss-page-shell">
         <div className="ss-page-inner max-w-4xl">
-            <Card className="ss-soft-card">
+            <Card className="ss-soft-card" data-tour="calendar-center">
               <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                 <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
@@ -663,7 +667,7 @@ function CalendarPageContent() {
                 <CardDescription>
                   {selectedMatchName
                     ? `Showing shifts with ${selectedMatchName}.`
-                    : 'Request, review, and manage shift proposals with your matches.'}
+                    : 'Request, review, and manage shift proposals with your shifters.'}
                 </CardDescription>
                 <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   ShiftSitter facilitates connections between families but is not responsible for childcare agreements.
@@ -696,14 +700,14 @@ function CalendarPageContent() {
                         name="accepterId"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Match</FormLabel>
+                            <FormLabel>Shifter</FormLabel>
                             <FormControl>
                               <select
                                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={field.value}
                                 onChange={(e) => field.onChange(e.target.value)}
                               >
-                                <option value="">Select a match</option>
+                                <option value="">Select a shifter</option>
                                 {conversationOptions.map((option) => (
                                   <option key={option.userId} value={option.userId}>
                                     {option.name}
@@ -999,22 +1003,23 @@ function CalendarPageContent() {
             <CardContent className="space-y-3">
               {!canAccessSecureCalendar ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <p className="font-medium">Shifts are locked until documents are uploaded.</p>
-                  <p className="mt-1">Upload your ID front and selfie in Profile Edit. Verification activates automatically as soon as both files are uploaded.</p>
+                  <p className="font-medium">{VERIFICATION_COMING_SOON_TITLE}</p>
+                  <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
+                  <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
                   <Button className="mt-3" size="sm" onClick={() => window.location.assign('/families/profile/edit')}>
                     Go to Profile Edit
                   </Button>
                 </div>
               ) : null}
               <div className="rounded-xl border border-border/80 bg-white p-3 shadow-sm">
-                <label className="mb-2 block text-sm font-medium text-foreground">Filter by match</label>
+                <label className="mb-2 block text-sm font-medium text-foreground">Filter by shifter</label>
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={selectedMatchFilterId}
                   onChange={(e) => setSelectedMatchFilterId(e.target.value)}
                   disabled={!canAccessSecureCalendar}
                 >
-                  <option value="">All matches</option>
+                  <option value="">All shifters</option>
                   {conversationOptions.map((option) => (
                     <option key={`filter-${option.userId}`} value={option.userId}>
                       {option.name}
@@ -1023,10 +1028,10 @@ function CalendarPageContent() {
                 </select>
               </div>
               {!canAccessSecureCalendar ? (
-                <p className="text-sm text-muted-foreground">Shift actions unlock after both verification documents are uploaded.</p>
+                <p className="text-sm text-muted-foreground">Shift actions stay active during beta while verification tools are being prepared.</p>
               ) : upcomingShifts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  {selectedMatchFilterId ? 'No shifts found for the selected match yet.' : 'No shifts scheduled yet.'}
+                  {selectedMatchFilterId ? 'No shifts found for the selected shifter yet.' : 'No shifts scheduled yet.'}
                 </p>
               ) : (
                 upcomingShifts.map((shift) => {
@@ -1059,7 +1064,7 @@ function CalendarPageContent() {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="font-semibold">{format(parseISO(shift.date), 'EEEE, MMM d')}</p>
+                          <p className="font-semibold">{formatShiftDateLabel(shift.date)}</p>
                           <p className="text-sm text-muted-foreground">
                             {shift.startTime} - {shift.endTime}
                           </p>
@@ -1150,7 +1155,7 @@ function CalendarPageContent() {
                       {shift.status === 'swap_proposed' && shift.swapDetails ? (
                         <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
                           <p className="font-medium">
-                            Requested change: {format(parseISO(shift.swapDetails.newDate), 'EEEE, MMM d')} from {shift.swapDetails.newStartTime} to {shift.swapDetails.newEndTime}
+                            Requested change: {formatShiftDateLabel(shift.swapDetails.newDate)} from {shift.swapDetails.newStartTime} to {shift.swapDetails.newEndTime}
                           </p>
                           {isWaitingOnSwapResponse ? (
                             <p className="mt-1 text-xs text-sky-800/80">Waiting for {counterpart.name} to accept or reject your request.</p>

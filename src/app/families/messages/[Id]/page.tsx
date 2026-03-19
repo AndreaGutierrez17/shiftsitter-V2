@@ -33,6 +33,18 @@ import type { Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
+import {
+  VERIFICATION_COMING_SOON_MESSAGE,
+  VERIFICATION_COMING_SOON_NOTE,
+  VERIFICATION_COMING_SOON_TITLE,
+  getVisibleVerificationStatus,
+  isUserVerifiedForBeta,
+} from '@/lib/constants';
+import {
+  getTimestampMillis,
+  isConversationTypingActive,
+  isUserOnlineFromLastSeen,
+} from '@/lib/presence';
 
 type FirestoreError = { message?: string };
 type AiIcebreakerSuggestionOutput = {
@@ -116,6 +128,12 @@ const buildLocalChatAssistantFallback = (prompt: string) => {
   return 'A practical next step is to confirm timing, expectations, handoff details, and any care notes. If you want, ask what to say next and I will help you phrase it clearly.';
 };
 
+const getChatAvatarSrc = (profile: { photoURLs?: string[] | null } | null | undefined) =>
+  Array.isArray(profile?.photoURLs) ? profile.photoURLs[0] : undefined;
+
+const getChatAvatarFallback = (name: string | null | undefined) =>
+  typeof name === 'string' && name.trim().length > 0 ? name.trim().charAt(0).toUpperCase() : 'U';
+
 export default function ChatPage() {
   const rawParams = useParams();
   const params = rawParams as Record<string, string | string[] | undefined>;
@@ -148,8 +166,13 @@ export default function ChatPage() {
     other: null,
   });
   const [secureAccessProfile, setSecureAccessProfile] = useState<UserProfile | null | undefined>(undefined);
+  const [otherLiveProfile, setOtherLiveProfile] = useState<UserProfile | null>(null);
   const [messageUnreadCounts, setMessageUnreadCounts] = useState<Record<string, number>>({});
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingIdleTimeoutRef = useRef<number | null>(null);
+  const lastTypingHeartbeatAtRef = useRef(0);
+  const typingStateRef = useRef(false);
 
   const conversationId =
     (typeof params.id === 'string' ? params.id : '') ||
@@ -162,6 +185,14 @@ export default function ChatPage() {
     }
     router.push('/families/messages');
   };
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPresenceNow(Date.now());
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!user || isClosingConversation) return;
@@ -308,6 +339,31 @@ export default function ChatPage() {
   const otherUserProfile = otherUserId ? conversation?.userProfiles?.[otherUserId] : null;
   const currentUserProfile = user?.uid ? conversation?.userProfiles?.[user.uid] : null;
 
+  const updateTypingState = async (nextTyping: boolean, force = false) => {
+    if (!user || !conversationId || isClosingConversation) return;
+
+    const now = Date.now();
+    if (
+      !force &&
+      nextTyping === typingStateRef.current &&
+      (!nextTyping || now - lastTypingHeartbeatAtRef.current < 4_000)
+    ) {
+      return;
+    }
+
+    typingStateRef.current = nextTyping;
+    lastTypingHeartbeatAtRef.current = now;
+
+    try {
+      await updateDoc(doc(db, 'conversations', conversationId), {
+        [`typingStatus.${user.uid}`]: nextTyping,
+        [`typingUpdatedAt.${user.uid}`]: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Could not update typing state:', error);
+    }
+  };
+
   useEffect(() => {
     if (!user || !otherUserId || isClosingConversation) return;
     let cancelled = false;
@@ -328,6 +384,19 @@ export default function ChatPage() {
     })();
     return () => { cancelled = true; };
   }, [isClosingConversation, otherUserId, user]);
+
+  useEffect(() => {
+    if (!otherUserId || isClosingConversation) {
+      setOtherLiveProfile(null);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(doc(db, 'users', otherUserId), (snapshot) => {
+      setOtherLiveProfile(snapshot.exists() ? ({ id: snapshot.id, ...snapshot.data() } as UserProfile) : null);
+    });
+
+    return () => unsubscribe();
+  }, [isClosingConversation, otherUserId]);
 
   useEffect(() => {
     if (!user || !otherUserId || isClosingConversation) {
@@ -351,13 +420,81 @@ export default function ChatPage() {
   const completedShiftInitiatedByMe = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId === user?.uid).length;
   const completedShiftInitiatedByThem = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId !== user?.uid).length;
   const proposalBalance = completedShiftInitiatedByMe - completedShiftInitiatedByThem;
-  const canAccessSecureMessaging = Boolean(
-    secureAccessProfile &&
-    (
-      secureAccessProfile.isDemo ||
-      secureAccessProfile.verificationStatus === 'verified'
-    )
-  );
+  const canAccessSecureMessaging = isUserVerifiedForBeta(secureAccessProfile);
+  const otherUserIsTyping = otherUserId
+    ? isConversationTypingActive(
+        conversation?.typingStatus?.[otherUserId],
+        conversation?.typingUpdatedAt?.[otherUserId],
+        presenceNow
+      )
+    : false;
+  const otherUserIsOnline = isUserOnlineFromLastSeen(otherLiveProfile?.lastSeen, presenceNow);
+  const otherUserLastSeenMillis = getTimestampMillis(otherLiveProfile?.lastSeen);
+  const otherUserPresenceLabel = otherUserIsTyping
+    ? 'Typing...'
+    : otherUserIsOnline
+      ? 'Online now'
+      : otherUserLastSeenMillis
+        ? `Last seen ${formatDistanceToNow(otherUserLastSeenMillis, { addSuffix: true })}`
+        : 'Last seen unavailable';
+
+  useEffect(() => {
+    if (!user || !conversationId || !canAccessSecureMessaging || isClosingConversation) return;
+
+    const hasDraft = newMessage.trim().length > 0;
+
+    if (!hasDraft) {
+      if (typingIdleTimeoutRef.current) {
+        window.clearTimeout(typingIdleTimeoutRef.current);
+        typingIdleTimeoutRef.current = null;
+      }
+      void updateTypingState(false, true);
+      return;
+    }
+
+    const now = Date.now();
+    if (!typingStateRef.current || now - lastTypingHeartbeatAtRef.current >= 4_000) {
+      void updateTypingState(true, !typingStateRef.current);
+    }
+
+    if (typingIdleTimeoutRef.current) {
+      window.clearTimeout(typingIdleTimeoutRef.current);
+    }
+
+    typingIdleTimeoutRef.current = window.setTimeout(() => {
+      typingIdleTimeoutRef.current = null;
+      void updateTypingState(false, true);
+    }, 2_500);
+
+    return () => {
+      if (typingIdleTimeoutRef.current) {
+        window.clearTimeout(typingIdleTimeoutRef.current);
+      }
+    };
+  }, [canAccessSecureMessaging, conversationId, isClosingConversation, newMessage, user]);
+
+  useEffect(() => {
+    if (!user || !conversationId || isClosingConversation) return;
+
+    const clearTypingState = () => {
+      void updateTypingState(false, true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearTypingState();
+      }
+    };
+
+    window.addEventListener('pagehide', clearTypingState);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('pagehide', clearTypingState);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearTypingState();
+    };
+  }, [conversationId, isClosingConversation, user]);
 
   const buildAssistantContext = () => {
     const me = fullProfiles.current;
@@ -654,8 +791,9 @@ export default function ChatPage() {
             <div className="w-full max-w-2xl rounded-2xl border bg-white p-8 text-center shadow-sm">
               <h2 className="font-headline text-2xl">Secure Messages Locked</h2>
               <p className="mt-3 text-muted-foreground">
-                Upload your ID front and selfie, then wait for manual admin approval before entering chat.
+                {VERIFICATION_COMING_SOON_TITLE}. {VERIFICATION_COMING_SOON_MESSAGE}
               </p>
+              <p className="mt-2 text-muted-foreground">{VERIFICATION_COMING_SOON_NOTE}</p>
               <div className="mt-5 flex items-center justify-center gap-3">
                 <Button onClick={() => router.push('/families/profile/edit')}>Go to Profile Edit</Button>
                 <Button variant="outline" onClick={handleBack}>Back</Button>
@@ -676,13 +814,20 @@ export default function ChatPage() {
         <div className="chat-sidebar-top">
           <div>
             <h3 className="font-headline chat-sidebar-title">Chats</h3>
-            <p className="chat-sidebar-subtitle">Matches and conversations</p>
+            <p className="chat-sidebar-subtitle">Shifters and conversations</p>
           </div>
         </div>
         <div className="chat-sidebar-list">
           {conversations.map((conv) => {
             const listOtherId = conv.userIds.find((id) => id !== user?.uid);
             const listOther = listOtherId ? conv.userProfiles?.[listOtherId] : null;
+            const listOtherIsTyping = listOtherId
+              ? isConversationTypingActive(
+                  conv.typingStatus?.[listOtherId],
+                  conv.typingUpdatedAt?.[listOtherId],
+                  presenceNow
+                )
+              : false;
             if (!listOther) return null;
             const unreadForMe = Math.max(
               0,
@@ -714,8 +859,10 @@ export default function ChatPage() {
                       </span>
                     </div>
                   </div>
-                  <p className="chat-sidebar-item-preview">
-                    {conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}{conv.lastMessage || 'No messages yet.'}
+                  <p className={cn('chat-sidebar-item-preview', listOtherIsTyping && 'text-primary')}>
+                    {listOtherIsTyping
+                      ? 'Typing...'
+                      : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
                   </p>
                 </div>
               </Link>
@@ -735,13 +882,23 @@ export default function ChatPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <Avatar className="chat-user-avatar">
-              <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
-              <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="chat-user-avatar">
+                <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
+                <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
+              </Avatar>
+              <span
+                className={cn(
+                  'absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white',
+                  otherUserIsOnline ? 'bg-emerald-500' : 'bg-slate-300'
+                )}
+              />
+            </div>
             <div className="min-w-0">
               <h2 className="chat-thread-name">{otherUserProfile.name}</h2>
-              <p className="chat-thread-subtitle">Secure chat</p>
+              <p className={cn('chat-thread-subtitle', otherUserIsTyping && 'text-primary')}>
+                {otherUserPresenceLabel}
+              </p>
             </div>
           </div>
           <div className="chat-toolbar">
@@ -782,7 +939,7 @@ export default function ChatPage() {
                   className="text-destructive focus:text-destructive"
                 >
                   <Unlink className="mr-2 h-4 w-4" />
-                  {isEndingMatch ? 'Ending Match...' : 'End Match'}
+                  {isEndingMatch ? 'Ending connection...' : 'End connection'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -806,12 +963,20 @@ export default function ChatPage() {
             const profile = isSender ? currentUserProfile : otherUserProfile;
             const isImageAttachment =
               Boolean(message.attachmentUrl) && (message.attachmentType || '').startsWith('image/');
+            const messageCreatedAt =
+              typeof (message.createdAt as Timestamp | undefined)?.toDate === 'function'
+                ? (message.createdAt as Timestamp).toDate()
+                : null;
+            const messageCreatedAtLabel =
+              messageCreatedAt && !Number.isNaN(messageCreatedAt.getTime())
+                ? format(messageCreatedAt, 'p')
+                : null;
             return (
               <div key={message.id} className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}>
                 {!isSender && (
                   <Avatar className="chat-row-avatar">
-                    <AvatarImage src={profile.photoURLs[0]} className="object-cover" />
-                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                    <AvatarImage src={getChatAvatarSrc(profile)} className="object-cover" />
+                    <AvatarFallback>{getChatAvatarFallback(profile?.name)}</AvatarFallback>
                   </Avatar>
                 )}
                   <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
@@ -832,21 +997,32 @@ export default function ChatPage() {
                     </a>
                   )}
                   {message.text ? <p className="text-sm">{message.text}</p> : null}
-                   {message.createdAt && (
+                   {messageCreatedAtLabel ? (
                       <p className="text-xs text-right mt-1 opacity-70">
-                        {format((message.createdAt as Timestamp).toDate(), 'p')}
+                        {messageCreatedAtLabel}
                       </p>
-                  )}
+                  ) : null}
                 </div>
                 {isSender && (
                   <Avatar className="chat-row-avatar">
-                    <AvatarImage src={profile.photoURLs[0]} className="object-cover" />
-                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                    <AvatarImage src={getChatAvatarSrc(profile)} className="object-cover" />
+                    <AvatarFallback>{getChatAvatarFallback(profile?.name)}</AvatarFallback>
                   </Avatar>
                 )}
               </div>
             );
           })}
+          {otherUserIsTyping ? (
+            <div className="flex items-end gap-2">
+              <Avatar className="chat-row-avatar">
+                <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
+                <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
+              </Avatar>
+              <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-muted-foreground shadow-sm">
+                {otherUserProfile.name || 'This user'} is typing...
+              </div>
+            </div>
+          ) : null}
           <div ref={messagesEndRef} />
         </div>
 
@@ -995,12 +1171,12 @@ export default function ChatPage() {
         <div className="chat-details-card">
           <Avatar className="chat-details-avatar">
             <AvatarImage src={otherUserProfile.photoURLs?.[0]} />
-            <AvatarFallback>{otherUserProfile.name.charAt(0)}</AvatarFallback>
+            <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
           </Avatar>
           <h4>{otherUserProfile.name}</h4>
           <p>{fullProfiles.other?.location || 'Location unavailable'}</p>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {fullProfiles.other?.verificationStatus === 'verified' ? 'Verified' : 'Unverified'}
+            {getVisibleVerificationStatus(fullProfiles.other?.verificationStatus) === 'verified' ? 'Verified' : 'Unverified'}
           </p>
           <Link href={`/families/profile/${otherUserId}`} className="chat-details-link">View profile</Link>
         </div>
@@ -1058,4 +1234,3 @@ export default function ChatPage() {
     </AuthGuard>
   );
 }
-
