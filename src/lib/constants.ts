@@ -1,9 +1,30 @@
 import { MessageSquare, User, Heart, Calendar, Sparkles } from 'lucide-react';
+import type { UserProfile } from '@/lib/types';
 
 export const APP_NAME = 'ShiftSitter Pro';
+export const FIND_SHIFTERS_LABEL = 'Find Shifters';
+export const BETA_AUTO_VERIFY_USERS = true;
+export const VERIFICATION_COMING_SOON_TITLE = 'Coming Soon';
+export const VERIFICATION_COMING_SOON_MESSAGE =
+  'Verification features will be enabled in a future update.';
+export const VERIFICATION_COMING_SOON_NOTE =
+  'For now, your account will remain active while we complete testing.';
+
+type BetaVerificationProfile = Pick<UserProfile, 'isDemo' | 'verificationStatus'> | null | undefined;
+
+export function isUserVerifiedForBeta(profile: BetaVerificationProfile) {
+  if (!profile) return false;
+  return profile.isDemo || BETA_AUTO_VERIFY_USERS || profile.verificationStatus === 'verified';
+}
+
+export function getVisibleVerificationStatus(
+  status?: UserProfile['verificationStatus']
+): UserProfile['verificationStatus'] {
+  return BETA_AUTO_VERIFY_USERS ? 'verified' : status ?? 'unverified';
+}
 
 export const NAV_LINKS = [
-  { href: '/families/match', label: 'Match', icon: Heart },
+  { href: '/families/match', label: FIND_SHIFTERS_LABEL, icon: Heart },
   { href: '/families/messages', label: 'Messages', icon: MessageSquare },
   { href: '/families/calendar', label: 'Calendar', icon: Calendar },
   { href: '/families/assistant', label: 'Assistant', icon: Sparkles },

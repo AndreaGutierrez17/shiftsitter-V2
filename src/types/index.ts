@@ -126,6 +126,8 @@ export interface Conversation {
   lastMessageSenderId: string;
   userProfiles: Record<string, ConversationUserProfile>;
   unreadCount?: Record<string, number>;
+  typingStatus?: Record<string, boolean>;
+  typingUpdatedAt?: Record<string, Timestamp>;
 }
 
 export interface Message {
