@@ -27,7 +27,7 @@ import Link from 'next/link';
 import { AuthGuard } from '@/components/AuthGuard';
 import { useRouter } from 'next/navigation';
 import MatchModal from '@/components/MatchModal';
-import AppBackButton from '@/components/AppBackButton';
+import { FIND_SHIFTERS_LABEL, getVisibleVerificationStatus } from '@/lib/constants';
 
 type FirestoreError = { code?: string; message?: string };
 
@@ -172,13 +172,13 @@ const SwipeCard = ({
   const [imageSrc, setImageSrc] = useState(preferredPhoto);
   const needsText = userProfile.needs || userProfile.workplace || 'Open to coordinate care schedules.';
   const { totalScore, breakdown, distanceKm, strengths } = calculateCompatibility(currentUserProfile ?? undefined, userProfile);
-  const isVerified = userProfile.verificationStatus === 'verified';
+  const isVerified = getVisibleVerificationStatus(userProfile.verificationStatus) === 'verified';
   const isCompatible = totalScore >= COMPATIBILITY_WARNING_THRESHOLD;
   const matchTier = isCompatible
     ? totalScore >= 85
-      ? 'Ideal Match'
+      ? 'Excellent fit'
       : totalScore >= 65
-        ? 'Good Match'
+        ? 'Strong fit'
         : 'Compatible'
     : 'Low Compatibility';
 
@@ -278,7 +278,7 @@ const SwipeCard = ({
                       : 'border-rose-200 bg-rose-50 text-rose-700'
                   }`}
                 >
-                  {totalScore}% Match
+                  {totalScore}% Fit
                 </div>
                 <div
                   className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${
@@ -663,12 +663,12 @@ export default function MatchPage() {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${idToken}`,
             },
-            body: JSON.stringify({
+          body: JSON.stringify({
               type: 'match',
               notificationId: `match_accepted_${matchId}_${swipedUserId}`,
               targetUserIds: [swipedUserId],
-              title: 'Match Accepted',
-              body: `${currentUserProfile?.name || user.displayName || 'A family'} accepted your match request.`,
+              title: 'Request accepted',
+              body: `${currentUserProfile?.name || user.displayName || 'A family'} accepted your connection request.`,
               link: `/families/messages/${matchId}`,
               data: {
                 matchId,
@@ -685,7 +685,7 @@ export default function MatchPage() {
         setMatchedConversationId(matchId);
         setIsMatchModalOpen(true);
         toast({
-          title: 'Match confirmed',
+          title: 'Connection confirmed',
           description: `You and ${matchedProfile.name || 'this family'} can now message each other.`,
         });
         return;
@@ -727,8 +727,8 @@ export default function MatchPage() {
             type: 'request',
             notificationId: `match_request_${requestRef.id}_${swipedUserId}`,
             targetUserIds: [swipedUserId],
-            title: 'New Match Request',
-            body: `${currentUserProfile?.name || user.displayName || 'A family'} wants to match with you.`,
+            title: 'New connection request',
+            body: `${currentUserProfile?.name || user.displayName || 'A family'} wants to connect with you.`,
             link: '/families/matches',
             data: {
               requestId: requestRef.id,
@@ -743,13 +743,13 @@ export default function MatchPage() {
       removeCurrentProfile();
       toast({
         title: 'Like sent',
-        description: `Match request sent to ${currentProfile.name || 'this family'}.`,
+        description: `Connection request sent to ${currentProfile.name || 'this family'}.`,
       });
     } catch (error: unknown) {
       const firestoreError = error as FirestoreError;
       console.error('Could not create match request:', firestoreError.code, firestoreError.message ?? error);
       setNoProfilesMessage({
-        title: 'Could not send match request',
+        title: 'Could not send connection request',
         description: 'The request write failed. Check Firestore permissions and try again.',
       });
     } finally {
@@ -791,11 +791,10 @@ export default function MatchPage() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Discovery</p>
-              <h1 className="font-headline text-3xl font-semibold text-foreground">Find a Sitter</h1>
+              <h1 className="font-headline text-3xl font-semibold text-foreground">{FIND_SHIFTERS_LABEL}</h1>
             </div>
-            <AppBackButton fallbackHref="/families" label="Back" />
           </div>
-          <div className="match-deck-wrap">
+          <div className="match-deck-wrap" data-tour="match-feed">
             {currentProfile ? (
               <SwipeCard
                 key={currentProfile.id}
@@ -831,14 +830,14 @@ export default function MatchPage() {
               )
             )}
           </div>
-          <div className="match-action-row">
+          <div className="match-action-row" data-tour="match-actions">
             <button
               type="button"
               className="match-nav-btn"
               onClick={handleBackProfile}
               disabled={loading || currentIndex <= 0 || Boolean(savingLikeId)}
-              title="Regresar"
-              aria-label="Regresar"
+              title="Previous"
+              aria-label="Previous"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -863,8 +862,8 @@ export default function MatchPage() {
               className="match-nav-btn"
               onClick={handleNextProfile}
               disabled={!currentProfile || loading || Boolean(savingLikeId) || currentIndex >= profiles.length - 1}
-              title="Siguiente"
-              aria-label="Siguiente"
+              title="Next"
+              aria-label="Next"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
