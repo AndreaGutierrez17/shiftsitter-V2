@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload, Star } from 'lucide-react';
+import { MapPin, Briefcase, Heart, Smile, Pencil, Loader2, Users, AlertCircle, CheckCircle2, CalendarDays, Upload, Star, CircleHelp } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { db, storage } from '@/lib/firebase/client';
 import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
@@ -18,6 +18,8 @@ import { useToast } from '@/hooks/use-toast';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import AppBackButton from '@/components/AppBackButton';
+import { requestGuidedTourOpen } from '@/lib/guided-tour';
+import { getVisibleVerificationStatus } from '@/lib/constants';
 
 
 export default function ProfilePage() {
@@ -183,6 +185,7 @@ export default function ProfilePage() {
   const gallerySlots = Array.from({ length: 5 }, (_, index) => photos[index] || null);
   const avgRating = userProfile.avgRating ?? userProfile.averageRating ?? 0;
   const reviewCount = userProfile.reviewCount ?? userProfile.ratingCount ?? 0;
+  const visibleVerificationStatus = getVisibleVerificationStatus(userProfile.verificationStatus);
   const compatibility = !isOwnProfile ? calculateCompatibility(viewerProfile ?? undefined, userProfile) : null;
   const strongestAreas = compatibility?.strengths?.slice(0, 3) ?? [];
   const headlineFacts = [
@@ -198,12 +201,12 @@ export default function ProfilePage() {
       icon: Users,
       tone: 'border-slate-200 bg-white text-slate-700',
     } : null,
-    userProfile.verificationStatus === 'verified' ? {
+    visibleVerificationStatus === 'verified' ? {
       key: 'id-verified',
       label: 'ID Verified',
       icon: CheckCircle2,
       tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    } : userProfile.verificationStatus === 'pending' ? {
+    } : visibleVerificationStatus === 'pending' ? {
       key: 'id-pending',
       label: 'Verification Pending',
       icon: AlertCircle,
@@ -296,7 +299,7 @@ export default function ProfilePage() {
           <div className="mb-4">
             <AppBackButton fallbackHref="/families/match" label="Back" />
           </div>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2" data-tour="profile-overview">
             <Card className="overflow-hidden shadow-lg">
               <div className="relative h-40 bg-gradient-to-r from-primary/20 via-accent to-primary/10">
                 {photos[1] ? (
@@ -345,6 +348,10 @@ export default function ProfilePage() {
                         {isUploadingMainPhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                         Change photo
                       </Button>
+                      <Button variant="outline" className="profile-soft-btn" onClick={requestGuidedTourOpen}>
+                        <CircleHelp className="mr-2 h-4 w-4" />
+                        Guided Tour
+                      </Button>
                       <Button variant="outline" className="profile-soft-btn" onClick={() => router.push('/families/profile/edit')}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Edit
@@ -358,11 +365,11 @@ export default function ProfilePage() {
                     <div className="rounded-xl border bg-white p-4 shadow-sm">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Match Snapshot</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Compatibility Snapshot</p>
                           <div className="mt-1 flex items-end gap-2">
                             <p className="text-4xl font-semibold text-foreground">{compatibility.totalScore}%</p>
                             <p className="pb-1 text-sm text-muted-foreground">
-                              {compatibility.totalScore >= 85 ? 'Ideal Match' : compatibility.totalScore >= 65 ? 'Good Match' : 'Maybe Match'}
+                              {compatibility.totalScore >= 85 ? 'Excellent fit' : compatibility.totalScore >= 65 ? 'Strong fit' : 'Possible fit'}
                             </p>
                           </div>
                         </div>

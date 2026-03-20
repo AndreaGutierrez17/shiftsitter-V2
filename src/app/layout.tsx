@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Header from "@/components/Header";
 import AppFooter from "@/components/AppFooter";
+import GuidedTour from "@/components/GuidedTour";
 import { AuthProvider } from "@/hooks/useAuth";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="ss-main">{children}</main>
           <AppFooter />
           <Toaster />
+          <GuidedTour />
         </AuthProvider>
       </body>
     </html>

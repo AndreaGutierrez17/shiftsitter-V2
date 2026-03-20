@@ -3,7 +3,7 @@ import { MessageSquare, User, Heart, Calendar } from 'lucide-react';
 export const APP_NAME = 'ShiftSitter Pro';
 
 export const NAV_LINKS = [
-  { href: '/families/match', label: 'Match', icon: Heart },
+  { href: '/families/match', label: 'Find Shifters', icon: Heart },
   { href: '/families/messages', label: 'Messages', icon: MessageSquare },
   { href: '/families/calendar', label: 'Calendar', icon: Calendar },
   { href: '/families/profile', label: 'Profile', icon: User },

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Timestamp, collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
@@ -30,12 +30,13 @@ type EmployerProfile = {
   locations?: Array<{ state?: string; city?: string }>;
 };
 
-function formatTimestamp(value?: Timestamp | null) {
-  return typeof value?.toDate === 'function' ? value.toDate().toLocaleString() : 'No expiration';
-}
-
 function formatBatchTimestamp(value?: string | null) {
   return value ? new Date(value).toLocaleString() : 'No expiration';
+}
+
+function getBatchStatusLabel(batch: AccessCodeBatch) {
+  if (!batch.expiresAt) return 'Available';
+  return new Date(batch.expiresAt).getTime() <= Date.now() ? 'Expired' : 'Available';
 }
 
 function downloadCsv(rows: string[][], filename: string) {
@@ -213,19 +214,29 @@ export default function EmployerDashboardPage() {
                 <CardTitle className="font-headline">Employer Dashboard</CardTitle>
                 <CardDescription>Track access codes, redemption activity, and your company setup.</CardDescription>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/employers/codes" className="ss-btn text-center">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+                <Link href="/employers/codes" className="ss-btn w-full text-center sm:w-auto">
                   Open Codes
                 </Link>
-                <button type="button" className="ss-btn-outline" onClick={handleCopyCodes} disabled={!codes.length}>
+                <button
+                  type="button"
+                  className="ss-btn-outline w-full sm:w-auto"
+                  onClick={handleCopyCodes}
+                  disabled={!codes.length}
+                >
                   Copy codes
                 </button>
-                <button type="button" className="ss-btn-outline" onClick={handleDownloadCsv} disabled={!codes.length}>
+                <button
+                  type="button"
+                  className="ss-btn-outline w-full sm:w-auto"
+                  onClick={handleDownloadCsv}
+                  disabled={!codes.length}
+                >
                   Download CSV
                 </button>
               </div>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
+            <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-2xl border bg-white p-5">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Active codes</p>
                 <p className="mt-2 text-3xl font-semibold text-[var(--navy)]">{activeCount}</p>
@@ -251,15 +262,15 @@ export default function EmployerDashboardPage() {
                 <p className="mt-2 text-base font-medium text-[var(--navy)]">{employerProfile?.companyEmail || user?.email || 'Not added yet'}</p>
               </div>
               {loadError ? (
-                <div className="md:col-span-3 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                <div className="sm:col-span-2 xl:col-span-5 rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
                   {loadError}
                 </div>
               ) : null}
               {!codes.length ? (
-                <div className="md:col-span-3 rounded-2xl border bg-white p-6">
+                <div className="sm:col-span-2 xl:col-span-5 rounded-2xl border bg-white p-6">
                   <p className="font-medium text-[var(--navy)]">No access codes yet</p>
                   <p className="mt-2 text-sm text-muted-foreground">Open the Codes page to create your first batch and start employer redemptions.</p>
-                  <Link href="/employers/codes" className="ss-btn mt-4 inline-flex">
+                  <Link href="/employers/codes" className="ss-btn mt-4 inline-flex w-full justify-center sm:w-auto">
                     Open Codes
                   </Link>
                 </div>
@@ -273,7 +284,7 @@ export default function EmployerDashboardPage() {
               <CardDescription>Each generated batch is saved here with its download file, creation date, and expiration date.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 grid gap-3 md:grid-cols-4">
+              <div className="mb-4 grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-foreground">Month</label>
                   <select
@@ -311,7 +322,7 @@ export default function EmployerDashboardPage() {
                     ))}
                   </select>
                 </div>
-                <div className="flex items-end">
+                <div className="flex items-end sm:col-span-2 xl:col-span-1">
                   <button
                     type="button"
                     className="ss-btn-outline w-full"
@@ -333,29 +344,70 @@ export default function EmployerDashboardPage() {
                   No code files match the selected month and year filters.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[760px] w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="px-3 py-3 font-medium">File</th>
-                        <th className="px-3 py-3 font-medium">Codes</th>
-                        <th className="px-3 py-3 font-medium">Created On</th>
-                        <th className="px-3 py-3 font-medium">Expires On</th>
-                        <th className="px-3 py-3 font-medium">Status</th>
-                        <th className="px-3 py-3 font-medium">Download</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBatches.map((batch) => {
-                        const isExpired =
-                          Boolean(batch.expiresAt) && new Date(batch.expiresAt as string).getTime() <= Date.now();
-                        return (
+                <>
+                  <div className="grid gap-3 md:hidden">
+                    {filteredBatches.map((batch) => {
+                      const statusLabel = getBatchStatusLabel(batch);
+                      return (
+                        <article key={batch.id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                          <div className="flex flex-col gap-3">
+                            <div className="space-y-1">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">File</p>
+                              <p className="break-all text-sm font-semibold text-[var(--navy)]">{batch.filename}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Codes</p>
+                                <p className="mt-1 font-medium text-foreground">{batch.quantity || batch.codes?.length || 0}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                                <p className="mt-1 font-medium text-foreground">{statusLabel}</p>
+                              </div>
+                            </div>
+                            <div className="grid gap-3 text-sm">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Created On</p>
+                                <p className="mt-1 text-foreground">{formatBatchTimestamp(batch.createdAt)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expires On</p>
+                                <p className="mt-1 text-foreground">{formatBatchTimestamp(batch.expiresAt)}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="ss-btn-outline w-full"
+                              onClick={() => handleDownloadBatch(batch)}
+                            >
+                              Download CSV
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="min-w-[760px] w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="px-3 py-3 font-medium">File</th>
+                          <th className="px-3 py-3 font-medium">Codes</th>
+                          <th className="px-3 py-3 font-medium">Created On</th>
+                          <th className="px-3 py-3 font-medium">Expires On</th>
+                          <th className="px-3 py-3 font-medium">Status</th>
+                          <th className="px-3 py-3 font-medium">Download</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBatches.map((batch) => (
                           <tr key={batch.id} className="border-b last:border-0">
                             <td className="px-3 py-3 font-medium text-[var(--navy)]">{batch.filename}</td>
                             <td className="px-3 py-3">{batch.quantity || batch.codes?.length || 0}</td>
                             <td className="px-3 py-3">{formatBatchTimestamp(batch.createdAt)}</td>
                             <td className="px-3 py-3">{formatBatchTimestamp(batch.expiresAt)}</td>
-                            <td className="px-3 py-3">{isExpired ? 'Expired' : 'Available'}</td>
+                            <td className="px-3 py-3">{getBatchStatusLabel(batch)}</td>
                             <td className="px-3 py-3">
                               <button
                                 type="button"
@@ -366,11 +418,11 @@ export default function EmployerDashboardPage() {
                               </button>
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

@@ -29,6 +29,10 @@ function formatTimestamp(value?: Timestamp | null) {
   return typeof value?.toDate === 'function' ? value.toDate().toLocaleString() : '--';
 }
 
+function formatStatusLabel(status: AccessCodeDoc['status']) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function downloadCsv(rows: string[][], filename: string) {
   const csv = rows
     .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
@@ -216,7 +220,7 @@ export default function EmployerCodesPage() {
           </CardHeader>
           <div className="mx-6 h-0.5 rounded-full bg-emerald-300/80" />
           <CardContent className="pt-6">
-            <form className="grid gap-x-4 gap-y-6 md:grid-cols-4" onSubmit={handleCreateCodes}>
+            <form className="grid gap-x-4 gap-y-6 sm:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreateCodes}>
               <div className="form-field">
                 <label>Quantity</label>
                 <input
@@ -249,12 +253,12 @@ export default function EmployerCodesPage() {
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Redeemed</p>
                 <p className="mt-2 text-2xl font-semibold text-[var(--navy)]">{redeemedCount}</p>
               </div>
-              <div className="md:col-span-4 flex flex-wrap gap-3">
-                <Button type="submit" className="ss-pill-btn" disabled={creating}>
+              <div className="sm:col-span-2 xl:col-span-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <Button type="submit" className="ss-pill-btn w-full sm:w-auto" disabled={creating}>
                   {creating ? 'Creating...' : 'Create codes'}
                 </Button>
               </div>
-              {error ? <p className="md:col-span-4 text-sm text-destructive">{error}</p> : null}
+              {error ? <p className="sm:col-span-2 xl:col-span-4 text-sm text-destructive">{error}</p> : null}
             </form>
             <div className="mt-6 h-0.5 w-full rounded-full bg-emerald-300/80" />
           </CardContent>
@@ -273,52 +277,111 @@ export default function EmployerCodesPage() {
                 No access codes yet. Create your first batch to start redemptions.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-[920px] w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-muted-foreground">
-                      <th className="px-3 py-3 font-medium">Code</th>
-                      <th className="px-3 py-3 font-medium">Status</th>
-                      <th className="px-3 py-3 font-medium">Created On</th>
-                      <th className="px-3 py-3 font-medium">Expires On</th>
-                      <th className="px-3 py-3 font-medium">Redeemed By</th>
-                      <th className="px-3 py-3 font-medium">Redeemed On</th>
-                      <th className="px-3 py-3 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {codes.map((row) => (
-                      <tr key={row.id} className="border-b last:border-0">
-                        <td className="px-3 py-3 font-medium text-[var(--navy)]">{row.code}</td>
-                        <td className="px-3 py-3 capitalize">{row.status}</td>
-                        <td className="px-3 py-3">{formatTimestamp(row.createdAt)}</td>
-                        <td className="px-3 py-3">{formatTimestamp(row.expiresAt)}</td>
-                        <td className="px-3 py-3">
-                          {row.redeemedBy ? (
+              <>
+                <div className="grid gap-3 lg:hidden">
+                  {codes.map((row) => {
+                    const redeemedUser = row.redeemedBy ? redeemedUsers[row.redeemedBy] : null;
+                    return (
+                      <article key={row.id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Code</p>
+                            <p className="break-all text-sm font-semibold text-[var(--navy)]">{row.code}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
-                              <p className="font-medium text-foreground">{redeemedUsers[row.redeemedBy]?.name || 'Loading...'}</p>
-                              <p className="text-xs text-muted-foreground">{redeemedUsers[row.redeemedBy]?.email || ''}</p>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                              <p className="mt-1 font-medium text-foreground">{formatStatusLabel(row.status)}</p>
                             </div>
-                          ) : '--'}
-                        </td>
-                        <td className="px-3 py-3">
-                          {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : '--'}
-                        </td>
-                        <td className="px-3 py-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Redeemed On</p>
+                              <p className="mt-1 text-foreground">
+                                {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : '--'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid gap-3 text-sm">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Created On</p>
+                              <p className="mt-1 text-foreground">{formatTimestamp(row.createdAt)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expires On</p>
+                              <p className="mt-1 text-foreground">{formatTimestamp(row.expiresAt)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Redeemed By</p>
+                              {redeemedUser ? (
+                                <div className="mt-1">
+                                  <p className="font-medium text-foreground">{redeemedUser.name || 'Loading...'}</p>
+                                  <p className="text-xs text-muted-foreground">{redeemedUser.email || ''}</p>
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-foreground">--</p>
+                              )}
+                            </div>
+                          </div>
                           <button
                             type="button"
-                            className="text-rose-500 hover:text-rose-600 disabled:opacity-50"
+                            className="ss-btn-outline w-full text-rose-500 hover:text-rose-600 disabled:opacity-50"
                             onClick={() => handleRevoke(row)}
                             disabled={row.status !== 'active'}
                           >
                             Revoke
                           </button>
-                        </td>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="min-w-[920px] w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="px-3 py-3 font-medium">Code</th>
+                        <th className="px-3 py-3 font-medium">Status</th>
+                        <th className="px-3 py-3 font-medium">Created On</th>
+                        <th className="px-3 py-3 font-medium">Expires On</th>
+                        <th className="px-3 py-3 font-medium">Redeemed By</th>
+                        <th className="px-3 py-3 font-medium">Redeemed On</th>
+                        <th className="px-3 py-3 font-medium">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {codes.map((row) => (
+                        <tr key={row.id} className="border-b last:border-0">
+                          <td className="px-3 py-3 font-medium text-[var(--navy)]">{row.code}</td>
+                          <td className="px-3 py-3">{formatStatusLabel(row.status)}</td>
+                          <td className="px-3 py-3">{formatTimestamp(row.createdAt)}</td>
+                          <td className="px-3 py-3">{formatTimestamp(row.expiresAt)}</td>
+                          <td className="px-3 py-3">
+                            {row.redeemedBy ? (
+                              <div>
+                                <p className="font-medium text-foreground">{redeemedUsers[row.redeemedBy]?.name || 'Loading...'}</p>
+                                <p className="text-xs text-muted-foreground">{redeemedUsers[row.redeemedBy]?.email || ''}</p>
+                              </div>
+                            ) : '--'}
+                          </td>
+                          <td className="px-3 py-3">
+                            {typeof row.redeemedAt?.toDate === 'function' ? row.redeemedAt.toDate().toLocaleString() : '--'}
+                          </td>
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              className="text-rose-500 hover:text-rose-600 disabled:opacity-50"
+                              onClick={() => handleRevoke(row)}
+                              disabled={row.status !== 'active'}
+                            >
+                              Revoke
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

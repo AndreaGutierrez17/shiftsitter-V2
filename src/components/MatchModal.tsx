@@ -40,7 +40,7 @@ export default function MatchModal({
           </div>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-center text-3xl font-bold text-[#1e2a4a]">
-              Great Match!
+              Great fit!
             </AlertDialogTitle>
             <AlertDialogDescription className="text-center text-base text-[#4b5b7d]">
               You and {matchedUser.name} are a good childcare fit based on your schedules and family needs.

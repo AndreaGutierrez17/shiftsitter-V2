@@ -116,11 +116,17 @@ export default function EmployerRedeemPage() {
               />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <div className="flex flex-wrap gap-3">
-              <Button type="submit" className="ss-pill-btn" disabled={busy}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Button type="submit" className="ss-pill-btn w-full sm:w-auto" disabled={busy}>
                 {busy ? 'Checking code...' : 'Redeem code'}
               </Button>
-              <Button type="button" variant="outline" className="ss-btn-outline" onClick={() => router.push('/families/onboarding')} disabled={busy}>
+              <Button
+                type="button"
+                variant="outline"
+                className="ss-btn-outline w-full sm:w-auto"
+                onClick={() => router.push('/families/onboarding')}
+                disabled={busy}
+              >
                 Continue without a code
               </Button>
             </div>

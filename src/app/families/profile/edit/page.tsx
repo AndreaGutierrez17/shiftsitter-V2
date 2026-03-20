@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
@@ -9,10 +9,14 @@ import Image from 'next/image';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Trash2, Upload, Loader2, FileText, AlertTriangle, BellRing, Users, BadgeCheck, IdCard, Camera } from 'lucide-react';
+import { Trash2, Upload, Loader2, AlertTriangle, BellRing, FileText, BadgeCheck, IdCard, Camera } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { auth, db, storage } from '@/lib/firebase/client';
@@ -33,42 +37,217 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 import { AuthGuard } from '@/components/AuthGuard';
+import {
+  FIND_SHIFTERS_LABEL,
+  VERIFICATION_COMING_SOON_MESSAGE,
+  VERIFICATION_COMING_SOON_NOTE,
+  VERIFICATION_COMING_SOON_TITLE,
+  getVisibleVerificationStatus,
+} from '@/lib/constants';
 
-const VERIFICATION_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
-const VERIFICATION_MAX_BYTES = 5 * 1024 * 1024;
+const US_STATE_OPTIONS = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC',
+] as const;
+const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+const SHIFT_OPTIONS = ['Early', 'Day', 'Evening', 'Night'] as const;
+const INTEREST_OPTIONS = ['Reading', 'Arts & Crafts', 'Outdoor Play', 'Homework Help', 'Cooking', 'Sports', 'Music', 'STEM Activities'] as const;
+const DURATION_OPTIONS = ['1-4', '4-8', '8-12', '12', '12+'] as const;
+const HOURS_PER_MONTH_OPTIONS = ['0-4', '4-8', '8-12', '12+'] as const;
+const SETTING_OPTIONS = [
+  { value: 'my_home', label: 'My home' },
+  { value: 'their_home', label: 'Their home' },
+  { value: 'either', label: 'Either is fine' },
+] as const;
+const HANDOFF_OPTIONS = [
+  { value: 'pickup', label: 'My home' },
+  { value: 'dropoff', label: 'Their home' },
+  { value: 'my_workplace', label: 'My workplace' },
+  { value: 'their_workplace', label: 'Their workplace' },
+  { value: 'either', label: 'Flexible' },
+] as const;
+const TRAVEL_OPTIONS = ['5', '10', '15', '20', '30', '45'] as const;
+const AGE_RANGE_OPTIONS = ['0-11 months', '1-3 years', '4-5 years', '6-11 years', '12+ years'] as const;
+const EXTRA_OPTIONS = ['Light cleaning', 'Laundry', 'Meal prep', 'Groceries/Errands', 'Transportation', 'Pet help'] as const;
+const PET_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'dog', label: 'Small / Dog' },
+  { value: 'cat', label: 'Big / Cat' },
+  { value: 'multiple', label: 'Multiple' },
+  { value: 'unknown', label: 'Prefer not to say' },
+] as const;
+const CHILD_COUNT_OPTIONS = [
+  { value: '0', label: '0' },
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5+' },
+] as const;
 
 const profileSchema = z.object({
+  role: z.enum(['parent', 'sitter', 'reciprocal'], { message: 'Please select a role.' }),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   age: z.coerce.number().min(18, 'You must be at least 18 years old.'),
-  location: z.string().min(2, 'Location is required.'),
+  location: z.string().optional(),
+  state: z.string().optional(),
+  city: z.string().optional(),
+  zip: z.string().optional(),
   workplace: z.string().optional(),
   numberOfChildren: z.coerce.number().optional(),
   childAge: z.coerce.number().optional(),
   childrenAgesText: z.string().optional(),
-  availability: z.string().min(10, 'Please describe your availability.'),
-  needs: z.string().min(10, 'Please describe your needs or what you offer.'),
+  needs: z.string().optional(),
   offerSummary: z.string().optional(),
-  interests: z.string().min(3, 'Please list at least one interest.'),
+  needDays: z.array(z.string()),
+  needShifts: z.array(z.string()),
+  needDurationBucket: z.string(),
+  needSettingPreference: z.enum(['my_home', 'their_home', 'either']),
+  needChildrenCount: z.string(),
+  needSpecialNeeds: z.boolean().optional(),
+  needSpecialNeedsNotes: z.string().optional(),
+  requireSmokeFree: z.boolean().optional(),
+  needPetsInHome: z.enum(['none', 'dog', 'cat', 'multiple', 'unknown']),
+  needOkWithPets: z.boolean().optional(),
+  needZipHome: z.string().optional(),
+  needZipWork: z.string().optional(),
+  needHandoffPreference: z.enum(['pickup', 'dropoff', 'my_workplace', 'their_workplace', 'either']),
+  needMaxTravelMinutes: z.string(),
+  needExtrasNeeded: z.array(z.string()),
+  offerDays: z.array(z.string()),
+  offerShifts: z.array(z.string()),
+  offerHoursPerMonthBucket: z.string(),
+  offerSettingPreference: z.enum(['my_home', 'their_home', 'either']),
+  offerMaxChildrenTotal: z.string(),
+  offerAgeRanges: z.array(z.string()),
+  offerOkWithSpecialNeeds: z.boolean().optional(),
+  offerHasVehicle: z.boolean().optional(),
+  offerExtrasOffered: z.array(z.string()),
+  daysNeeded: z.array(z.string()),
+  shiftsNeeded: z.array(z.string()),
+  availability: z.string(),
+  interestSelections: z.array(z.string()),
+  interestsOther: z.string().optional(),
+  interests: z.string(),
+  smokeFree: z.boolean().optional(),
+  petsOk: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  const isFamilyRole = data.role === 'parent' || data.role === 'reciprocal';
+  if (isFamilyRole && data.needDays.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['needDays'], message: 'Please select at least one day you need care.' });
+  }
+  if (isFamilyRole && data.needShifts.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['needShifts'], message: 'Please select at least one shift you need.' });
+  }
+  if (data.offerDays.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['offerDays'], message: 'Please select at least one day you can offer care.' });
+  }
+  if (data.offerShifts.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['offerShifts'], message: 'Please select at least one shift you can cover.' });
+  }
+  if (data.offerAgeRanges.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['offerAgeRanges'], message: 'Select at least one age range you can support.' });
+  }
+  if (data.interestSelections.length === 0 && !data.interestsOther?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['interestSelections'], message: 'Select at least one interest or add a custom one.' });
+  }
 });
 
 type ProfileFormValues = z.input<typeof profileSchema>;
 
+function asString(value: unknown) {
+  return typeof value === 'string' ? value : '';
+}
+
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
+}
+
+function asBoolean(value: unknown, fallback = false) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function normalizeRole(value: unknown): ProfileFormValues['role'] {
+  return value === 'parent' || value === 'sitter' || value === 'reciprocal' ? value : 'reciprocal';
+}
+
+function normalizeSettingPreference(value: unknown): ProfileFormValues['needSettingPreference'] {
+  return value === 'my_home' || value === 'their_home' || value === 'either' ? value : 'either';
+}
+
+function normalizeHandoffPreference(value: unknown): ProfileFormValues['needHandoffPreference'] {
+  return value === 'pickup' || value === 'dropoff' || value === 'my_workplace' || value === 'their_workplace' || value === 'either'
+    ? value
+    : 'either';
+}
+
+function normalizePetsInHome(value: unknown): ProfileFormValues['needPetsInHome'] {
+  return value === 'none' || value === 'dog' || value === 'cat' || value === 'multiple' || value === 'unknown'
+    ? value
+    : 'unknown';
+}
+
+function toggleArrayValue(currentValues: string[], value: string, checked: boolean) {
+  if (checked) return currentValues.includes(value) ? currentValues : [...currentValues, value];
+  return currentValues.filter((item) => item !== value);
+}
+
+function buildLocation(city?: string, state?: string, zip?: string) {
+  const safeCity = city?.trim() ?? '';
+  const safeState = state?.trim() ?? '';
+  const safeZip = zip?.trim() ?? '';
+  if (safeCity && safeState && safeZip) return `${safeCity}, ${safeState} ${safeZip}`;
+  if (safeCity && safeState) return `${safeCity}, ${safeState}`;
+  if (safeCity) return safeCity;
+  if (safeState) return safeState;
+  return safeZip;
+}
+
+function buildAvailabilitySummary(days: string[], shifts: string[]) {
+  if (days.length === 0 && shifts.length === 0) return '';
+  if (days.length === 0) return shifts.join(', ');
+  if (shifts.length === 0) return days.join(', ');
+  return `${days.join(', ')} (${shifts.join(', ')})`;
+}
+
+function buildRoleAvailabilitySummary(role: string | undefined, needDays: string[], needShifts: string[], offerDays: string[], offerShifts: string[]) {
+  const useNeedSide = role === 'parent' || role === 'reciprocal';
+  return buildAvailabilitySummary(useNeedSide ? needDays : offerDays, useNeedSide ? needShifts : offerShifts);
+}
+
+function buildInterestsSummary(selected: string[], other?: string) {
+  const otherValue = other?.trim();
+  return (otherValue ? [...selected, otherValue] : selected).join(', ');
+}
+
+function parseChildrenAges(text?: string) {
+  if (!text) return [] as number[];
+  return text
+    .split(/[,/; ]+/)
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+}
+
+function parseNumericText(value?: string) {
+  if (!value) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 const compressImageFile = async (file: File): Promise<File> => {
-  if (typeof window === 'undefined' || !file.type.startsWith('image/')) {
-    return file;
-  }
-  if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) {
-    // Keep the original file so mobile users can still upload from iPhone/Android galleries.
-    // Some browsers cannot transcode HEIC/HEIF client-side reliably.
-    return file;
-  }
+  if (typeof window === 'undefined' || !file.type.startsWith('image/')) return file;
+  if (/heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)) return file;
 
   const maxDimension = 800;
   const quality = 0.85;
-
   const imageUrl = URL.createObjectURL(file);
+
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new window.Image();
@@ -80,7 +259,6 @@ const compressImageFile = async (file: File): Promise<File> => {
     const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
     const width = Math.max(1, Math.round(image.width * scale));
     const height = Math.max(1, Math.round(image.height * scale));
-
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -109,123 +287,242 @@ export default function EditProfilePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  
   const [photos, setPhotos] = useState<string[]>([]);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | undefined>(undefined);
-  const [verificationStatus, setVerificationStatus] = useState<UserProfile['verificationStatus']>('unverified');
   const [idFrontUrl, setIdFrontUrl] = useState<string | null>(null);
   const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
-
+  const [verificationStatus, setVerificationStatus] = useState<UserProfile['verificationStatus']>('verified');
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [replacingPhotoUrl, setReplacingPhotoUrl] = useState<string | null>(null);
-  const [isUploadingCv, setIsUploadingCv] = useState(false);
-  const [isUploadingIdFront, setIsUploadingIdFront] = useState(false);
-  const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isHandlingNotifications, setIsHandlingNotifications] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
+      role: 'reciprocal',
       name: '',
       age: 18,
       location: '',
+      state: '',
+      city: '',
+      zip: '',
       workplace: '',
-      availability: '',
-      needs: '',
-      offerSummary: '',
-      interests: '',
       numberOfChildren: undefined,
       childAge: undefined,
       childrenAgesText: '',
+      needs: '',
+      offerSummary: '',
+      needDays: [],
+      needShifts: [],
+      needDurationBucket: '4-8',
+      needSettingPreference: 'either',
+      needChildrenCount: '1',
+      needSpecialNeeds: false,
+      needSpecialNeedsNotes: '',
+      requireSmokeFree: false,
+      needPetsInHome: 'unknown',
+      needOkWithPets: false,
+      needZipHome: '',
+      needZipWork: '',
+      needHandoffPreference: 'either',
+      needMaxTravelMinutes: '30',
+      needExtrasNeeded: [],
+      offerDays: [],
+      offerShifts: [],
+      offerHoursPerMonthBucket: '4-8',
+      offerSettingPreference: 'either',
+      offerMaxChildrenTotal: '2',
+      offerAgeRanges: [],
+      offerOkWithSpecialNeeds: false,
+      offerHasVehicle: false,
+      offerExtrasOffered: [],
+      daysNeeded: [],
+      shiftsNeeded: [],
+      availability: '',
+      interestSelections: [],
+      interestsOther: '',
+      interests: '',
+      smokeFree: false,
+      petsOk: false,
     },
   });
 
+  const watchedCity = useWatch({ control: form.control, name: 'city' });
+  const watchedState = useWatch({ control: form.control, name: 'state' });
+  const watchedZip = useWatch({ control: form.control, name: 'zip' });
+  const watchedNeedDays = useWatch({ control: form.control, name: 'needDays' }) ?? [];
+  const watchedNeedShifts = useWatch({ control: form.control, name: 'needShifts' }) ?? [];
+  const watchedOfferDays = useWatch({ control: form.control, name: 'offerDays' }) ?? [];
+  const watchedOfferShifts = useWatch({ control: form.control, name: 'offerShifts' }) ?? [];
+  const watchedInterestSelections = useWatch({ control: form.control, name: 'interestSelections' }) ?? [];
+  const watchedInterestsOther = useWatch({ control: form.control, name: 'interestsOther' });
+  const selectedRoleWatch = useWatch({ control: form.control, name: 'role' });
+
+  useEffect(() => {
+    const nextLocation = buildLocation(watchedCity, watchedState, watchedZip);
+    if (form.getValues('location') !== nextLocation) form.setValue('location', nextLocation);
+  }, [form, watchedCity, watchedState, watchedZip]);
+
+  useEffect(() => {
+    const nextAvailability = buildRoleAvailabilitySummary(selectedRoleWatch, watchedNeedDays, watchedNeedShifts, watchedOfferDays, watchedOfferShifts);
+    if (form.getValues('availability') !== nextAvailability) form.setValue('availability', nextAvailability);
+  }, [form, selectedRoleWatch, watchedNeedDays, watchedNeedShifts, watchedOfferDays, watchedOfferShifts]);
+
+  useEffect(() => {
+    const useNeedSide = selectedRoleWatch === 'parent' || selectedRoleWatch === 'reciprocal';
+    const nextDays = useNeedSide ? watchedNeedDays : watchedOfferDays;
+    const nextShifts = useNeedSide ? watchedNeedShifts : watchedOfferShifts;
+    if (JSON.stringify(form.getValues('daysNeeded')) !== JSON.stringify(nextDays)) form.setValue('daysNeeded', nextDays);
+    if (JSON.stringify(form.getValues('shiftsNeeded')) !== JSON.stringify(nextShifts)) form.setValue('shiftsNeeded', nextShifts);
+  }, [form, selectedRoleWatch, watchedNeedDays, watchedNeedShifts, watchedOfferDays, watchedOfferShifts]);
+
+  useEffect(() => {
+    const nextInterests = buildInterestsSummary(watchedInterestSelections, watchedInterestsOther);
+    if (form.getValues('interests') !== nextInterests) form.setValue('interests', nextInterests);
+  }, [form, watchedInterestSelections, watchedInterestsOther]);
+
   useEffect(() => {
     if (!user) return;
-    
+
     const fetchProfile = async () => {
       setPageLoading(true);
       try {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        const userRef = doc(db, 'users', user.uid);
+        const profileRef = doc(db, 'profiles', user.uid);
+        const answersRef = doc(db, 'user_answers', user.uid);
+        const [userDoc, profileDoc, answersDoc] = await Promise.all([
+          getDoc(userRef),
+          getDoc(profileRef),
+          getDoc(answersRef),
+        ]);
+
         if (userDoc.exists()) {
           const profile = userDoc.data() as UserProfile;
+          const publicProfile = (profileDoc.exists() ? profileDoc.data() : {}) as Record<string, unknown>;
+          const answers = ((answersDoc.exists() ? answersDoc.data()?.answers : {}) || {}) as Record<string, unknown>;
+          const need = (typeof profile.need === 'object' && profile.need ? profile.need : {}) as Record<string, unknown>;
+          const offer = (typeof profile.offer === 'object' && profile.offer ? profile.offer : {}) as Record<string, unknown>;
+          const role = normalizeRole(profile.role ?? publicProfile.familyRole);
+          const stateValue = asString(profile.state ?? publicProfile.state);
+          const cityValue = asString(profile.city ?? publicProfile.city);
+          const zipValue = asString(profile.zip ?? publicProfile.homeZip);
+          const needDays = asStringArray(need.days ?? answers.need_days);
+          const needShifts = asStringArray(need.shifts ?? answers.need_shifts);
+          const offerDays = asStringArray(offer.days ?? answers.give_days);
+          const offerShifts = asStringArray(offer.shifts ?? answers.give_shifts);
+          const childrenAgesText =
+            asString(profile.childrenAgesText) ||
+            (Array.isArray(need.childrenAges) ? (need.childrenAges as unknown[]).join(', ') : '');
+          const interestSelections = asStringArray(profile.interestSelections).length > 0
+            ? asStringArray(profile.interestSelections)
+            : asStringArray(answers.interests ?? profile.interests);
+          const interestsOtherValue = asString(profile.interestsOther);
+          const needChildrenCount = parseNumericText(String(need.childrenCount ?? profile.numberOfChildren ?? 1));
+          const offerMaxChildrenTotal = parseNumericText(String(offer.maxChildrenTotal ?? Math.max(1, needChildrenCount || 1)));
+          const travelMinutes = parseNumericText(String(need.maxTravelMinutes ?? offer.maxTravelMinutes ?? answers.travel_max_minutes ?? 30)) || 30;
+
           form.reset({
+            role,
             name: profile.name,
             age: profile.age,
-            location: profile.location,
+            location: profile.location || buildLocation(cityValue, stateValue, zipValue),
+            state: stateValue,
+            city: cityValue,
+            zip: zipValue,
             workplace: profile.workplace || '',
-            availability: profile.availability || '',
             numberOfChildren: profile.numberOfChildren ?? undefined,
             childAge: profile.childAge ?? undefined,
-            childrenAgesText: profile.childrenAgesText || '',
+            childrenAgesText,
             needs: profile.needs || '',
             offerSummary: profile.offerSummary || '',
-            interests: profile.interests?.join(', ') || '',
+            needDays,
+            needShifts,
+            needDurationBucket: asString(need.durationBucket) || '4-8',
+            needSettingPreference: normalizeSettingPreference(need.settingPreference ?? answers.setting_need),
+            needChildrenCount: String(Math.max(1, needChildrenCount || 1)),
+            needSpecialNeeds: asBoolean((need.specialNeeds as { has?: boolean } | undefined)?.has),
+            needSpecialNeedsNotes: asString((need.specialNeeds as { notes?: string } | undefined)?.notes),
+            requireSmokeFree: asBoolean(need.requireSmokeFree ?? answers.smoke_free_required),
+            needPetsInHome: normalizePetsInHome(need.petsInHome ?? answers.pets_in_home),
+            needOkWithPets: asBoolean(need.okWithPets ?? answers.okay_with_pets),
+            needZipHome: asString(need.zipHome ?? answers.home_zip ?? publicProfile.homeZip ?? profile.zip),
+            needZipWork: asString(need.zipWork ?? answers.work_zip ?? publicProfile.workZip),
+            needHandoffPreference: normalizeHandoffPreference(need.handoffPreference ?? answers.handoff_need),
+            needMaxTravelMinutes: String(travelMinutes),
+            needExtrasNeeded: asStringArray(need.extrasNeeded ?? answers.extras_need),
+            offerDays,
+            offerShifts,
+            offerHoursPerMonthBucket: asString(offer.hoursPerMonthBucket) || '4-8',
+            offerSettingPreference: normalizeSettingPreference(offer.settingPreference ?? answers.setting_offer),
+            offerMaxChildrenTotal: String(Math.max(1, offerMaxChildrenTotal || 1)),
+            offerAgeRanges: asStringArray(offer.ageRanges),
+            offerOkWithSpecialNeeds: asBoolean(offer.okWithSpecialNeeds ?? profile.specialNeedsOk),
+            offerHasVehicle: asBoolean(offer.hasVehicle ?? profile.drivingLicense),
+            offerExtrasOffered: asStringArray(offer.extrasOffered ?? answers.extras_offer),
+            daysNeeded: asStringArray(profile.daysNeeded),
+            shiftsNeeded: asStringArray(profile.shiftsNeeded),
+            availability: profile.availability || buildRoleAvailabilitySummary(role, needDays, needShifts, offerDays, offerShifts),
+            interestSelections,
+            interestsOther: interestsOtherValue,
+            interests: profile.interestsText || buildInterestsSummary(interestSelections, interestsOtherValue),
+            smokeFree: asBoolean(profile.smokeFree ?? answers.smoke_free ?? need.smokeFree ?? offer.smokeFree),
+            petsOk: asBoolean(profile.petsOk ?? offer.okWithPets ?? need.okWithPets ?? answers.okay_with_pets),
           });
+
           const validPhotos = (profile.photoURLs || []).filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
           setPhotos(validPhotos);
           setCvUrl(profile.cvUrl || null);
-          setUserRole(profile.role);
-          setVerificationStatus(profile.verificationStatus ?? 'unverified');
           setIdFrontUrl(profile.idFrontUrl || null);
           setSelfieUrl(profile.selfieUrl || null);
+          setVerificationStatus(getVisibleVerificationStatus(profile.verificationStatus));
+        } else {
+          if (user.displayName) form.setValue('name', user.displayName);
+          if (user.photoURL) setPhotos([user.photoURL]);
         }
       } catch (error: any) {
-        console.error("Profile fetch error:", error);
+        console.error('Profile fetch error:', error);
         toast({
           variant: 'destructive',
           title: 'Permission error',
-          description: error?.message || 'No se pudo cargar el perfil desde Firebase.',
+          description: error?.message || 'Could not load the profile from Firebase.',
           duration: 9000,
         });
+      } finally {
+        setPageLoading(false);
       }
-      setPageLoading(false);
     };
-    fetchProfile();
-  }, [user, form]);
 
-  const handleFileUpload = async (file: File, path: 'user_photos' | 'cvs' | 'verification_docs'): Promise<string> => {
-    if (!user) throw new Error("User not authenticated.");
-    
+    void fetchProfile();
+  }, [form, toast, user]);
+
+  const handleFileUpload = async (file: File): Promise<string> => {
+    if (!user) throw new Error('User not authenticated.');
+
     let fileToUpload = file;
 
-    // Compress images before uploading
-    if ((path === 'user_photos' || path === 'verification_docs') && file.type.startsWith('image/')) {
-        try {
-            const compressedFile = await compressImageFile(file);
-            fileToUpload = compressedFile;
-        } catch (error) {
-            console.error("Image compression error:", error);
-            toast({
-                title: 'Using original image',
-                description: 'Your phone provided a format that could not be compressed in-browser, so we are uploading the original file instead.',
-            });
-            fileToUpload = file;
-        }
-    } else if (file.size > 5 * 1024 * 1024) { // 5MB limit for other files like CVs/docs
-      throw new Error("File is too large. The limit is 5MB.");
+    if (file.type.startsWith('image/')) {
+      try {
+        fileToUpload = await compressImageFile(file);
+      } catch (error) {
+        console.error('Image compression error:', error);
+        toast({
+          title: 'Using original image',
+          description: 'Your phone provided a format that could not be compressed in-browser, so we are uploading the original file instead.',
+        });
+      }
+    } else if (file.size > 5 * 1024 * 1024) {
+      throw new Error('File is too large. The limit is 5MB.');
     }
 
-    const filePath = `${path}/${user.uid}/${Date.now()}_${fileToUpload.name}`;
+    const filePath = `user_photos/${user.uid}/${Date.now()}_${fileToUpload.name}`;
     const storageRef = ref(storage, filePath);
-    const metadata = path === 'verification_docs'
-      ? {
-          contentType: fileToUpload.type,
-          customMetadata: {
-            uploadedAt: new Date().toISOString(),
-            uploaderUid: user.uid,
-          },
-        }
-      : undefined;
-    const snapshot = await uploadBytes(storageRef, fileToUpload, metadata);
+    const snapshot = await uploadBytes(storageRef, fileToUpload);
     return getDownloadURL(snapshot.ref);
   };
-  
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!user || !file) return;
@@ -233,78 +530,49 @@ export default function EditProfilePage() {
     setIsUploadingPhoto(true);
 
     try {
-      const downloadURL = await handleFileUpload(file, 'user_photos');
-      // New upload becomes primary so users can change profile photo immediately.
+      const downloadURL = await handleFileUpload(file);
       const updatedPhotos = [downloadURL, ...photos.filter((url) => url !== downloadURL)];
       await updateDoc(doc(db, 'users', user.uid), { photoURLs: updatedPhotos });
       setPhotos(updatedPhotos);
       toast({ title: 'Photo uploaded successfully!', description: 'Your new photo is now the main profile photo.' });
     } catch (error: any) {
-      console.error("Photo Upload Error:", error);
+      console.error('Photo Upload Error:', error);
       toast({
         variant: 'destructive',
         title: 'Upload Failed',
-        description: error.message || 'An unexpected error occurred while uploading the photo.',
+        description: error?.message || 'An unexpected error occurred while uploading the photo.',
         duration: 9000,
       });
     } finally {
       setIsUploadingPhoto(false);
-      e.target.value = ''; // Reset file input
-    }
-  };
-
-  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!user || !file) return;
-
-    setIsUploadingCv(true);
-    try {
-      const downloadURL = await handleFileUpload(file, 'cvs');
-      await updateDoc(doc(db, 'users', user.uid), { cvUrl: downloadURL });
-      setCvUrl(downloadURL);
-      toast({ title: 'CV uploaded successfully!' });
-    } catch (error: any) {
-       console.error("CV Upload Error:", error);
-       toast({
-        variant: 'destructive',
-        title: 'Upload Failed',
-        description: error.message || 'An unexpected error occurred while uploading the CV.',
-        duration: 9000,
-      });
-    } finally {
-      setIsUploadingCv(false);
-      e.target.value = ''; // Reset file input
+      e.target.value = '';
     }
   };
 
   const handlePhotoDelete = async (urlToDelete: string) => {
     if (!user) return;
     if (photos.length <= 1) {
-        toast({ variant: 'destructive', title: 'Cannot delete', description: 'You must have at least one photo.' });
-        return;
+      toast({ variant: 'destructive', title: 'Cannot delete', description: 'You must have at least one photo.' });
+      return;
     }
-    
+
     const originalPhotos = photos;
-    const updatedPhotos = photos.filter(url => url !== urlToDelete);
+    const updatedPhotos = photos.filter((url) => url !== urlToDelete);
     setPhotos(updatedPhotos);
 
     try {
-        await updateDoc(doc(db, 'users', user.uid), {
-            photoURLs: updatedPhotos
-        });
-        const photoRef = ref(storage, urlToDelete);
-        await deleteObject(photoRef);
-        toast({ title: 'Photo deleted' });
-    } catch (error: any) {
-        console.error("Photo delete error:", error);
-        setPhotos(originalPhotos); // Revert UI on error
-        toast({ variant: 'destructive', title: 'Error deleting photo', description: 'Could not delete photo from storage. Please try again.' });
+      await updateDoc(doc(db, 'users', user.uid), { photoURLs: updatedPhotos });
+      await deleteObject(ref(storage, urlToDelete));
+      toast({ title: 'Photo deleted' });
+    } catch (error) {
+      console.error('Photo delete error:', error);
+      setPhotos(originalPhotos);
+      toast({ variant: 'destructive', title: 'Error deleting photo', description: 'Could not delete photo from storage. Please try again.' });
     }
-  }
+  };
 
   const handleSetPrimaryPhoto = async (urlToSetPrimary: string) => {
-    if (!user || photos.length === 0) return;
-    if (photos[0] === urlToSetPrimary) return;
+    if (!user || photos.length === 0 || photos[0] === urlToSetPrimary) return;
 
     const reordered = [urlToSetPrimary, ...photos.filter((url) => url !== urlToSetPrimary)];
     const original = photos;
@@ -333,7 +601,7 @@ export default function EditProfilePage() {
     const originalPhotos = photos;
 
     try {
-      const downloadURL = await handleFileUpload(file, 'user_photos');
+      const downloadURL = await handleFileUpload(file);
       const updatedPhotos = photos.map((url) => (url === urlToReplace ? downloadURL : url));
       await updateDoc(doc(db, 'users', user.uid), { photoURLs: updatedPhotos });
       setPhotos(updatedPhotos);
@@ -351,7 +619,7 @@ export default function EditProfilePage() {
       toast({
         variant: 'destructive',
         title: 'Replace Failed',
-        description: error.message || 'An unexpected error occurred while replacing the photo.',
+        description: error?.message || 'An unexpected error occurred while replacing the photo.',
         duration: 9000,
       });
     } finally {
@@ -361,142 +629,181 @@ export default function EditProfilePage() {
     }
   };
 
-  const handleCvDelete = async () => {
-    if (!user || !cvUrl) return;
-    const oldCvUrl = cvUrl;
-    setCvUrl(null);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), { cvUrl: null });
-      const cvRef = ref(storage, oldCvUrl);
-      await deleteObject(cvRef);
-      toast({ title: 'CV deleted' });
-    } catch (error) {
-      console.error("CV delete error:", error);
-      setCvUrl(oldCvUrl); // Revert UI on error
-      toast({ variant: 'destructive', title: 'Error deleting CV' });
-    }
-  }
-
-  const upsertVerificationAfterUpload = async (partial: { idFrontUrl?: string; selfieUrl?: string }) => {
-    if (!user) return;
-    const nextIdFront = partial.idFrontUrl ?? idFrontUrl ?? undefined;
-    const nextSelfie = partial.selfieUrl ?? selfieUrl ?? undefined;
-    const hasBoth = !!nextIdFront && !!nextSelfie;
-
-    const nextStatus: UserProfile['verificationStatus'] = hasBoth ? 'pending' : 'unverified';
-    const payload: Record<string, unknown> = {
-      ...partial,
-      verificationStatus: nextStatus,
-      verificationSubmittedAt: hasBoth ? new Date() : null,
-      verificationReviewedAt: null,
-    };
-
-    await updateDoc(doc(db, 'users', user.uid), payload);
-    if (typeof partial.idFrontUrl === 'string') setIdFrontUrl(partial.idFrontUrl);
-    if (typeof partial.selfieUrl === 'string') setSelfieUrl(partial.selfieUrl);
-    setVerificationStatus(nextStatus);
-  };
-
-  const handleVerificationUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    kind: 'idFront' | 'selfie'
-  ) => {
-    const file = e.target.files?.[0];
-    if (!user || !file) return;
-
-    const setLoading = kind === 'idFront' ? setIsUploadingIdFront : setIsUploadingSelfie;
-    setLoading(true);
-
-    try {
-      if (!VERIFICATION_ALLOWED_TYPES.has(file.type)) {
-        throw new Error('Only JPEG and PNG images are allowed for manual verification.');
-      }
-      if (file.size > VERIFICATION_MAX_BYTES) {
-        throw new Error('Verification images must be 5MB or smaller.');
-      }
-      const url = await handleFileUpload(file, 'verification_docs');
-      if (kind === 'idFront') {
-        await upsertVerificationAfterUpload({ idFrontUrl: url });
-      } else {
-        await upsertVerificationAfterUpload({ selfieUrl: url });
-      }
-      toast({
-        title: kind === 'idFront' ? 'ID uploaded successfully' : 'Selfie uploaded successfully',
-        description: 'Verification file saved. Once both files are uploaded, your status moves to pending for manual admin review.',
-      });
-    } catch (error: any) {
-      console.error('Verification upload error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Upload Failed',
-        description: error?.message || 'Could not upload verification document.',
-      });
-    } finally {
-      setLoading(false);
-      e.target.value = '';
-    }
-  };
-
   async function onSubmit(values: ProfileFormValues) {
     if (!user) return;
     setIsSaving(true);
-    
-    const interestsArray = values.interests.split(',').map(i => i.trim()).filter(Boolean);
-    const updatedProfileData = {
-      ...values,
-      interests: interestsArray,
-      numberOfChildren: values.numberOfChildren || null,
-      childAge: values.childAge || null,
-      childrenAgesText: values.childrenAgesText?.trim() || '',
-      workplace: values.workplace || '',
-      offerSummary: values.offerSummary?.trim() || '',
-      updatedAt: serverTimestamp(),
-    };
-      
+
     try {
-        const userRef = doc(db, 'users', user.uid);
-        const profileRef = doc(db, 'profiles', user.uid);
-        const currentPhoto = photos[0] || user.photoURL || null;
-        const batch = writeBatch(db);
+      const userRef = doc(db, 'users', user.uid);
+      const profileRef = doc(db, 'profiles', user.uid);
+      const answersRef = doc(db, 'user_answers', user.uid);
+      const currentPhoto = photos[0] || user.photoURL || null;
+      const currentPhotos = photos.length > 0 ? photos : (user.photoURL ? [user.photoURL] : []);
+      const interestsArray = values.interests.split(',').map((item) => item.trim()).filter(Boolean);
+      const childrenAges = parseChildrenAges(values.childrenAgesText);
+      const normalizedChildrenCount = parseNumericText(values.needChildrenCount);
+      const normalizedOfferCapacity = parseNumericText(values.offerMaxChildrenTotal);
+      const normalizedTravelMinutes = parseNumericText(values.needMaxTravelMinutes) || 30;
+      const normalizedNeedZipHome = values.needZipHome?.trim() || values.zip?.trim() || '';
+      const normalizedNeedZipWork = values.needZipWork?.trim() || values.zip?.trim() || '';
+      const resolvedLocation = values.location || buildLocation(values.city, values.state, values.zip);
+      const needDays = values.needDays;
+      const needShifts = values.needShifts;
+      const offerDays = values.offerDays;
+      const offerShifts = values.offerShifts;
+      const need = {
+        days: needDays,
+        shifts: needShifts,
+        durationBucket: values.needDurationBucket,
+        settingPreference: values.needSettingPreference,
+        childrenCount: normalizedChildrenCount,
+        childrenAges,
+        specialNeeds: {
+          has: values.needSpecialNeeds ?? false,
+          notes: values.needSpecialNeedsNotes?.trim() || '',
+        },
+        smokeFree: values.smokeFree ?? false,
+        requireSmokeFree: values.requireSmokeFree ?? false,
+        petsInHome: values.needPetsInHome,
+        okWithPets: values.needOkWithPets ?? false,
+        zipHome: normalizedNeedZipHome,
+        zipWork: normalizedNeedZipWork,
+        handoffPreference: values.needHandoffPreference,
+        maxTravelMinutes: normalizedTravelMinutes,
+        extrasNeeded: values.needExtrasNeeded,
+      };
+      const offer = {
+        days: offerDays,
+        shifts: offerShifts,
+        hoursPerMonthBucket: values.offerHoursPerMonthBucket,
+        settingPreference: values.offerSettingPreference,
+        maxChildrenTotal: Math.max(1, normalizedOfferCapacity || (values.role === 'sitter' ? 2 : normalizedChildrenCount || 1)),
+        ageRanges: values.offerAgeRanges,
+        okWithSpecialNeeds: values.offerOkWithSpecialNeeds ?? false,
+        hasVehicle: values.offerHasVehicle ?? false,
+        extrasOffered: values.offerExtrasOffered,
+        smokeFree: values.smokeFree ?? false,
+        okWithPets: values.petsOk ?? false,
+        zipHome: normalizedNeedZipHome,
+        zipWork: normalizedNeedZipWork,
+        handoffPreference: values.needHandoffPreference,
+        maxTravelMinutes: normalizedTravelMinutes,
+      };
+      const publicProfile = {
+        uid: user.uid,
+        role: 'family',
+        familyRole: values.role,
+        displayName: values.name,
+        photoURL: currentPhoto,
+        photoURLs: currentPhotos,
+        homeZip: normalizedNeedZipHome,
+        workZip: normalizedNeedZipWork,
+        state: values.state?.trim() || '',
+        city: values.city?.trim() || '',
+        location: resolvedLocation,
+        onboardingComplete: true,
+        verificationStatus: 'verified' as const,
+        updatedAt: serverTimestamp(),
+      };
+      const answers = {
+        family_role: values.role,
+        need_days: needDays,
+        need_shifts: needShifts,
+        give_days: offerDays,
+        give_shifts: offerShifts,
+        extras_need: values.needExtrasNeeded,
+        extras_offer: values.offerExtrasOffered,
+        smoke_free_required: values.requireSmokeFree ?? false,
+        smoke_free: values.smokeFree ?? false,
+        pets_in_home: values.needPetsInHome,
+        okay_with_pets: values.needOkWithPets ?? false,
+        setting_need: values.needSettingPreference,
+        setting_offer: values.offerSettingPreference,
+        handoff_need: values.needHandoffPreference,
+        handoff_offer: values.needHandoffPreference,
+        travel_max_minutes: normalizedTravelMinutes,
+        home_zip: normalizedNeedZipHome,
+        work_zip: normalizedNeedZipWork,
+        interests: interestsArray,
+      };
+      const userProfile = {
+        id: user.uid,
+        uid: user.uid,
+        email: user.email,
+        name: values.name,
+        photoURLs: currentPhotos,
+        profileComplete: true,
+        accountType: 'family',
+        age: values.age,
+        role: values.role,
+        location: resolvedLocation,
+        state: values.state?.trim() || '',
+        city: values.city?.trim() || '',
+        zip: values.zip?.trim() || '',
+        workplace: values.workplace || '',
+        numberOfChildren: normalizedChildrenCount || null,
+        childAge: values.childAge ?? null,
+        childrenAgesText: values.childrenAgesText?.trim() || '',
+        needs: values.needs?.trim() || '',
+        offerSummary: values.offerSummary?.trim() || '',
+        daysNeeded: (values.role === 'parent' || values.role === 'reciprocal') ? needDays : offerDays,
+        shiftsNeeded: (values.role === 'parent' || values.role === 'reciprocal') ? needShifts : offerShifts,
+        availability: values.availability,
+        interestSelections: values.interestSelections,
+        interestsOther: values.interestsOther?.trim() || '',
+        interestsText: values.interests,
+        interests: interestsArray,
+        smokeFree: values.smokeFree ?? false,
+        petsOk: values.needOkWithPets ?? false,
+        drivingLicense: values.offerHasVehicle ?? false,
+        specialNeedsOk: values.offerOkWithSpecialNeeds ?? false,
+        need,
+        offer,
+        onboardingComplete: true,
+        verificationStatus: 'verified' as const,
+        access: {
+          source: 'manual',
+          status: 'active',
+          updatedAt: serverTimestamp(),
+          notes: 'Profile updated from Edit Profile.',
+        },
+        updatedAt: serverTimestamp(),
+      };
 
-        batch.update(userRef, updatedProfileData);
-        batch.set(
-          profileRef,
-          {
-            uid: user.uid,
-            role: 'family',
-            familyRole: userRole || 'reciprocal',
-            displayName: values.name,
-            photoURL: currentPhoto,
-            photoURLs: photos,
-            location: values.location,
-            onboardingComplete: true,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+      const batch = writeBatch(db);
+      batch.set(userRef, userProfile, { merge: true });
+      batch.set(profileRef, publicProfile, { merge: true });
+      batch.set(
+        answersRef,
+        {
+          uid: user.uid,
+          answers,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-        await batch.commit();
-        toast({
-          title: "Profile Updated",
-          description: "Your changes have been saved successfully.",
-        });
-        router.push(`/families/profile/${user.uid}`);
-    } catch(error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Error updating profile',
-            description: error.message,
-        });
+      await batch.commit();
+      toast({
+        title: 'Profile Updated',
+        description: 'Your changes have been saved successfully.',
+      });
+      router.push(`/families/profile/${user.uid}`);
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error updating profile',
+        description: error?.message || 'Please try again.',
+      });
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   }
 
   const handleDeleteAccount = async () => {
     if (!user) return;
     setIsDeleting(true);
-    
+
     try {
       const currentUser = auth.currentUser;
       if (!currentUser || currentUser.uid !== user.uid) {
@@ -523,14 +830,13 @@ export default function EditProfilePage() {
       await signOut(auth);
 
       toast({
-        title: "Account Deleted",
-        description: "Your account and all your data have been permanently deleted.",
+        title: 'Account Deleted',
+        description: 'Your account and all your data have been permanently deleted.',
       });
 
       router.push('/');
-
     } catch (error: any) {
-      console.error("Error deleting account:", error);
+      console.error('Error deleting account:', error);
       toast({
         variant: 'destructive',
         title: 'Error Deleting Account',
@@ -540,7 +846,7 @@ export default function EditProfilePage() {
     } finally {
       setIsDeleting(false);
     }
-  }
+  };
 
   const handleEnableNotifications = async () => {
     setIsHandlingNotifications(true);
@@ -573,7 +879,7 @@ export default function EditProfilePage() {
           <CardContent className="space-y-8">
             <Skeleton className="h-40 w-full" />
             <Separator />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
@@ -588,12 +894,8 @@ export default function EditProfilePage() {
   const isBusy =
     isSaving ||
     isUploadingPhoto ||
-    isUploadingCv ||
-    isUploadingIdFront ||
-    isUploadingSelfie ||
     isDeleting ||
     isHandlingNotifications;
-  const isSitter = userRole === 'sitter';
 
   return (
     <AuthGuard>
@@ -601,44 +903,22 @@ export default function EditProfilePage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <fieldset disabled={isBusy} className="group">
-                <Card className="group-disabled:opacity-50">
+              <Card className="group-disabled:opacity-50">
                 <CardHeader>
-                    <CardTitle className="font-headline text-3xl">Edit Your Profile</CardTitle>
-                    <CardDescription>Keep your information up-to-date to get the best matches.</CardDescription>
+                  <CardTitle className="font-headline text-3xl">Edit Your Profile</CardTitle>
+                  <CardDescription>Keep your information up-to-date to get the best matches.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    
-                    <Card className="shadow-md">
-                      <CardContent className="p-5">
+                  <Card className="shadow-md">
+                    <CardContent className="p-5">
                       <div>
-                      <h3 className="text-lg font-semibold text-foreground">Your Photos</h3>
-                      <p className="text-sm text-muted-foreground mb-4">The first photo is your main profile picture. You can have up to 5 photos.</p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <h3 className="text-lg font-semibold text-foreground">Your Photos</h3>
+                        <p className="mb-4 text-sm text-muted-foreground">The first photo is your main profile picture. You can have up to 5 photos.</p>
+                        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
                           {photos.map((url, index) => (
-                          <div key={url} className="relative group/photo aspect-square rounded-lg overflow-hidden border">
+                            <div key={url} className="relative aspect-square overflow-hidden rounded-lg border group/photo">
                               <Image src={url} alt={`Photo ${index + 1}`} fill className="object-cover" />
-                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
-                              {index !== 0 ? (
-                                <Button type="button" variant="secondary" size="sm" onClick={() => handleSetPrimaryPhoto(url)}>
-                                  Set main
-                                </Button>
-                              ) : null}
-                              <label className="inline-flex">
-                                <span className="sr-only">Replace photo</span>
-                                <input
-                                  type="file"
-                                  className="sr-only"
-                                  onChange={(e) => handlePhotoReplace(url, e)}
-                                  accept="image/*"
-                                  disabled={isUploadingPhoto}
-                                />
-                                <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
-                                  <span>{replacingPhotoUrl === url ? 'Replacing...' : 'Replace'}</span>
-                                </Button>
-                              </label>
-                              <Button type="button" variant="destructive" size="icon" onClick={() => handlePhotoDelete(url)}><Trash2 className="h-4 w-4" /></Button>
-                              </div>
-                              <div className="absolute top-2 right-2 flex gap-2 md:hidden">
+                              <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/45 p-2 opacity-0 transition-opacity group-hover/photo:opacity-100">
                                 {index !== 0 ? (
                                   <Button type="button" variant="secondary" size="sm" onClick={() => handleSetPrimaryPhoto(url)}>
                                     Set main
@@ -646,13 +926,13 @@ export default function EditProfilePage() {
                                 ) : null}
                                 <label className="inline-flex">
                                   <span className="sr-only">Replace photo</span>
-                                <input
-                                  type="file"
-                                  className="sr-only"
-                                  onChange={(e) => handlePhotoReplace(url, e)}
-                                  accept="image/*"
-                                  disabled={isUploadingPhoto}
-                                />
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    onChange={(e) => handlePhotoReplace(url, e)}
+                                    accept="image/*"
+                                    disabled={isUploadingPhoto}
+                                  />
                                   <Button type="button" variant="secondary" size="sm" asChild disabled={isUploadingPhoto}>
                                     <span>{replacingPhotoUrl === url ? 'Replacing...' : 'Replace'}</span>
                                   </Button>
@@ -661,374 +941,627 @@ export default function EditProfilePage() {
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
-                              {index === 0 && <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">Primary</div>}
-                          </div>
+                              {index === 0 ? (
+                                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
+                                  Primary
+                                </div>
+                              ) : null}
+                            </div>
                           ))}
-                          {photos.length < 5 && (
-                          <label className={cn("aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center hover:bg-accent relative", isUploadingPhoto ? "cursor-not-allowed" : "cursor-pointer")}>
-                              {isUploadingPhoto ? <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
-                              <span className="text-xs text-muted-foreground mt-1">{isUploadingPhoto ? 'Uploading...' : 'Upload'}</span>
-                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/*" disabled={isUploadingPhoto}/>
-                          </label>
-                          )}
-                      </div>
-                    </div>
-                    </CardContent>
-                    </Card>
-
-                    {isSitter && (
-                      <Card className="shadow-md">
-                        <CardContent className="p-5">
-                      <div>
-                          <h3 className="text-lg font-semibold text-foreground">Curriculum Vitae (CV)</h3>
-                          <p className="text-sm text-muted-foreground mb-4">Upload your CV in PDF format for families to review your experience.</p>
-                          <div className="grid grid-cols-2 gap-4">
-                            {cvUrl ? (
-                               <div className="relative group/cv aspect-square rounded-lg overflow-hidden border p-4 flex flex-col items-center justify-center">
-                                  <FileText className="h-16 w-16 text-muted-foreground" />
-                                  <p className="text-sm text-center mt-2 truncate">CV Uploaded</p>
-                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/cv:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <a href={cvUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({variant: 'secondary'}))}>View</a>
-                                    <Button type="button" variant="destructive" onClick={handleCvDelete}><Trash2 className="h-4 w-4" /></Button>
-                                  </div>
-                              </div>
-                            ) : (
-                               <label className={cn("aspect-square rounded-lg border-2 border-dashed flex flex-col items-center justify-center hover:bg-accent relative", isUploadingCv ? "cursor-not-allowed" : "cursor-pointer")}>
-                                  {isUploadingCv ? <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
-                                  <span className="text-xs text-muted-foreground mt-1">{isUploadingCv ? 'Uploading...' : 'Upload CV (PDF)'}</span>
-                                  <input type="file" className="sr-only" onChange={handleCvUpload} accept="application/pdf" disabled={isUploadingCv}/>
-                              </label>
-                            )}
-                          </div>
-                      </div>
-                      </CardContent>
-                      </Card>
-                    )}
-
-                    <Card className="shadow-md">
-                      <CardContent className="p-5">
-                        <div>
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <h3 className="text-lg font-semibold text-foreground">Identity Verification (Required for Match)</h3>
-                              <p className="text-sm text-muted-foreground mb-4">
-                                Upload one government ID (front only) and one selfie to send your profile into manual admin review. Secure messaging and calendar access unlock only after approval.
-                              </p>
-                            </div>
-                            <span
-                              className={cn(
-                                'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium',
-                                verificationStatus === 'verified' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                                verificationStatus === 'rejected' && 'border-red-200 bg-red-50 text-red-700',
-                                (verificationStatus === 'pending' || verificationStatus === 'unverified' || !verificationStatus) &&
-                                  'border-amber-200 bg-amber-50 text-amber-700'
-                              )}
-                            >
-                              <BadgeCheck className="h-4 w-4" />
-                              {verificationStatus === 'verified'
-                                ? 'Verified'
-                                : verificationStatus === 'pending'
-                                  ? 'Pending'
-                                  : verificationStatus === 'rejected'
-                                    ? 'Rejected'
-                                    : 'Unverified'}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="rounded-lg border p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <IdCard className="h-5 w-5 text-primary" />
-                                <h4 className="font-medium">Government ID (Front)</h4>
-                              </div>
-                              {idFrontUrl ? (
-                                <div className="space-y-2">
-                                  <p className="text-sm text-muted-foreground">Uploaded</p>
-                                  <a href={idFrontUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}>
-                                    View file
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground mb-3">Required</p>
-                              )}
-                              <label className={cn("mt-2 inline-flex md:hidden items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
-                                {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                                {isUploadingIdFront ? 'Uploading...' : 'Use Camera'}
-                                <input
-                                  type="file"
-                                  className="sr-only"
-                                  accept="image/*"
-                                  capture="environment"
-                                  onChange={(e) => handleVerificationUpload(e, 'idFront')}
-                                  disabled={isUploadingIdFront}
-                                />
-                              </label>
-                              <div className="mt-2 hidden md:flex flex-wrap gap-2">
-                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
-                                  {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                                  {isUploadingIdFront ? 'Uploading...' : 'Use Camera'}
-                                  <input
-                                    type="file"
-                                    className="sr-only"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={(e) => handleVerificationUpload(e, 'idFront')}
-                                    disabled={isUploadingIdFront}
-                                  />
-                                </label>
-                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingIdFront && "opacity-60 cursor-not-allowed")}>
-                                  {isUploadingIdFront ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                  {isUploadingIdFront ? 'Uploading...' : 'Upload Document'}
-                                  <input
-                                    type="file"
-                                    className="sr-only"
-                                    accept="image/*"
-                                    onChange={(e) => handleVerificationUpload(e, 'idFront')}
-                                    disabled={isUploadingIdFront}
-                                  />
-                                </label>
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg border p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Camera className="h-5 w-5 text-primary" />
-                                <h4 className="font-medium">Selfie</h4>
-                              </div>
-                              {selfieUrl ? (
-                                <div className="space-y-2">
-                                  <p className="text-sm text-muted-foreground">Uploaded</p>
-                                  <a href={selfieUrl} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}>
-                                    View file
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground mb-3">Required</p>
-                              )}
-                              <label className={cn("mt-2 inline-flex md:hidden items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
-                                {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                                {isUploadingSelfie ? 'Uploading...' : 'Use Camera'}
-                                <input
-                                  type="file"
-                                  className="sr-only"
-                                  accept="image/*"
-                                  capture="user"
-                                  onChange={(e) => handleVerificationUpload(e, 'selfie')}
-                                  disabled={isUploadingSelfie}
-                                />
-                              </label>
-                              <div className="mt-2 hidden md:flex flex-wrap gap-2">
-                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
-                                  {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                                  {isUploadingSelfie ? 'Uploading...' : 'Use Camera'}
-                                  <input
-                                    type="file"
-                                    className="sr-only"
-                                    accept="image/*"
-                                    capture="user"
-                                    onChange={(e) => handleVerificationUpload(e, 'selfie')}
-                                    disabled={isUploadingSelfie}
-                                  />
-                                </label>
-                                <label className={cn("inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-accent cursor-pointer", isUploadingSelfie && "opacity-60 cursor-not-allowed")}>
-                                  {isUploadingSelfie ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                                  {isUploadingSelfie ? 'Uploading...' : 'Upload Document'}
-                                  <input
-                                    type="file"
-                                    className="sr-only"
-                                    accept="image/*"
-                                    onChange={(e) => handleVerificationUpload(e, 'selfie')}
-                                    disabled={isUploadingSelfie}
-                                  />
-                                </label>
-                              </div>
-                            </div>
-                          </div>
-                          {verificationStatus === 'rejected' ? (
-                            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                              Your verification was rejected. Re-upload your ID and selfie to send a fresh manual review request.
-                            </div>
-                          ) : null}
-                          {verificationStatus === 'unverified' ? (
-                            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                              Secure messages and calendar stay locked until an admin reviews and approves your verification.
-                            </div>
-                          ) : null}
-                          {verificationStatus === 'pending' ? (
-                            <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-700">
-                              Your documents are in pending review. An admin must approve them before messages and calendar unlock.
-                            </div>
+                          {photos.length < 5 ? (
+                            <label className={cn('relative flex aspect-square cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed hover:bg-accent', isUploadingPhoto && 'cursor-not-allowed')}>
+                              {isUploadingPhoto ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
+                              <span className="mt-1 text-xs text-muted-foreground">{isUploadingPhoto ? 'Uploading...' : 'Upload'}</span>
+                              <input type="file" className="sr-only" onChange={handlePhotoUpload} accept="image/*" disabled={isUploadingPhoto} />
+                            </label>
                           ) : null}
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                    <Card className="shadow-md" lang="en" translate="no">
-                      <CardHeader>
-                        <CardTitle className="font-headline text-xl flex items-center gap-2">
-                          <BellRing className="text-primary" />
-                          Stay in the loop
-                        </CardTitle>
-                        <CardDescription>
-                          Turn on alerts so you do not miss messages, matches, shift changes, or reviews.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardFooter className="bg-slate-50 pt-4 pb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-muted-foreground">
-                          Browser alerts help you keep up with important updates in real time.
-                        </p>
-                        <Button
-                          onClick={handleEnableNotifications}
-                          disabled={isHandlingNotifications}
-                        >
-                          <span className="inline-flex min-w-4 items-center justify-center">
-                            {isHandlingNotifications ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                          </span>
-                          <span>{isHandlingNotifications ? 'Working...' : 'Turn On Alerts'}</span>
-                        </Button>
-                      </CardFooter>
-                    </Card>
-
-                    <Card className="shadow-md">
+                  <Card className="shadow-md" data-tour="profile-verification">
                     <CardContent className="p-5">
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField control={form.control} name="name" render={({ field }) => (
-                          <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="age" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Age</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                name={field.name}
-                                onBlur={field.onBlur}
-                                ref={field.ref}
-                                value={typeof field.value === 'number' ? field.value : ''}
-                                onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-foreground">Verification and documents</h3>
+                          <p className="mb-4 text-sm text-muted-foreground">
+                            {VERIFICATION_COMING_SOON_MESSAGE} {VERIFICATION_COMING_SOON_NOTE}
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                          <BadgeCheck className="h-4 w-4" />
+                          {getVisibleVerificationStatus(verificationStatus) === 'verified' ? 'Verified' : 'Active'}
+                        </span>
                       </div>
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField control={form.control} name="location" render={({ field }) => (
-                          <FormItem><FormLabel>Location (City, State)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                        <FormField control={form.control} name="workplace" render={({ field }) => (
-                          <FormItem><FormLabel>Workplace / Profession (Optional)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                        )} />
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                        <p className="font-semibold">{VERIFICATION_COMING_SOON_TITLE}</p>
+                        <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
+                        <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <FormField control={form.control} name="numberOfChildren" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Number of children (Optional)</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    name={field.name}
-                                    onBlur={field.onBlur}
-                                    ref={field.ref}
-                                    value={typeof field.value === 'number' ? field.value : ''}
-                                    onChange={e => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                      </div>
-                      <FormField control={form.control} name="childrenAgesText" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Ages of children (manual, optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., 2, 5, 9" {...field} value={field.value ?? ''} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={form.control} name="needs" render={({ field }) => (
-                          <FormItem><FormLabel>About Me / My Needs</FormLabel><FormControl><Textarea placeholder="Describe your family's needs, or what you offer as a sitter..." rows={4} {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                      <FormField control={form.control} name="offerSummary" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>What You Expect In Return (Optional)</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                placeholder="Describe what kind of reciprocal support, exchange, or help you expect in return..."
-                                rows={3}
-                                {...field}
-                                value={field.value ?? ''}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      <FormField control={form.control} name="availability" render={({ field }) => (
-                          <FormItem><FormLabel>Availability</FormLabel><FormControl><Input placeholder="e.g., Weekends, weekday evenings after 5 PM" {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                      <FormField control={form.control} name="interests" render={({ field }) => (
-                          <FormItem><FormLabel>Interests</FormLabel><FormControl><Input placeholder="e.g., Hiking, reading, board games (comma separated)" {...field} /></FormControl><FormMessage /></FormItem>
-                        )} />
-                    </div>
                     </CardContent>
-                    </Card>
-                    </CardContent>
-                    <CardFooter className="flex justify-end gap-2 pt-4">
-                      <Button type="button" variant="ghost" onClick={() => router.push(`/families/profile/${user?.uid}`)}>Cancel</Button>
-                      <Button type="submit">
-                          {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Card>
+
+                  <Card className="shadow-md" lang="en" translate="no">
+                    <CardHeader>
+                      <CardTitle className="font-headline text-xl flex items-center gap-2">
+                        <BellRing className="text-primary" />
+                        Stay in the loop
+                      </CardTitle>
+                      <CardDescription>
+                        Turn on alerts so you do not miss messages, matches, shift changes, or reviews.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardFooter className="bg-slate-50 pt-4 pb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Browser alerts help you keep up with important updates in real time.
+                      </p>
+                      <Button type="button" onClick={handleEnableNotifications} disabled={isHandlingNotifications}>
+                        <span className="inline-flex min-w-4 items-center justify-center">
+                          {isHandlingNotifications ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        </span>
+                        <span>{isHandlingNotifications ? 'Working...' : 'Turn On Alerts'}</span>
                       </Button>
                     </CardFooter>
-                </Card>
+                  </Card>
+
+                  <Card className="shadow-md">
+                    <CardHeader>
+                      <CardTitle className="font-headline text-xl">Edit onboarding details</CardTitle>
+                      <CardDescription>
+                        Update every answer used by {FIND_SHIFTERS_LABEL}, your profile, and your availability without repeating onboarding.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-8 p-5">
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-foreground">Basic profile</h3>
+                        <FormField
+                          control={form.control}
+                          name="role"
+                          render={({ field }) => (
+                            <FormItem className="space-y-3">
+                              <FormLabel>Main goal</FormLabel>
+                              <FormControl>
+                                <RadioGroup onValueChange={field.onChange} value={field.value} className="grid gap-2">
+                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'parent' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
+                                    <FormControl><RadioGroupItem value="parent" /></FormControl>
+                                    <FormLabel className="cursor-pointer font-normal">I am a parent looking for a sitter.</FormLabel>
+                                  </FormItem>
+                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'sitter' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
+                                    <FormControl><RadioGroupItem value="sitter" /></FormControl>
+                                    <FormLabel className="cursor-pointer font-normal">I am a sitter looking for families.</FormLabel>
+                                  </FormItem>
+                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'reciprocal' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
+                                    <FormControl><RadioGroupItem value="reciprocal" /></FormControl>
+                                    <FormLabel className="cursor-pointer font-normal">I am a parent looking for reciprocal exchanges.</FormLabel>
+                                  </FormItem>
+                                </RadioGroup>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                          <FormField control={form.control} name="name" render={({ field }) => (
+                            <FormItem><FormLabel>Full name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                          <FormField control={form.control} name="age" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Age</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  name={field.name}
+                                  onBlur={field.onBlur}
+                                  ref={field.ref}
+                                  value={typeof field.value === 'number' ? field.value : ''}
+                                  onChange={(e) => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                          <FormField control={form.control} name="state" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>State / Region (optional)</FormLabel>
+                              <Select value={field.value || undefined} onValueChange={field.onChange}>
+                                <FormControl><SelectTrigger><SelectValue placeholder="Select if applicable" /></SelectTrigger></FormControl>
+                                <SelectContent>
+                                  {US_STATE_OPTIONS.map((stateCode) => (
+                                    <SelectItem key={stateCode} value={stateCode}>{stateCode}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                          <FormField control={form.control} name="city" render={({ field }) => (
+                            <FormItem><FormLabel>City (optional)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                          <FormField control={form.control} name="zip" render={({ field }) => (
+                            <FormItem><FormLabel>ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                          <FormField control={form.control} name="location" render={({ field }) => (
+                            <FormItem><FormLabel>Location summary</FormLabel><FormControl><Input {...field} value={field.value ?? ''} readOnly /></FormControl><FormMessage /></FormItem>
+                          )} />
+                          <FormField control={form.control} name="workplace" render={({ field }) => (
+                            <FormItem><FormLabel>Workplace / Profession (optional)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                          <FormField control={form.control} name="numberOfChildren" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Number of children (optional)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  name={field.name}
+                                  onBlur={field.onBlur}
+                                  ref={field.ref}
+                                  value={typeof field.value === 'number' ? field.value : ''}
+                                  onChange={(e) => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                          <FormField control={form.control} name="childAge" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Primary child age (optional)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  name={field.name}
+                                  onBlur={field.onBlur}
+                                  ref={field.ref}
+                                  value={typeof field.value === 'number' ? field.value : ''}
+                                  onChange={(e) => field.onChange(e.target.value === '' ? undefined : +e.target.value)}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                          <FormField control={form.control} name="childrenAgesText" render={({ field }) => (
+                            <FormItem><FormLabel>Ages of children (optional)</FormLabel><FormControl><Input placeholder="e.g., 2, 5, 9" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                        </div>
+
+                        <div className="space-y-6">
+                          <h3 className="text-lg font-semibold text-foreground">What you need</h3>
+                          <FormField control={form.control} name="needDays" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Which days do you typically need childcare?</FormLabel>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {DAY_OPTIONS.map((day) => {
+                                  const selected = (field.value ?? []).includes(day);
+                                  return (
+                                    <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
+                                      <span>{day}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <FormField control={form.control} name="needShifts" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Which shifts do you need help with?</FormLabel>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {SHIFT_OPTIONS.map((shift) => {
+                                  const selected = (field.value ?? []).includes(shift);
+                                  return (
+                                    <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
+                                      <span>{shift}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                            <FormField control={form.control} name="needDurationBucket" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Typical duration</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {DURATION_OPTIONS.map((option) => (
+                                      <SelectItem key={option} value={option}>{option} hours</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="needSettingPreference" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Preferred care setting</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {SETTING_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="needChildrenCount" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Children needing care</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {CHILD_COUNT_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <FormField control={form.control} name="needZipHome" render={({ field }) => (
+                              <FormItem><FormLabel>Home ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={form.control} name="needZipWork" render={({ field }) => (
+                              <FormItem><FormLabel>Work ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <FormField control={form.control} name="needHandoffPreference" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Preferred handoff location</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {HANDOFF_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="needMaxTravelMinutes" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Maximum travel time</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {TRAVEL_OPTIONS.map((option) => (
+                                      <SelectItem key={option} value={option}>{option === '45' ? 'More than 30 minutes' : `${option} minutes`}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <FormField control={form.control} name="needPetsInHome" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Pets in your home</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {PET_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="needSpecialNeedsNotes" render={({ field }) => (
+                              <FormItem><FormLabel>Special considerations notes (optional)</FormLabel><FormControl><Textarea placeholder="Short note about routines or care considerations." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            )} />
+                          </div>
+
+                          <div className="grid gap-3 rounded-md border p-4 md:grid-cols-2">
+                            <FormField control={form.control} name="needSpecialNeeds" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">Special considerations or specific needs</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="requireSmokeFree" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">Require a smoke-free match</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="needOkWithPets" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">Okay with pets</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="smokeFree" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">My home is smoke-free</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                          </div>
+
+                          <FormField control={form.control} name="needExtrasNeeded" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Extras you need help with</FormLabel>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {EXTRA_OPTIONS.map((extra) => {
+                                  const selected = (field.value ?? []).includes(extra);
+                                  return (
+                                    <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
+                                      <span>{extra}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                        </div>
+
+                        <div className="space-y-6">
+                          <h3 className="text-lg font-semibold text-foreground">What you offer</h3>
+                          <FormField control={form.control} name="offerDays" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Which days can you provide care?</FormLabel>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {DAY_OPTIONS.map((day) => {
+                                  const selected = (field.value ?? []).includes(day);
+                                  return (
+                                    <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
+                                      <span>{day}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <FormField control={form.control} name="offerShifts" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Which shifts can you cover?</FormLabel>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {SHIFT_OPTIONS.map((shift) => {
+                                  const selected = (field.value ?? []).includes(shift);
+                                  return (
+                                    <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
+                                      <span>{shift}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                            <FormField control={form.control} name="offerHoursPerMonthBucket" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Hours you can give per month</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {HOURS_PER_MONTH_OPTIONS.map((option) => (
+                                      <SelectItem key={option} value={option}>{option} hours</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="offerSettingPreference" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Where can you provide care?</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {SETTING_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="offerMaxChildrenTotal" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Total children you can supervise</FormLabel>
+                                <Select value={field.value} onValueChange={field.onChange}>
+                                  <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {CHILD_COUNT_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+                          </div>
+
+                          <div className="grid gap-3 rounded-md border p-4 md:grid-cols-2">
+                            <FormField control={form.control} name="offerHasVehicle" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">I have my own vehicle</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="offerOkWithSpecialNeeds" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">Comfortable caring for children with special needs</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                            <FormField control={form.control} name="petsOk" render={({ field }) => (
+                              <FormItem className="flex items-center justify-between space-y-0">
+                                <FormLabel className="font-normal">Comfortable with pets in another home</FormLabel>
+                                <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                              </FormItem>
+                            )} />
+                          </div>
+
+                          <FormField control={form.control} name="offerAgeRanges" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Age ranges you can support</FormLabel>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {AGE_RANGE_OPTIONS.map((range) => {
+                                  const selected = (field.value ?? []).includes(range);
+                                  return (
+                                    <label key={range} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], range, checked === true))} />
+                                      <span>{range}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <FormField control={form.control} name="offerExtrasOffered" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Extras you are willing to offer</FormLabel>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {EXTRA_OPTIONS.map((extra) => {
+                                  const selected = (field.value ?? []).includes(extra);
+                                  return (
+                                    <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
+                                      <span>{extra}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                        </div>
+
+                        <div className="space-y-6">
+                          <h3 className="text-lg font-semibold text-foreground">Profile summaries and interests</h3>
+                          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <FormField control={form.control} name="availability" render={({ field }) => (
+                              <FormItem><FormLabel>Availability summary</FormLabel><FormControl><Input {...field} value={field.value ?? ''} readOnly /></FormControl><FormMessage /></FormItem>
+                            )} />
+                            <FormField control={form.control} name="interests" render={({ field }) => (
+                              <FormItem><FormLabel>Interests summary</FormLabel><FormControl><Input {...field} value={field.value ?? ''} readOnly /></FormControl><FormMessage /></FormItem>
+                            )} />
+                          </div>
+
+                          <FormField control={form.control} name="needs" render={({ field }) => (
+                            <FormItem><FormLabel>Need summary</FormLabel><FormControl><Textarea placeholder="Briefly describe the support you need." rows={4} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                          <FormField control={form.control} name="offerSummary" render={({ field }) => (
+                            <FormItem><FormLabel>Offer summary</FormLabel><FormControl><Textarea placeholder="Describe what you can offer back." rows={4} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+
+                          <FormField control={form.control} name="interestSelections" render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Interests</FormLabel>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {INTEREST_OPTIONS.map((interest) => {
+                                  const selected = (field.value ?? []).includes(interest);
+                                  return (
+                                    <label key={interest} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], interest, checked === true))} />
+                                      <span>{interest}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+
+                          <FormField control={form.control} name="interestsOther" render={({ field }) => (
+                            <FormItem><FormLabel>Other interest (optional)</FormLabel><FormControl><Input placeholder="e.g., Bilingual care" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                          )} />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </CardContent>
+                <CardFooter className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="ghost" onClick={() => router.push(`/families/profile/${user?.uid}`)}>Cancel</Button>
+                  <Button type="submit">
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </CardFooter>
+              </Card>
             </fieldset>
           </form>
         </Form>
-        
+
         <Separator className="my-8" />
 
-          <Card className="border-destructive">
-            <CardHeader>
-              <CardTitle className="text-destructive font-headline flex items-center gap-2">
-                <AlertTriangle/>
-                Danger Zone
-              </CardTitle>
-              <CardDescription>
-                  This action is permanent and cannot be undone.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p>
-                  Deleting your account will permanently remove all your information, including your profile, photos, messages, and matches from our systems.
-              </p>
-            </CardContent>
-            <CardFooter className="bg-destructive/10 pt-6">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" disabled={isBusy}>
-                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                    {isDeleting ? 'Deleting Account...' : 'Permanently Delete My Account'}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete your account and remove all of your data from our servers.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteAccount} className={cn(buttonVariants({variant: 'destructive'}))}>
-                      Yes, delete my account
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </CardFooter>
-          </Card>
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive font-headline flex items-center gap-2">
+              <AlertTriangle />
+              Danger Zone
+            </CardTitle>
+            <CardDescription>
+              This action is permanent and cannot be undone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p>
+              Deleting your account will permanently remove all your information, including your profile, photos, messages, and matches from our systems.
+            </p>
+          </CardContent>
+          <CardFooter className="bg-destructive/10 pt-6">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={isBusy}>
+                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  {isDeleting ? 'Deleting Account...' : 'Permanently Delete My Account'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete your account and remove all of your data from our servers.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteAccount} className={cn(buttonVariants({ variant: 'destructive' }))}>
+                    Yes, delete my account
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardFooter>
+        </Card>
       </div>
     </AuthGuard>
   );

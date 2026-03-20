@@ -11,6 +11,13 @@ import { useEffect, useState } from 'react';
 import type { Timestamp } from 'firebase/firestore';
 import { AuthGuard } from '@/components/AuthGuard';
 import AppBackButton from '@/components/AppBackButton';
+import {
+  VERIFICATION_COMING_SOON_MESSAGE,
+  VERIFICATION_COMING_SOON_NOTE,
+  VERIFICATION_COMING_SOON_TITLE,
+  isUserVerifiedForBeta,
+} from '@/lib/constants';
+import { isConversationTypingActive } from '@/lib/presence';
 
 export default function MessagesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -19,6 +26,15 @@ export default function MessagesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null | undefined>(undefined);
   const [messageUnreadCounts, setMessageUnreadCounts] = useState<Record<string, number>>({});
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPresenceNow(Date.now());
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -101,14 +117,7 @@ export default function MessagesPage() {
     return otherUserId ? conv.userProfiles?.[otherUserId] ?? null : null;
   }
 
-  const canAccessSecureMessaging = Boolean(
-    currentUserProfile &&
-    (
-      currentUserProfile.isDemo ||
-      currentUserProfile.verificationStatus === 'verified' ||
-      (currentUserProfile.idFrontUrl && currentUserProfile.selfieUrl)
-    )
-  );
+  const canAccessSecureMessaging = isUserVerifiedForBeta(currentUserProfile);
   
   if (loading || authLoading) {
       return (
@@ -145,14 +154,14 @@ export default function MessagesPage() {
     <AuthGuard>
       <div className="ss-page-shell">
         <div className="messages-shell-wrap">
-            <Card className="messages-panel">
+            <Card className="messages-panel" data-tour="messages-center">
               <CardHeader className="messages-head-block">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
                     <CardTitle className="font-headline messages-title">Messages</CardTitle>
                     <CardDescription className="messages-subtitle">
-                      {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Upload your documents before opening secure conversations.'}
+                      {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Your account remains active while verification tools are prepared.'}
                     </CardDescription>
                   </div>
                 </div>
@@ -167,7 +176,7 @@ export default function MessagesPage() {
                     href="/families/matches"
                     className="inline-flex rounded-full border px-4 py-2 text-sm font-medium hover:bg-accent"
                   >
-                    Matches
+                    Shifters
                   </Link>
                 </div>
               </CardHeader>
@@ -179,8 +188,9 @@ export default function MessagesPage() {
               )}
               {!canAccessSecureMessaging ? (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground">To unlock messages, upload your ID front and selfie first.</p>
-                  <p className="text-muted-foreground mt-1">Verification activates automatically as soon as both files are uploaded.</p>
+                  <p className="font-medium">{VERIFICATION_COMING_SOON_TITLE}</p>
+                  <p className="text-muted-foreground mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
+                  <p className="text-muted-foreground mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
                   <Link href="/families/profile/edit" className="messages-link-btn mt-4">
                     Go to Profile Edit
                   </Link>
@@ -188,12 +198,22 @@ export default function MessagesPage() {
               ) : conversations.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">You have no messages yet.</p>
-                  <p className="text-muted-foreground mt-1">Start matching to begin conversations!</p>
+                  <p className="text-muted-foreground mt-1">Start finding shifters to begin conversations.</p>
                 </div>
               ) : (
                 <div className="messages-list">
                   {conversations.map(conv => {
                     const otherUser = getOtherUser(conv);
+                    const otherUserId = Array.isArray(conv.userIds)
+                      ? conv.userIds.find((id) => id !== user?.uid)
+                      : null;
+                    const otherUserIsTyping = otherUserId
+                      ? isConversationTypingActive(
+                          conv.typingStatus?.[otherUserId],
+                          conv.typingUpdatedAt?.[otherUserId],
+                          presenceNow
+                        )
+                      : false;
                     if (!otherUser) return null;
                     const unreadForMe = Math.max(
                       0,
@@ -227,8 +247,10 @@ export default function MessagesPage() {
                               ) : null}
                             </div>
                           </div>
-                          <p className="messages-preview">
-                            {conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}{conv.lastMessage || 'No messages yet.'}
+                          <p className={otherUserIsTyping ? 'messages-preview text-primary' : 'messages-preview'}>
+                            {otherUserIsTyping
+                              ? 'Typing...'
+                              : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
                           </p>
                         </div>
                       </Link>

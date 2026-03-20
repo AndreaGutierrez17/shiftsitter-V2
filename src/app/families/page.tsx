@@ -326,7 +326,7 @@ export default function FamiliesPage() {
             <TabsContent value="login" className="pt-4">
                 <div className="auth-card-head">
                     <h2>Welcome back</h2>
-                    <p className="muted">Sign in to continue your matching flow.</p>
+                    <p className="muted">Sign in to continue your discovery flow.</p>
                 </div>
                 <div className="form-field">
                     <label>Email</label>

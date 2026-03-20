@@ -19,12 +19,14 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
-import { ONBOARDING_STEPS } from '@/lib/constants';
+import {
+  ONBOARDING_STEPS,
+  VERIFICATION_COMING_SOON_MESSAGE,
+  VERIFICATION_COMING_SOON_NOTE,
+  VERIFICATION_COMING_SOON_TITLE,
+} from '@/lib/constants';
 import { ArrowLeft, ArrowRight, Repeat, User, Users } from 'lucide-react';
 import { AuthGuard } from '@/components/AuthGuard';
-
-const BETA_MD_ONLY_MESSAGE = 'ShiftSitter beta is currently available in Maryland only.';
-const ALLOWLIST_TEST_EMAILS = ['PON_AQUI_EMAIL_DE_ANDY'];
 
 const US_STATE_OPTIONS = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -76,10 +78,10 @@ const profileSchema = z.object({
   role: z.enum(['parent', 'sitter', 'reciprocal'], { message: 'Please select a role.' }),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   age: z.coerce.number().min(18, 'You must be at least 18 years old.'),
-  location: z.string().min(2, 'Location is required.'),
-  state: z.string().min(2, 'State is required.'),
-  city: z.string().trim().min(2, 'City is required.'),
-  zip: z.string().regex(/^\d{5}$/, 'ZIP code must be 5 digits.'),
+  location: z.string().optional(),
+  state: z.string().optional(),
+  city: z.string().optional(),
+  zip: z.string().optional(),
   workplace: z.string().optional(),
   numberOfChildren: z.coerce.number().optional(),
   childAge: z.coerce.number().optional(),
@@ -96,7 +98,7 @@ const profileSchema = z.object({
   requireSmokeFree: z.boolean().optional(),
   needPetsInHome: z.enum(['none', 'dog', 'cat', 'multiple', 'unknown']),
   needOkWithPets: z.boolean().optional(),
-  needZipHome: z.string().regex(/^\d{5}$/, 'Home ZIP code must be 5 digits.'),
+  needZipHome: z.string().optional(),
   needZipWork: z.string().optional(),
   needHandoffPreference: z.enum(['pickup', 'dropoff', 'my_workplace', 'their_workplace', 'either']),
   needMaxTravelMinutes: z.string(),
@@ -151,8 +153,11 @@ function buildLocation(city?: string, state?: string, zip?: string) {
   const safeCity = city?.trim() ?? '';
   const safeState = state?.trim() ?? '';
   const safeZip = zip?.trim() ?? '';
-  if (!safeCity || !safeState || !safeZip) return '';
-  return `${safeCity}, ${safeState} ${safeZip}`;
+  if (safeCity && safeState && safeZip) return `${safeCity}, ${safeState} ${safeZip}`;
+  if (safeCity && safeState) return `${safeCity}, ${safeState}`;
+  if (safeCity) return safeCity;
+  if (safeState) return safeState;
+  return safeZip;
 }
 
 function buildAvailabilitySummary(days: string[], shifts: string[]) {
@@ -193,9 +198,6 @@ function OnboardingForm() {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
 
-  const normalizedEmail = user?.email?.trim().toLowerCase() ?? '';
-  const isAllowlistedEmail = ALLOWLIST_TEST_EMAILS.map((email) => email.toLowerCase()).includes(normalizedEmail);
-
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -203,7 +205,7 @@ function OnboardingForm() {
       name: user?.displayName || '',
       age: undefined,
       location: '',
-      state: 'MD',
+      state: '',
       city: '',
       zip: '',
       workplace: '',
@@ -263,10 +265,6 @@ function OnboardingForm() {
   }, [user, form]);
 
   useEffect(() => {
-    if (!isAllowlistedEmail && form.getValues('state') !== 'MD') form.setValue('state', 'MD', { shouldValidate: true });
-  }, [form, isAllowlistedEmail]);
-
-  useEffect(() => {
     const nextLocation = buildLocation(watchedCity, watchedState, watchedZip);
     if (form.getValues('location') !== nextLocation) form.setValue('location', nextLocation);
   }, [form, watchedCity, watchedState, watchedZip]);
@@ -290,22 +288,13 @@ function OnboardingForm() {
   }, [form, watchedInterestSelections, watchedInterestsOther]);
 
   const totalSteps = ONBOARDING_STEPS.length;
-  const stateOptions = isAllowlistedEmail ? US_STATE_OPTIONS : (['MD'] as const);
+  const stateOptions = US_STATE_OPTIONS;
   const progressValue = ((currentStep + 1) / totalSteps) * 100;
-
-  const validateMarylandGate = () => {
-    if (!isAllowlistedEmail && form.getValues('state') !== 'MD') {
-      form.setError('state', { type: 'manual', message: BETA_MD_ONLY_MESSAGE });
-      return false;
-    }
-    return true;
-  };
 
   const handleNext = async () => {
     const fieldsToValidate = [...ONBOARDING_STEPS[currentStep].fields] as (keyof ProfileFormValues)[];
     const isValid = await form.trigger(fieldsToValidate);
     if (!isValid) return;
-    if (currentStep === 1 && !validateMarylandGate()) return;
 
     if (currentStep < totalSteps - 1) {
       setCurrentStep((prev) => prev + 1);
@@ -327,12 +316,6 @@ function OnboardingForm() {
       toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to create a profile.' });
       return;
     }
-    if (!isAllowlistedEmail && data.state !== 'MD') {
-      form.setError('state', { type: 'manual', message: BETA_MD_ONLY_MESSAGE });
-      toast({ variant: 'destructive', title: 'Location restricted', description: BETA_MD_ONLY_MESSAGE });
-      setCurrentStep(1);
-      return;
-    }
 
     setIsSaving(true);
     try {
@@ -344,7 +327,8 @@ function OnboardingForm() {
       const normalizedChildrenCount = parseNumericText(data.needChildrenCount);
       const normalizedOfferCapacity = parseNumericText(data.offerMaxChildrenTotal);
       const normalizedTravelMinutes = parseNumericText(data.needMaxTravelMinutes) || 30;
-      const normalizedNeedZipWork = data.needZipWork?.trim() || data.zip;
+      const normalizedNeedZipHome = data.needZipHome?.trim() || data.zip?.trim() || '';
+      const normalizedNeedZipWork = data.needZipWork?.trim() || data.zip?.trim() || '';
       const needDays = data.needDays;
       const needShifts = data.needShifts;
       const offerDays = data.offerDays;
@@ -364,7 +348,7 @@ function OnboardingForm() {
         requireSmokeFree: data.requireSmokeFree ?? false,
         petsInHome: data.needPetsInHome,
         okWithPets: data.needOkWithPets ?? false,
-        zipHome: data.needZipHome,
+        zipHome: normalizedNeedZipHome,
         zipWork: normalizedNeedZipWork,
         handoffPreference: data.needHandoffPreference,
         maxTravelMinutes: normalizedTravelMinutes,
@@ -382,7 +366,7 @@ function OnboardingForm() {
         extrasOffered: data.offerExtrasOffered,
         smokeFree: data.smokeFree ?? false,
         okWithPets: data.petsOk ?? false,
-        zipHome: data.needZipHome,
+        zipHome: normalizedNeedZipHome,
         zipWork: normalizedNeedZipWork,
         handoffPreference: data.needHandoffPreference,
         maxTravelMinutes: normalizedTravelMinutes,
@@ -395,13 +379,13 @@ function OnboardingForm() {
         displayName: data.name,
         photoURL: user.photoURL || null,
         photoURLs: user.photoURL ? [user.photoURL] : [],
-        homeZip: data.zip,
+        homeZip: normalizedNeedZipHome,
         workZip: normalizedNeedZipWork,
-        state: data.state,
-        city: data.city.trim(),
+        state: data.state?.trim() || '',
+        city: data.city?.trim() || '',
         location: data.location,
         onboardingComplete: true,
-        verificationStatus: 'unverified' as const,
+        verificationStatus: 'verified' as const,
         updatedAt: serverTimestamp(),
       };
 
@@ -422,7 +406,7 @@ function OnboardingForm() {
         handoff_need: data.needHandoffPreference,
         handoff_offer: data.needHandoffPreference,
         travel_max_minutes: normalizedTravelMinutes,
-        home_zip: data.zip,
+        home_zip: normalizedNeedZipHome,
         work_zip: normalizedNeedZipWork,
         interests: interestsArray,
       };
@@ -438,9 +422,9 @@ function OnboardingForm() {
         age: data.age,
         role: data.role,
         location: data.location,
-        state: data.state,
-        city: data.city.trim(),
-        zip: data.zip,
+        state: data.state?.trim() || '',
+        city: data.city?.trim() || '',
+        zip: data.zip?.trim() || '',
         workplace: data.workplace || '',
         numberOfChildren: normalizedChildrenCount || null,
         childAge: data.childAge ?? null,
@@ -461,6 +445,7 @@ function OnboardingForm() {
         need,
         offer,
         onboardingComplete: true,
+        verificationStatus: 'verified' as const,
         access: {
           source: 'manual',
           status: 'active',
@@ -594,32 +579,18 @@ function OnboardingForm() {
                         )}
                       />
 
-                      {!isAllowlistedEmail && (
-                        <p className="rounded-md border border-primary/20 bg-accent p-3 text-sm text-muted-foreground">
-                          {BETA_MD_ONLY_MESSAGE}
-                        </p>
-                      )}
-
                       <div className="grid gap-4 sm:grid-cols-3">
                         <FormField
                           control={form.control}
                           name="state"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>State *</FormLabel>
+                              <FormLabel>State / Region (optional)</FormLabel>
                               <Select
-                                value={field.value || 'MD'}
-                                onValueChange={(value) => {
-                                  if (!isAllowlistedEmail && value !== 'MD') {
-                                    form.setError('state', { type: 'manual', message: BETA_MD_ONLY_MESSAGE });
-                                    field.onChange('MD');
-                                    return;
-                                  }
-                                  form.clearErrors('state');
-                                  field.onChange(value);
-                                }}
+                                value={field.value || undefined}
+                                onValueChange={field.onChange}
                               >
-                                <FormControl><SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger></FormControl>
+                                <FormControl><SelectTrigger><SelectValue placeholder="Select if applicable" /></SelectTrigger></FormControl>
                                 <SelectContent>
                                   {stateOptions.map((stateCode) => (
                                     <SelectItem key={stateCode} value={stateCode}>{stateCode}</SelectItem>
@@ -636,8 +607,8 @@ function OnboardingForm() {
                           name="city"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>City *</FormLabel>
-                              <FormControl><Input placeholder="e.g., Baltimore" {...field} /></FormControl>
+                              <FormLabel>City (optional)</FormLabel>
+                              <FormControl><Input placeholder="e.g., Baltimore" {...field} value={field.value ?? ''} /></FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -648,14 +619,14 @@ function OnboardingForm() {
                           name="zip"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>ZIP *</FormLabel>
+                              <FormLabel>ZIP / Postal code (optional)</FormLabel>
                               <FormControl>
                                 <Input
-                                  inputMode="numeric"
-                                  maxLength={5}
-                                  placeholder="21201"
+                                  inputMode="text"
+                                  maxLength={12}
+                                  placeholder="e.g., 21201"
                                   value={field.value || ''}
-                                  onChange={(e) => field.onChange(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                                  onChange={(e) => field.onChange(e.target.value.slice(0, 12))}
                                   onBlur={field.onBlur}
                                   name={field.name}
                                   ref={field.ref}
@@ -826,15 +797,15 @@ function OnboardingForm() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <FormField control={form.control} name="needZipHome" render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Home ZIP code *</FormLabel>
-                            <FormControl><Input inputMode="numeric" maxLength={5} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.replace(/\D/g, '').slice(0, 5))} /></FormControl>
+                            <FormLabel>Home ZIP / Postal code (optional)</FormLabel>
+                            <FormControl><Input inputMode="text" maxLength={12} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.slice(0, 12))} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
                         <FormField control={form.control} name="needZipWork" render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Work ZIP code (optional)</FormLabel>
-                            <FormControl><Input inputMode="numeric" maxLength={5} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.replace(/\D/g, '').slice(0, 5))} /></FormControl>
+                            <FormLabel>Work ZIP / Postal code (optional)</FormLabel>
+                            <FormControl><Input inputMode="text" maxLength={12} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.slice(0, 12))} /></FormControl>
                             <FormMessage />
                           </FormItem>
                         )} />
@@ -1140,7 +1111,9 @@ function OnboardingForm() {
                         </div>
                       </div>
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-800">
-                        Before using secure messages or calendar, upload your ID front and selfie in Profile Edit. Verification activates automatically as soon as both files are uploaded.
+                        <p className="font-semibold">{VERIFICATION_COMING_SOON_TITLE}</p>
+                        <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
+                        <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
                       </div>
                     </div>
                   )}
@@ -1151,7 +1124,7 @@ function OnboardingForm() {
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </button>
                 <button type="button" className="ss-btn" onClick={handleNext} disabled={isSaving}>
-                  {isSaving ? 'Saving...' : currentStep === totalSteps - 1 ? 'Finish & Add Photos / Verification' : 'Next'}
+                  {isSaving ? 'Saving...' : currentStep === totalSteps - 1 ? 'Finish & Continue to Profile' : 'Next'}
                   {!isSaving && currentStep < totalSteps - 1 && <ArrowRight className="ml-2 h-4 w-4" />}
                 </button>
               </div>

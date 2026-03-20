@@ -377,8 +377,8 @@ export default function MyMatchesPage() {
             type: 'match',
             notificationId: `match_accepted_${matchId}_${requestRow.fromUid}`,
             targetUserIds: [requestRow.fromUid],
-            title: 'Match Accepted',
-            body: `${requestRow.otherUser.name} accepted your match request.`,
+            title: 'Request accepted',
+            body: `${requestRow.otherUser.name} accepted your connection request.`,
             link: `/families/messages/${matchId}`,
             data: {
               matchId,
@@ -458,8 +458,8 @@ export default function MyMatchesPage() {
             type: 'request',
             notificationId: `match_declined_${requestRow.id}_${requestRow.fromUid}`,
             targetUserIds: [requestRow.fromUid],
-            title: 'Match Request Declined',
-            body: `${requestRow.otherUser.name} declined your match request.`,
+            title: 'Request declined',
+            body: `${requestRow.otherUser.name} declined your connection request.`,
             link: '/families/matches',
             data: {
               requestId: requestRow.id,
@@ -486,8 +486,8 @@ export default function MyMatchesPage() {
           <div className="ss-page-inner">
             <Card className="ss-soft-card">
               <CardHeader>
-                <CardTitle className="font-headline">My Matches</CardTitle>
-                <CardDescription>Loading your active matches...</CardDescription>
+                <CardTitle className="font-headline">My Shifters</CardTitle>
+                <CardDescription>Loading your active shifters...</CardDescription>
               </CardHeader>
               <CardContent className="text-center py-12">
                 <div className="h-8 w-8 mx-auto animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -503,11 +503,11 @@ export default function MyMatchesPage() {
     <AuthGuard>
       <div className="ss-page-shell">
         <div className="ss-page-inner">
-          <Card className="ss-soft-card">
+          <Card className="ss-soft-card" data-tour="matches-center">
             <CardHeader className="space-y-4">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <CardTitle className="font-headline">My Matches</CardTitle>
+                  <CardTitle className="font-headline">My Shifters</CardTitle>
                   <CardDescription>Incoming requests must be accepted before chat is unlocked.</CardDescription>
                 </div>
                 <Link href="/families/messages" className="inline-flex rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent">
@@ -525,7 +525,7 @@ export default function MyMatchesPage() {
                   href="/families/matches"
                   className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-medium text-white"
                 >
-                  Matches
+                  Shifters
                 </Link>
               </div>
             </CardHeader>
@@ -635,11 +635,11 @@ export default function MyMatchesPage() {
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Active Matches</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Active Shifters</h3>
                 <div className="mt-3 space-y-4">
                   {rows.length === 0 ? (
                     <div className="rounded-2xl border bg-white p-8 text-center text-muted-foreground">
-                      You do not have active matches right now.
+                      You do not have active shifters right now.
                     </div>
                   ) : (
                     rows.map((row) => (
@@ -654,7 +654,7 @@ export default function MyMatchesPage() {
                               <p className="text-lg font-semibold text-[var(--navy)]">{row.otherUser?.name}</p>
                               <p className="text-sm text-muted-foreground">{row.otherUser?.location || 'Location unavailable'}</p>
                               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                                {row.conversation ? 'Chat ready' : 'Match active'}
+                                {row.conversation ? 'Chat ready' : 'Connection active'}
                               </p>
                             </div>
                           </div>
@@ -690,7 +690,7 @@ export default function MyMatchesPage() {
                               onClick={() => handleEndMatch(row)}
                               disabled={busyRowId === row.id}
                             >
-                              End Match
+                              End connection
                             </Button>
                           </div>
                         </div>

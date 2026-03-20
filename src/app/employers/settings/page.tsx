@@ -180,7 +180,7 @@ export default function EmployerSettingsPage() {
               {saved ? <p className="md:col-span-2 text-sm text-emerald-600">Company profile saved.</p> : null}
               <div className="md:col-span-2 mt-2 h-0.5 rounded-full bg-emerald-300/80" />
               <div className="md:col-span-2 pt-1">
-                <Button type="submit" className="ss-pill-btn" disabled={saving}>
+                <Button type="submit" className="ss-pill-btn w-full sm:w-auto" disabled={saving}>
                   {saving ? 'Saving...' : 'Save company profile'}
                 </Button>
               </div>

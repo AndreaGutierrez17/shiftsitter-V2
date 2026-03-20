@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Bell, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, CircleHelp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useUserPresenceHeartbeat } from "@/hooks/useUserPresenceHeartbeat";
 import { signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase/client";
+import { requestGuidedTourOpen } from "@/lib/guided-tour";
 import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
 import {
   collection,
@@ -62,6 +64,8 @@ export default function Header() {
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
+  const showFamilyTourControls = Boolean(user && accountType !== "employer" && pathname?.startsWith("/families"));
+  useUserPresenceHeartbeat(user?.uid);
 
   const navLinks = user ? (accountType === "employer" ? EMPLOYER_NAV_LINKS : NAV_LINKS) : publicNavLinks;
 
@@ -160,6 +164,10 @@ export default function Header() {
   }, [isMenuOpen]);
 
   const handleNavClick = () => setIsMenuOpen(false);
+
+  const handleOpenTour = () => {
+    requestGuidedTourOpen();
+  };
 
   const handleSignOut = async () => {
     try {
@@ -376,7 +384,10 @@ export default function Header() {
   }, [user, pathname]);
 
   return (
-    <header className={`ss-header${isMenuOpen ? " ss-header-open" : ""}`}>
+    <header
+      className={`ss-header${isMenuOpen ? " ss-header-open" : ""}`}
+      data-tour={showFamilyTourControls ? "families-nav" : undefined}
+    >
       <div className="ss-header-inner">
         <Link href={user ? (accountType === "employer" ? "/employers/dashboard" : "/families/match") : "/"} className="ss-brand" onClick={handleNavClick}>
           <div className="ss-brand-logo">
@@ -407,61 +418,74 @@ export default function Header() {
           {user ? (
              <>
               {accountType !== "employer" ? (
-                <DropdownMenu
-                  open={notifOpenDesktop}
-                  onOpenChange={(open) => {
-                    setNotifOpenDesktop(open);
-                    if (open) setNotifOpenMobile(false);
-                  }}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
-                      <Bell className="h-4 w-4" />
-                      {unreadCount > 0 ? (
-                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                          {unreadCount > 9 ? '9+' : unreadCount}
-                        </span>
-                      ) : null}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 rounded-[var(--radius)] p-1">
-                    <DropdownMenuLabel className="flex items-center justify-between">
-                      <span>Notifications</span>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                        onClick={markAllNotificationsRead}
-                        disabled={unreadCount === 0 || isMarkingAllRead}
-                      >
-                        <CheckCheck className="h-3.5 w-3.5" />
-                        {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                <>
+                  {showFamilyTourControls ? (
+                    <button
+                    type="button"
+                    className="ss-btn-outline ss-nav-btn"
+                    onClick={handleOpenTour}
+                    aria-label="Open guided tour"
+                    title="Guided tour"
+                  >
+                    <CircleHelp className="h-4 w-4" />
+                  </button>
+                  ) : null}
+                  <DropdownMenu
+                    open={notifOpenDesktop}
+                    onOpenChange={(open) => {
+                      setNotifOpenDesktop(open);
+                      if (open) setNotifOpenMobile(false);
+                    }}
+                  >
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
+                        <Bell className="h-4 w-4" />
+                        {unreadCount > 0 ? (
+                          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        ) : null}
                       </button>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {notifications.length === 0 ? (
-                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                    ) : (
-                      notifications.slice(0, 8).map((notif) => (
-                        <DropdownMenuItem
-                          key={notif.id}
-                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
-                          onSelect={(e) => {
-                            e.preventDefault();
-                            void markNotificationRead(notif.id);
-                            setNotifOpenDesktop(false);
-                            if (notif.href) router.push(notif.href);
-                          }}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-80 rounded-[var(--radius)] p-1">
+                      <DropdownMenuLabel className="flex items-center justify-between">
+                        <span>Notifications</span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                          onClick={markAllNotificationsRead}
+                          disabled={unreadCount === 0 || isMarkingAllRead}
                         >
-                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{notif.title}</div>
-                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                          </div>
-                        </DropdownMenuItem>
-                      ))
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                        </button>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {notifications.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                      ) : (
+                        notifications.slice(0, 8).map((notif) => (
+                          <DropdownMenuItem
+                            key={notif.id}
+                            className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void markNotificationRead(notif.id);
+                              setNotifOpenDesktop(false);
+                              if (notif.href) router.push(notif.href);
+                            }}
+                          >
+                            <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold">{notif.title}</div>
+                              <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                            </div>
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
               ) : null}
               <button onClick={handleSignOut} className="ss-btn-outline ss-nav-btn">
                 Log out
@@ -481,64 +505,77 @@ export default function Header() {
 
         {user && accountType !== "employer" ? (
           <div className="ss-mobile-top-actions">
-            <DropdownMenu
-              open={notifOpenMobile}
-              onOpenChange={(open) => {
-                setNotifOpenMobile(open);
-                if (open) {
-                  setNotifOpenDesktop(false);
-                  setIsMenuOpen(false);
-                }
-              }}
-            >
-              <DropdownMenuTrigger asChild>
-                <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
-                  <Bell className="h-4 w-4" />
-                  {unreadCount > 0 ? (
-                    <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  ) : null}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
-                <DropdownMenuLabel className="flex items-center justify-between">
-                  <span>Notifications</span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                    onClick={markAllNotificationsRead}
-                    disabled={unreadCount === 0 || isMarkingAllRead}
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+            <>
+              {showFamilyTourControls ? (
+                <button
+                type="button"
+                className="ss-btn-outline ss-nav-btn"
+                onClick={handleOpenTour}
+                aria-label="Open guided tour"
+                title="Guided tour"
+              >
+                <CircleHelp className="h-4 w-4" />
+              </button>
+              ) : null}
+              <DropdownMenu
+                open={notifOpenMobile}
+                onOpenChange={(open) => {
+                  setNotifOpenMobile(open);
+                  if (open) {
+                    setNotifOpenDesktop(false);
+                    setIsMenuOpen(false);
+                  }
+                }}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
+                    <Bell className="h-4 w-4" />
+                    {unreadCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    ) : null}
                   </button>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {notifications.length === 0 ? (
-                  <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                ) : (
-                  notifications.slice(0, 8).map((notif) => (
-                    <DropdownMenuItem
-                      key={notif.id}
-                      className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        void markNotificationRead(notif.id);
-                        setNotifOpenMobile(false);
-                        if (notif.href) router.push(notif.href);
-                      }}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
+                  <DropdownMenuLabel className="flex items-center justify-between">
+                    <span>Notifications</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                      onClick={markAllNotificationsRead}
+                      disabled={unreadCount === 0 || isMarkingAllRead}
                     >
-                      <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{notif.title}</div>
-                        <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      <CheckCheck className="h-3.5 w-3.5" />
+                      {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                    </button>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {notifications.length === 0 ? (
+                    <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                  ) : (
+                    notifications.slice(0, 8).map((notif) => (
+                      <DropdownMenuItem
+                        key={notif.id}
+                        className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          void markNotificationRead(notif.id);
+                          setNotifOpenMobile(false);
+                          if (notif.href) router.push(notif.href);
+                        }}
+                      >
+                        <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">{notif.title}</div>
+                          <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           </div>
         ) : null}
 
@@ -580,6 +617,18 @@ export default function Header() {
         <div className="ss-mobile-actions">
            {user ? (
              <>
+              {showFamilyTourControls ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleNavClick();
+                    handleOpenTour();
+                  }}
+                  className="ss-btn-outline ss-nav-btn w-full"
+                >
+                  Guided Tour
+                </button>
+              ) : null}
               <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
                 Log out
               </button>
