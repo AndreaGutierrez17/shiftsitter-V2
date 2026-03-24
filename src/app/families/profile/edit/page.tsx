@@ -39,13 +39,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { AuthGuard } from '@/components/AuthGuard';
-import {
-  FIND_SHIFTERS_LABEL,
-  VERIFICATION_COMING_SOON_MESSAGE,
-  VERIFICATION_COMING_SOON_NOTE,
-  VERIFICATION_COMING_SOON_TITLE,
-  getVisibleVerificationStatus,
-} from '@/lib/constants';
+import { FIND_SHIFTERS_LABEL } from '@/lib/constants';
 
 const US_STATE_OPTIONS = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -160,6 +154,7 @@ const profileSchema = z.object({
 });
 
 type ProfileFormValues = z.input<typeof profileSchema>;
+type VerificationUploadField = 'cv' | 'idFront' | 'selfie';
 
 function asString(value: unknown) {
   return typeof value === 'string' ? value : '';
@@ -291,7 +286,10 @@ export default function EditProfilePage() {
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [idFrontUrl, setIdFrontUrl] = useState<string | null>(null);
   const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
-  const [verificationStatus, setVerificationStatus] = useState<UserProfile['verificationStatus']>('verified');
+  const [verificationStatus, setVerificationStatus] = useState<UserProfile['verificationStatus']>('unverified');
+  const [verificationReviewNotes, setVerificationReviewNotes] = useState<string>('');
+  const [isUploadingVerification, setIsUploadingVerification] = useState(false);
+  const [uploadingVerificationField, setUploadingVerificationField] = useState<'cv' | 'idFront' | 'selfie' | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -477,7 +475,12 @@ export default function EditProfilePage() {
           setCvUrl(profile.cvUrl || null);
           setIdFrontUrl(profile.idFrontUrl || null);
           setSelfieUrl(profile.selfieUrl || null);
-          setVerificationStatus(getVisibleVerificationStatus(profile.verificationStatus));
+          const reviewNotes =
+            (profile as UserProfile & { rejectReason?: string }).rejectReason ||
+            profile.verificationReviewNotes ||
+            '';
+          setVerificationReviewNotes(reviewNotes);
+          setVerificationStatus(profile.verificationStatus ?? 'unverified');
         } else {
           if (user.displayName) form.setValue('name', user.displayName);
           if (user.photoURL) setPhotos([user.photoURL]);
@@ -522,6 +525,108 @@ export default function EditProfilePage() {
     const snapshot = await uploadBytes(storageRef, fileToUpload);
     return getDownloadURL(snapshot.ref);
   };
+
+  const isAllowedVerificationFile = (file: File) => {
+    if (file.type.startsWith('image/')) return true;
+    const allowedTypes = new Set([
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]);
+    if (allowedTypes.has(file.type)) return true;
+    const name = file.name.toLowerCase();
+    return name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx');
+  };
+
+  const handleVerificationFileUpload = async (file: File, field: VerificationUploadField): Promise<string> => {
+    if (!user) throw new Error('User not authenticated.');
+    if (!isAllowedVerificationFile(file)) {
+      throw new Error('Only images, PDF, DOC, or DOCX files are allowed.');
+    }
+
+    let fileToUpload = file;
+
+    if (file.type.startsWith('image/')) {
+      try {
+        fileToUpload = await compressImageFile(file);
+      } catch (error) {
+        console.error('Image compression error:', error);
+        toast({
+          title: 'Using original image',
+          description: 'Your phone provided a format that could not be compressed in-browser, so we are uploading the original file instead.',
+        });
+      }
+    }
+
+    const maxBytes = 8 * 1024 * 1024;
+    if (fileToUpload.size > maxBytes) {
+      throw new Error('File is too large. The limit is 8MB.');
+    }
+
+    const filePath = `verification_docs/${user.uid}/${field}_${Date.now()}_${fileToUpload.name}`;
+    const storageRef = ref(storage, filePath);
+    const snapshot = await uploadBytes(storageRef, fileToUpload);
+    return getDownloadURL(snapshot.ref);
+  };
+
+  const handleVerificationUpload = async (field: VerificationUploadField, file: File) => {
+    if (!user) return;
+
+    setIsUploadingVerification(true);
+    setUploadingVerificationField(field);
+
+    const existingUrl = field === 'cv' ? cvUrl : field === 'idFront' ? idFrontUrl : selfieUrl;
+
+    try {
+      const downloadURL = await handleVerificationFileUpload(file, field);
+      const payload: Record<string, unknown> = {
+        verificationStatus: 'pending',
+        verificationSubmittedAt: serverTimestamp(),
+        verificationReviewedAt: null,
+        verificationReviewNotes: '',
+        rejectReason: '',
+      };
+      if (field === 'cv') payload.cvUrl = downloadURL;
+      if (field === 'idFront') payload.idFrontUrl = downloadURL;
+      if (field === 'selfie') payload.selfieUrl = downloadURL;
+
+      await updateDoc(doc(db, 'users', user.uid), payload);
+
+      if (field === 'cv') setCvUrl(downloadURL);
+      if (field === 'idFront') setIdFrontUrl(downloadURL);
+      if (field === 'selfie') setSelfieUrl(downloadURL);
+      setVerificationStatus('pending');
+      setVerificationReviewNotes('');
+
+      if (existingUrl) {
+        deleteObject(ref(storage, existingUrl)).catch(() => null);
+      }
+
+      toast({
+        title: 'Document uploaded',
+        description: 'Your verification is now pending review.',
+      });
+    } catch (error: any) {
+      console.error('Verification upload error:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Upload Failed',
+        description: error?.message || 'An unexpected error occurred while uploading your document.',
+        duration: 9000,
+      });
+    } finally {
+      setIsUploadingVerification(false);
+      setUploadingVerificationField(null);
+    }
+  };
+
+  const handleVerificationFileChange =
+    (field: VerificationUploadField) => async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await handleVerificationUpload(field, file);
+      event.target.value = '';
+    };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -702,7 +807,6 @@ export default function EditProfilePage() {
         city: values.city?.trim() || '',
         location: resolvedLocation,
         onboardingComplete: true,
-        verificationStatus: 'verified' as const,
         updatedAt: serverTimestamp(),
       };
       const answers = {
@@ -760,7 +864,6 @@ export default function EditProfilePage() {
         need,
         offer,
         onboardingComplete: true,
-        verificationStatus: 'verified' as const,
         access: {
           source: 'manual',
           status: 'active',
@@ -813,6 +916,8 @@ export default function EditProfilePage() {
       await Promise.allSettled([
         ...photos.map((url) => deleteObject(ref(storage, url))),
         ...(cvUrl ? [deleteObject(ref(storage, cvUrl))] : []),
+        ...(idFrontUrl ? [deleteObject(ref(storage, idFrontUrl))] : []),
+        ...(selfieUrl ? [deleteObject(ref(storage, selfieUrl))] : []),
       ]);
 
       const idToken = await currentUser.getIdToken(true);
@@ -894,8 +999,75 @@ export default function EditProfilePage() {
   const isBusy =
     isSaving ||
     isUploadingPhoto ||
+    isUploadingVerification ||
     isDeleting ||
     isHandlingNotifications;
+
+  const verificationStatusLabel =
+    verificationStatus === 'verified'
+      ? 'Accepted'
+      : verificationStatus === 'pending'
+        ? 'Pending'
+        : verificationStatus === 'rejected'
+          ? 'Rejected'
+          : 'Unverified';
+
+  const verificationStatusTone =
+    verificationStatus === 'verified'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : verificationStatus === 'pending'
+        ? 'border-amber-200 bg-amber-50 text-amber-700'
+        : verificationStatus === 'rejected'
+          ? 'border-rose-200 bg-rose-50 text-rose-700'
+          : 'border-slate-200 bg-slate-50 text-slate-600';
+
+  const verificationStatusMessage =
+    verificationStatus === 'verified'
+      ? 'Your documents have been approved.'
+      : verificationStatus === 'pending'
+        ? 'Your documents are in review.'
+        : verificationStatus === 'rejected'
+          ? 'Your submission was rejected. Please upload new documents.'
+          : 'Upload your documents to start verification.';
+
+  const isMobileDevice =
+    typeof window !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  const verificationItems: Array<{
+    key: VerificationUploadField;
+    label: string;
+    hint: string;
+    accept: string;
+    capture?: string;
+    url: string | null;
+    icon: typeof FileText;
+  }> = [
+    {
+      key: 'idFront',
+      label: 'Government ID (front)',
+      hint: 'Required',
+      accept: 'image/*,application/pdf',
+      url: idFrontUrl,
+      icon: IdCard,
+    },
+    {
+      key: 'selfie',
+      label: 'Selfie',
+      hint: 'Required',
+      accept: 'image/*',
+      capture: isMobileDevice ? 'user' : undefined,
+      url: selfieUrl,
+      icon: Camera,
+    },
+    {
+      key: 'cv',
+      label: 'CV or resume',
+      hint: 'Optional',
+      accept: '.pdf,.doc,.docx',
+      url: cvUrl,
+      icon: FileText,
+    },
+  ];
 
   return (
     <AuthGuard>
@@ -966,18 +1138,77 @@ export default function EditProfilePage() {
                         <div>
                           <h3 className="text-lg font-semibold text-foreground">Verification and documents</h3>
                           <p className="mb-4 text-sm text-muted-foreground">
-                            {VERIFICATION_COMING_SOON_MESSAGE} {VERIFICATION_COMING_SOON_NOTE}
+                            Upload your ID and selfie to request verification. Status updates and notifications will arrive once reviewed.
                           </p>
                         </div>
-                        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                        <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${verificationStatusTone}`}>
                           <BadgeCheck className="h-4 w-4" />
-                          {getVisibleVerificationStatus(verificationStatus) === 'verified' ? 'Verified' : 'Active'}
+                          {verificationStatusLabel}
                         </span>
                       </div>
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                        <p className="font-semibold">{VERIFICATION_COMING_SOON_TITLE}</p>
-                        <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
-                        <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
+                      <div className="rounded-lg border border-border/70 bg-slate-50 p-4 text-sm text-slate-700">
+                        <p className="font-semibold">Verification status</p>
+                        <p className="mt-1">{verificationStatusMessage}</p>
+                        {verificationStatus === 'rejected' && verificationReviewNotes ? (
+                          <p className="mt-2 text-rose-700">Review notes: {verificationReviewNotes}</p>
+                        ) : null}
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {verificationItems.map((item) => {
+                          const Icon = item.icon;
+                          const isUploadingItem = isUploadingVerification && uploadingVerificationField === item.key;
+                          const inputId = `verification-${item.key}`;
+                          return (
+                            <div key={item.key} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-white p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="mt-0.5 rounded-full border bg-slate-50 p-2">
+                                  <Icon className="h-4 w-4 text-primary" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-foreground">{item.label}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {item.hint} · {item.url ? 'Uploaded' : 'Not uploaded'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {item.url ? (
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : null}
+                                <input
+                                  id={inputId}
+                                  type="file"
+                                  className="sr-only"
+                                  accept={item.accept}
+                                  capture={item.capture}
+                                  onChange={handleVerificationFileChange(item.key)}
+                                  disabled={isUploadingVerification}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  asChild
+                                  disabled={isUploadingVerification}
+                                >
+                                  <label
+                                    htmlFor={inputId}
+                                    className={cn(isUploadingVerification && !isUploadingItem && 'pointer-events-none opacity-60')}
+                                  >
+                                    {isUploadingItem ? 'Uploading...' : item.url ? 'Replace' : 'Upload'}
+                                  </label>
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>

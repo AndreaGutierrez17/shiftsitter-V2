@@ -3,7 +3,7 @@ import type { UserProfile } from '@/lib/types';
 
 export const APP_NAME = 'ShiftSitter Pro';
 export const FIND_SHIFTERS_LABEL = 'Find Shifters';
-export const BETA_AUTO_VERIFY_USERS = true;
+export const BETA_AUTO_VERIFY_USERS = false;
 export const VERIFICATION_COMING_SOON_TITLE = 'Coming Soon';
 export const VERIFICATION_COMING_SOON_MESSAGE =
   'Verification features will be enabled in a future update.';

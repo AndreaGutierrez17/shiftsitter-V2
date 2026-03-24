@@ -385,7 +385,7 @@ function OnboardingForm() {
         city: data.city?.trim() || '',
         location: data.location,
         onboardingComplete: true,
-        verificationStatus: 'verified' as const,
+        verificationStatus: 'unverified' as const,
         updatedAt: serverTimestamp(),
       };
 
@@ -445,7 +445,7 @@ function OnboardingForm() {
         need,
         offer,
         onboardingComplete: true,
-        verificationStatus: 'verified' as const,
+        verificationStatus: 'unverified' as const,
         access: {
           source: 'manual',
           status: 'active',

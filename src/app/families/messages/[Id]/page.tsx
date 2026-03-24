@@ -33,13 +33,7 @@ import type { Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
-import {
-  VERIFICATION_COMING_SOON_MESSAGE,
-  VERIFICATION_COMING_SOON_NOTE,
-  VERIFICATION_COMING_SOON_TITLE,
-  getVisibleVerificationStatus,
-  isUserVerifiedForBeta,
-} from '@/lib/constants';
+import { getVisibleVerificationStatus } from '@/lib/constants';
 import {
   getTimestampMillis,
   isConversationTypingActive,
@@ -420,7 +414,7 @@ export default function ChatPage() {
   const completedShiftInitiatedByMe = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId === user?.uid).length;
   const completedShiftInitiatedByThem = relatedShifts.filter((shift) => shift.status === 'completed' && shift.proposerId !== user?.uid).length;
   const proposalBalance = completedShiftInitiatedByMe - completedShiftInitiatedByThem;
-  const canAccessSecureMessaging = isUserVerifiedForBeta(secureAccessProfile);
+  const canAccessSecureMessaging = true;
   const otherUserIsTyping = otherUserId
     ? isConversationTypingActive(
         conversation?.typingStatus?.[otherUserId],
@@ -782,27 +776,6 @@ export default function ChatPage() {
   }
   if (!otherUserProfile || !currentUserProfile) {
     return <div className="flex items-center justify-center h-screen">Loading chat...</div>;
-  }
-  if (!canAccessSecureMessaging) {
-    return (
-      <AuthGuard>
-        <div className="ss-page-shell">
-          <div className="messages-shell-wrap">
-            <div className="w-full max-w-2xl rounded-2xl border bg-white p-8 text-center shadow-sm">
-              <h2 className="font-headline text-2xl">Secure Messages Locked</h2>
-              <p className="mt-3 text-muted-foreground">
-                {VERIFICATION_COMING_SOON_TITLE}. {VERIFICATION_COMING_SOON_MESSAGE}
-              </p>
-              <p className="mt-2 text-muted-foreground">{VERIFICATION_COMING_SOON_NOTE}</p>
-              <div className="mt-5 flex items-center justify-center gap-3">
-                <Button onClick={() => router.push('/families/profile/edit')}>Go to Profile Edit</Button>
-                <Button variant="outline" onClick={handleBack}>Back</Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </AuthGuard>
-    );
   }
 
   return (

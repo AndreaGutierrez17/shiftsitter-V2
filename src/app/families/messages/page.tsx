@@ -15,7 +15,6 @@ import {
   VERIFICATION_COMING_SOON_MESSAGE,
   VERIFICATION_COMING_SOON_NOTE,
   VERIFICATION_COMING_SOON_TITLE,
-  isUserVerifiedForBeta,
 } from '@/lib/constants';
 import { isConversationTypingActive } from '@/lib/presence';
 
@@ -117,7 +116,7 @@ export default function MessagesPage() {
     return otherUserId ? conv.userProfiles?.[otherUserId] ?? null : null;
   }
 
-  const canAccessSecureMessaging = isUserVerifiedForBeta(currentUserProfile);
+  const canAccessSecureMessaging = true;
   
   if (loading || authLoading) {
       return (

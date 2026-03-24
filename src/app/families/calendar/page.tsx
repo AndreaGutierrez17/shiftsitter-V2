@@ -25,7 +25,6 @@ import {
   VERIFICATION_COMING_SOON_MESSAGE,
   VERIFICATION_COMING_SOON_NOTE,
   VERIFICATION_COMING_SOON_TITLE,
-  isUserVerifiedForBeta,
 } from '@/lib/constants';
 import type { z } from 'zod';
 
@@ -601,7 +600,7 @@ function CalendarPageContent() {
       setRespondingSwapShiftId(null);
     }
   };
-  const canAccessSecureCalendar = isUserVerifiedForBeta(currentUserProfile);
+  const canAccessSecureCalendar = true;
 
   useEffect(() => {
     if (!user || !canAccessSecureCalendar || shifts.length === 0) return;
