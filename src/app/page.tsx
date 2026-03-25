@@ -192,23 +192,13 @@ export default function HomePage() {
           </div>
 
           <div className="mb-2 small">
-            <button
-              type="button"
-              className="btn btn-link btn-sm text-decoration-none"
-              data-bs-toggle="modal"
-              data-bs-target="#privacyModal"
-            >
+            <a href="/privacy" className="btn btn-link btn-sm text-decoration-none">
               Privacy Policy
-            </button>
+            </a>
             {" | "}
-            <button
-              type="button"
-              className="btn btn-link btn-sm text-decoration-none"
-              data-bs-toggle="modal"
-              data-bs-target="#termsModal"
-            >
+            <a href="/terms" className="btn btn-link btn-sm text-decoration-none">
               Terms &amp; Conditions
-            </button>
+            </a>
             {" | "}
             <button
               type="button"
@@ -258,7 +248,7 @@ export default function HomePage() {
 
           <div className="small">
             <div className="mb-2">
-              <strong>Support</strong> {" · "}
+              <strong>Support</strong> {" Â· "}
               <a className="contact-email" href="mailto:info@shiftsitter.com">
                 info@shiftsitter.com
               </a>
@@ -267,165 +257,6 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
-
-
-      {/* Privacy Policy */}
-      <div
-        className="modal fade ss-legal-modal"
-        id="privacyModal"
-        tabIndex={-1}
-        aria-labelledby="privacyModalLabel"
-        aria-hidden="true"
-      >
-        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-          <div className="modal-content ss-legal-modal-card">
-            <div className="modal-header ss-legal-modal-header">
-              <h5 className="modal-title ss-legal-modal-title" id="privacyModalLabel">
-                Privacy Policy — ShiftSitter
-              </h5>
-              <button
-                type="button"
-                className="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="Close"
-              ></button>
-            </div>
-            <div className="modal-body small ss-legal-modal-body">
-              <p className="ss-legal-modal-updated">
-                <strong>Last updated:</strong> March 9, 2026
-              </p>
-              <p>
-                ShiftSitter (“we”, “our”, “us”) collects and processes the
-                information you submit through our Early Access form in order to
-                contact you, evaluate your location for launch, and invite you
-                to pilot programs.
-              </p>
-              <p>
-                <strong>Information we collect:</strong> name, email, number of
-                children, state/city, ages of children, childcare challenges,
-                and your preference for Premium Founder Pass.
-              </p>
-              <p>
-                <strong>How we use it:</strong> (a) to contact you about
-                ShiftSitter, (b) to analyze demand per state/city, (c) to
-                create anonymized metrics, and (d) to invite you to sponsor /
-                CSR programs if you chose that path.
-              </p>
-              <p>
-                <strong>Legal basis:</strong> your consent. You can withdraw
-                consent anytime by emailing{" "}
-                <a
-                  href="mailto:info@shiftsitter.com"
-                  className="ss-legal-link"
-                >
-                  info@shiftsitter.com
-                </a>
-                .
-              </p>
-              <p>
-                <strong>Retention:</strong> we keep your data only for as long as
-                it is necessary to provide Early Access updates, pilots or
-                sponsorship opportunities.
-              </p>
-              <p>
-                <strong>Sharing:</strong> we do not sell your personal data. We
-                may share it with trusted service providers (hosting,
-                analytics, email delivery) strictly to operate ShiftSitter.
-              </p>
-              <p>
-                <strong>Your rights:</strong> you may request access, correction
-                or deletion of your data by contacting us.
-              </p>
-              <p>
-                <strong>Children’s data:</strong> we do not collect data directly
-                from children; we only register age ranges provided by
-                parents/guardians for matching purposes.
-              </p>
-            </div>
-            <div className="modal-footer ss-legal-modal-footer">
-              <button
-                type="button"
-                className="ss-btn-outline"
-                data-bs-dismiss="modal"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Terms Modal */}
-      <div
-        className="modal fade ss-legal-modal"
-        id="termsModal"
-        tabIndex={-1}
-        aria-labelledby="termsModalLabel"
-        aria-hidden="true"
-      >
-        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-          <div className="modal-content ss-legal-modal-card">
-            <div className="modal-header ss-legal-modal-header">
-              <h5 className="modal-title ss-legal-modal-title" id="termsModalLabel">
-                Terms &amp; Conditions — ShiftSitter
-              </h5>
-              <button
-                type="button"
-                className="btn-close"
-                data-bs-dismiss="modal"
-                aria-label="Close"
-              ></button>
-            </div>
-
-            <div className="modal-body small ss-legal-modal-body">
-              <p className="ss-legal-modal-updated">
-                <strong>Last updated:</strong> March 9, 2026
-              </p>
-              <p>
-                <strong>1. Purpose.</strong> This site is a pre-launch / Early
-                Access experience for ShiftSitter. Features are subject to
-                change.
-              </p>
-              <p>
-                <strong>2. No childcare guarantee.</strong> Until launch,
-                ShiftSitter does not guarantee matches, vetting or availability
-                in your exact area.
-              </p>
-              <p>
-                <strong>3. Accuracy of data.</strong> You are responsible for
-                providing correct information in the form.
-              </p>
-              <p>
-                <strong>4. Communications.</strong> By submitting the form you
-                allow us to email you about product updates, pilots,
-                sponsorships or premium plans.
-              </p>
-              <p>
-                <strong>5. Intellectual property.</strong> All logos, branding,
-                copy and layout on this site are property of ShiftSitter.
-              </p>
-              <p>
-                <strong>6. Contact.</strong> For any question about these terms
-                write to{" "}
-                <a href="mailto:info@shiftsitter.com" className="ss-legal-link">
-                  info@shiftsitter.com
-                </a>
-                .
-              </p>
-            </div>
-
-            <div className="modal-footer ss-legal-modal-footer">
-               <button
-                type="button"
-                className="ss-btn-outline"
-                data-bs-dismiss="modal"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <div
         className="modal fade ss-legal-modal"
