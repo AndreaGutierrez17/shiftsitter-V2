@@ -95,6 +95,47 @@ button {
   padding-top: 64px; /* compensa header fijo */
 }
 
+/* App color safety: prevent bootstrap's blue from leaking into app UI */
+.ss-main a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+.ss-main .text-primary {
+  color: hsl(var(--primary)) !important;
+}
+.ss-main .bg-primary {
+  background-color: hsl(var(--primary)) !important;
+}
+.ss-main .border-primary {
+  border-color: hsl(var(--primary)) !important;
+}
+.ss-main .link-primary {
+  color: hsl(var(--primary)) !important;
+}
+.ss-main .btn-primary,
+.ss-main .btn-primary:hover,
+.ss-main .btn-primary:focus {
+  background-color: hsl(var(--primary)) !important;
+  border-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+.auth-forgot {
+  margin-top: 0.75rem;
+  width: 100%;
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--teal-2);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.auth-forgot:hover {
+  color: var(--teal);
+}
+
 /* HEADER */
 .ss-header {
   position: fixed;
