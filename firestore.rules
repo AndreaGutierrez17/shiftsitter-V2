@@ -271,7 +271,7 @@ service cloud.firestore {
           && request.resource.data.senderId == request.auth.uid;
         allow update: if isAuthenticated()
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.userIds
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'readAt']);
+          && request.writeFields.hasOnly(['readBy', 'readAt']);
         allow delete: if false;
       }
     }
