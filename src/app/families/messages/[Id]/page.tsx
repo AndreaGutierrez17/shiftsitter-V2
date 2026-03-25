@@ -425,12 +425,12 @@ export default function ChatPage() {
   const otherUserIsOnline = isUserOnlineFromLastSeen(otherLiveProfile?.lastSeen, presenceNow);
   const otherUserLastSeenMillis = getTimestampMillis(otherLiveProfile?.lastSeen);
   const otherUserPresenceLabel = otherUserIsTyping
-    ? 'Typing...'
+    ? 'Escribiendo...'
     : otherUserIsOnline
-      ? 'Online now'
+      ? 'En línea'
       : otherUserLastSeenMillis
-        ? `Last seen ${formatDistanceToNow(otherUserLastSeenMillis, { addSuffix: true })}`
-        : 'Last seen unavailable';
+        ? `Desconectado · Última vez ${formatDistanceToNow(otherUserLastSeenMillis, { addSuffix: true })}`
+        : 'Desconectado';
 
   useEffect(() => {
     if (!user || !conversationId || !canAccessSecureMessaging || isClosingConversation) return;
@@ -875,7 +875,7 @@ export default function ChatPage() {
                   </div>
                   <p className={cn('chat-sidebar-item-preview', listOtherIsTyping && 'text-primary')}>
                     {listOtherIsTyping
-                      ? 'Typing...'
+                      ? 'Escribiendo...'
                       : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
                   </p>
                 </div>
@@ -904,7 +904,7 @@ export default function ChatPage() {
               <span
                 className={cn(
                   'absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white',
-                  otherUserIsOnline ? 'bg-emerald-500' : 'bg-slate-300'
+                  otherUserIsTyping || otherUserIsOnline ? 'bg-emerald-500' : 'bg-slate-300'
                 )}
               />
             </div>
@@ -1033,7 +1033,7 @@ export default function ChatPage() {
                 <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
               </Avatar>
               <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-muted-foreground shadow-sm">
-                {otherUserProfile.name || 'This user'} is typing...
+                {otherUserProfile.name || 'Este usuario'} está escribiendo...
               </div>
             </div>
           ) : null}
