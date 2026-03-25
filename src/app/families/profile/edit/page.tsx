@@ -210,7 +210,7 @@ function buildAvailabilitySummary(days: string[], shifts: string[]) {
 }
 
 function buildRoleAvailabilitySummary(role: string | undefined, needDays: string[], needShifts: string[], offerDays: string[], offerShifts: string[]) {
-  const useNeedSide = role === 'parent' || role === 'reciprocal';
+  const useNeedSide = role === 'reciprocal';
   return buildAvailabilitySummary(useNeedSide ? needDays : offerDays, useNeedSide ? needShifts : offerShifts);
 }
 
@@ -367,7 +367,7 @@ export default function EditProfilePage() {
   }, [form, selectedRoleWatch, watchedNeedDays, watchedNeedShifts, watchedOfferDays, watchedOfferShifts]);
 
   useEffect(() => {
-    const useNeedSide = selectedRoleWatch === 'parent' || selectedRoleWatch === 'reciprocal';
+    const useNeedSide = selectedRoleWatch === 'reciprocal';
     const nextDays = useNeedSide ? watchedNeedDays : watchedOfferDays;
     const nextShifts = useNeedSide ? watchedNeedShifts : watchedOfferShifts;
     if (JSON.stringify(form.getValues('daysNeeded')) !== JSON.stringify(nextDays)) form.setValue('daysNeeded', nextDays);
@@ -786,7 +786,7 @@ export default function EditProfilePage() {
         shifts: offerShifts,
         hoursPerMonthBucket: values.offerHoursPerMonthBucket,
         settingPreference: values.offerSettingPreference,
-        maxChildrenTotal: Math.max(1, normalizedOfferCapacity || (values.role === 'sitter' ? 2 : normalizedChildrenCount || 1)),
+        maxChildrenTotal: Math.max(1, normalizedOfferCapacity || normalizedChildrenCount || 1),
         ageRanges: values.offerAgeRanges,
         okWithSpecialNeeds: values.offerOkWithSpecialNeeds ?? false,
         hasVehicle: values.offerHasVehicle ?? false,
@@ -854,8 +854,8 @@ export default function EditProfilePage() {
         childrenAgesText: values.childrenAgesText?.trim() || '',
         needs: values.needs?.trim() || '',
         offerSummary: values.offerSummary?.trim() || '',
-        daysNeeded: (values.role === 'parent' || values.role === 'reciprocal') ? needDays : offerDays,
-        shiftsNeeded: (values.role === 'parent' || values.role === 'reciprocal') ? needShifts : offerShifts,
+        daysNeeded: needDays,
+        shiftsNeeded: needShifts,
         availability: values.availability,
         interestSelections: values.interestSelections,
         interestsOther: values.interestsOther?.trim() || '',
