@@ -119,7 +119,7 @@ export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
     id: 'verification',
     title: 'Verification updates',
     description:
-      'Update your profile details here. Verification tools are coming soon, and your account stays active while that update is being prepared.',
+      'Upload your verification documents here to keep your profile trusted, credible, and secure.',
     route: '/families/profile/edit',
     routeMatcher: /^\/families\/profile\/edit$/,
     selector: '[data-tour="profile-verification"]',

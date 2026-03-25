@@ -48,12 +48,32 @@ function normalizeConversation(conversation: Conversation): Conversation {
   };
 }
 
-function buildShiftDateTime(date: string, time: string) {
-  const parsed = new Date(`${date}T${time}:00`);
+function normalizeTimeString(time: unknown) {
+  if (typeof time !== 'string') return null;
+  const trimmed = time.trim();
+  if (!trimmed) return null;
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`;
+  if (/^\d{1}:\d{2}$/.test(trimmed)) return `0${trimmed}:00`;
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{1}:\d{2}:\d{2}$/.test(trimmed)) return `0${trimmed}`;
+  return trimmed;
+}
+
+function buildShiftDateTime(date: unknown, time: unknown) {
+  if (typeof date !== 'string' || !date) return null;
+  const normalizedTime = normalizeTimeString(time);
+  if (!normalizedTime) return null;
+  const parsed = new Date(`${date}T${normalizedTime}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatShiftDateLabel(date: string) {
+function formatShiftDateLabel(date: unknown) {
+  const timestampLike = date as { toDate?: () => Date } | null;
+  if (timestampLike?.toDate) {
+    const parsed = timestampLike.toDate();
+    return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : format(parsed, 'EEEE, MMM d');
+  }
+  if (typeof date !== 'string' || !date) return 'Date unavailable';
   const parsed = parseISO(date);
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : format(parsed, 'EEEE, MMM d');
 }
@@ -184,12 +204,18 @@ function CalendarPageContent() {
       ? shifts.filter((shift) => (shift.userIds || []).includes(selectedMatchFilterId))
       : shifts;
 
+    const getSortTime = (shift: Shift) => {
+      const withTimestamp = (shift as unknown as { startAt?: { toDate?: () => Date } }).startAt;
+      if (typeof withTimestamp?.toDate === 'function') {
+        const parsed = withTimestamp.toDate();
+        return Number.isNaN(parsed.getTime()) ? Number.POSITIVE_INFINITY : parsed.getTime();
+      }
+      const fallback = buildShiftDateTime(shift.date, shift.startTime);
+      return fallback ? fallback.getTime() : Number.POSITIVE_INFINITY;
+    };
+
     return [...filtered]
-      .sort((a, b) => {
-        const aDate = parseISO(`${a.date}T${a.startTime}`).getTime();
-        const bDate = parseISO(`${b.date}T${b.startTime}`).getTime();
-        return aDate - bDate;
-      })
+      .sort((a, b) => getSortTime(a) - getSortTime(b))
       .slice(0, 20);
   }, [shifts, selectedMatchFilterId]);
 
@@ -303,15 +329,13 @@ function CalendarPageContent() {
   const getShiftStartDate = (shift: Shift) => {
     const withTimestamp = (shift as unknown as { startAt?: { toDate?: () => Date } }).startAt;
     if (typeof withTimestamp?.toDate === 'function') return withTimestamp.toDate();
-    const parsed = new Date(`${shift.date}T${shift.startTime}:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return buildShiftDateTime(shift.date, shift.startTime);
   };
 
   const getShiftEndDate = (shift: Shift) => {
     const withTimestamp = (shift as unknown as { endAt?: { toDate?: () => Date } }).endAt;
     if (typeof withTimestamp?.toDate === 'function') return withTimestamp.toDate();
-    const parsed = new Date(`${shift.date}T${shift.endTime}:00`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return buildShiftDateTime(shift.date, shift.endTime);
   };
 
   const getCancellationReasonLabel = (reasonCode?: Shift['cancelReasonCode']) => {
@@ -1034,7 +1058,10 @@ function CalendarPageContent() {
                 </p>
               ) : (
                 upcomingShifts.map((shift) => {
-                  const statusLabel = shift.status.replace('_', ' ');
+                  const statusLabel =
+                    typeof shift.status === 'string'
+                      ? shift.status.replace('_', ' ')
+                      : 'status unavailable';
                   const canRespond = shift.status === 'proposed' && shift.accepterId === user?.uid;
                   const isThisUserResponding = respondingShiftId === shift.id;
                   const counterpart = getShiftCounterpart(shift);

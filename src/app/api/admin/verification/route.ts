@@ -33,7 +33,8 @@ export async function GET(request: Request) {
         const status = String(u.verificationStatus || 'unverified');
         const hasIdFront = typeof u.idFrontUrl === 'string' && u.idFrontUrl.trim().length > 0;
         const hasSelfie = typeof u.selfieUrl === 'string' && u.selfieUrl.trim().length > 0;
-        const hasVerificationDocs = hasIdFront || hasSelfie;
+        const hasCv = typeof u.cvUrl === 'string' && u.cvUrl.trim().length > 0;
+        const hasVerificationDocs = hasIdFront || hasSelfie || hasCv;
         return hasVerificationDocs && ['pending', 'rejected', 'unverified', 'verified'].includes(status);
       })
       .map((u: any) => {
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
           verificationStatus: u.verificationStatus || 'unverified',
           idFrontUrl: u.idFrontUrl || null,
           selfieUrl: u.selfieUrl || null,
+          cvUrl: u.cvUrl || null,
           verificationSubmittedAt: u.verificationSubmittedAt || null,
           verificationReviewNotes: u.verificationReviewNotes || '',
           rejectReason: u.rejectReason || '',

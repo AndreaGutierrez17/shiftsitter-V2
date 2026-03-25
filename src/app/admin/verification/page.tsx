@@ -14,6 +14,7 @@ type VerificationRow = {
   verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected';
   idFrontUrl: string | null;
   selfieUrl: string | null;
+  cvUrl?: string | null;
   verificationSubmittedAt?: unknown;
   verificationReviewedAt?: unknown;
   verificationReviewNotes?: string;
@@ -150,7 +151,7 @@ export default function AdminVerificationPage() {
                         {row.verificationStatus}
                       </span>
                     </div>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="rounded-lg border p-3">
                         <p className="text-xs text-muted-foreground mb-2">ID Front</p>
                         {row.idFrontUrl ? (
@@ -180,6 +181,32 @@ export default function AdminVerificationPage() {
                               />
                             </div>
                             <a className="text-primary underline" href={row.selfieUrl} target="_blank" rel="noreferrer">Open selfie file</a>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Missing</span>
+                        )}
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <p className="text-xs text-muted-foreground mb-2">CV / Resume</p>
+                        {row.cvUrl ? (
+                          <div className="space-y-3">
+                            <a
+                              className="text-primary underline"
+                              href={row.cvUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                            >
+                              Download CV
+                            </a>
+                            <a
+                              className="text-xs text-muted-foreground underline"
+                              href={row.cvUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open in new tab
+                            </a>
                           </div>
                         ) : (
                           <span className="text-sm text-muted-foreground">Missing</span>
