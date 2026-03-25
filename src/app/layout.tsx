@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import Header from "@/components/Header";
 import AppFooter from "@/components/AppFooter";
 import GuidedTour from "@/components/GuidedTour";
@@ -21,6 +22,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
         />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        />
       </head>
 
       <body>
@@ -32,6 +37,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Toaster />
           <GuidedTour />
         </AuthProvider>
+        <Script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
