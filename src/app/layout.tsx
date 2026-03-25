@@ -5,7 +5,6 @@ import GuidedTour from "@/components/GuidedTour";
 import { AuthProvider } from "@/hooks/useAuth";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import ClientErrorLogger from "@/components/ClientErrorLogger";
 
 export const metadata: Metadata = {
   title: "ShiftSitter - Smart, verified childcare for shift-working families",
@@ -25,7 +24,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
       <body>
         <AuthProvider>
-          <ClientErrorLogger />
           <Header />
           <main className="ss-main">{children}</main>
           <AppFooter />
