@@ -111,6 +111,11 @@ export default function GuidedTour() {
 
     let savedState: string | null = null;
     try {
+      const forceKey = 'shiftsitter:guided-tour-force-2026-03-25';
+      if (!window.localStorage.getItem(forceKey)) {
+        window.localStorage.setItem(forceKey, '1');
+        window.localStorage.removeItem(GUIDED_TOUR_STORAGE_KEY);
+      }
       savedState = window.localStorage.getItem(GUIDED_TOUR_STORAGE_KEY);
     } catch {
       savedState = null;
