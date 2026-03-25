@@ -901,16 +901,18 @@ export default function ChatPage() {
                 <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
                 <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
               </Avatar>
-              <span
-                className={cn(
-                  'absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white',
-                  otherUserIsTyping || otherUserIsOnline ? 'bg-emerald-500' : 'bg-slate-300'
-                )}
-              />
             </div>
             <div className="min-w-0">
               <h2 className="chat-thread-name">{otherUserProfile.name}</h2>
-              <p className={cn('chat-thread-subtitle', otherUserIsTyping && 'text-primary')}>
+              <p
+                className={cn(
+                  'chat-thread-subtitle',
+                  otherUserIsTyping || otherUserIsOnline
+                    ? 'chat-thread-subtitle--online'
+                    : 'chat-thread-subtitle--offline',
+                  otherUserIsTyping && 'text-primary'
+                )}
+              >
                 {otherUserPresenceLabel}
               </p>
             </div>

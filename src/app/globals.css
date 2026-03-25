@@ -2263,6 +2263,23 @@ button {
   font-size:.76rem;
   color:var(--ink-2);
   margin-top:.05rem;
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+}
+.chat-thread-subtitle::before{
+  content:"";
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:rgba(34,49,75,.25);
+  flex:0 0 8px;
+}
+.chat-thread-subtitle--online::before{
+  background:#22c55e;
+}
+.chat-thread-subtitle--offline::before{
+  background:#cbd5e1;
 }
 
 .chat-security-banner{
