@@ -1,12 +1,6 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+﻿import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import {
-  getFirestore,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  type Firestore,
-} from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -20,34 +14,38 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+console.log("AUTH DOMAIN:", firebaseConfig.authDomain);
 
 const auth = getAuth(app);
-
-// Use modern persistent cache instead of deprecated enableIndexedDbPersistence
-let db: Firestore;
-try {
-  db = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  });
-} catch {
-  // Already initialized — fall back to getFirestore
-  db = getFirestore(app);
-}
-
+const db = getFirestore(app);
 const storage = getStorage(app);
 
-export let messaging: import('firebase/messaging').Messaging | undefined = undefined;
+const initFirestorePersistence = async () => {
+  if (typeof window === 'undefined') return;
 
-if (typeof window !== 'undefined') {
-  import('firebase/messaging')
-    .then(({ getMessaging }) => {
-      messaging = getMessaging(app);
-    })
-    .catch(() => {
-      messaging = undefined;
-    });
-}
+  try {
+    await enableIndexedDbPersistence(db);
+  } catch {
+    // Ignore persistence errors (unsupported or multiple tabs).
+  }
+};
 
-export { app, auth, db, storage };
+void initFirestorePersistence();
+
+let messaging: import('firebase/messaging').Messaging | undefined = undefined;
+
+const initMessaging = async () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const { getMessaging } = await import('firebase/messaging');
+    messaging = getMessaging(app);
+  } catch {
+    // Ignore messaging init errors on unsupported clients.
+    messaging = undefined;
+  }
+};
+
+void initMessaging();
+
+export { app, auth, db, storage, messaging };
