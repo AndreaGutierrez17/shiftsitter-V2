@@ -210,7 +210,7 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div className="mb-2 footer-social">
+          <div className="mb-4 footer-social">
             <a
               href="https://www.instagram.com/shiftsitterofficial?igsh=cm80MG83eDBtcjlw"
               target="_blank"
@@ -246,14 +246,16 @@ export default function HomePage() {
             </a>
           </div>
 
-          <div className="small">
-            <div className="mb-2">
-              <strong>Support</strong> {" Â· "}
-              <a className="contact-email" href="mailto:info@shiftsitter.com">
+          <div className="small footer-meta">
+            <div className="footer-support">
+              <span className="footer-support-label">Support</span>
+              <a className="footer-support-email" href="mailto:info@shiftsitter.com">
                 info@shiftsitter.com
               </a>
             </div>
-            (c) {new Date().getFullYear()} ShiftSitter. All rights reserved.
+            <p className="footer-legal">
+              (c) {new Date().getFullYear()} ShiftSitter. All rights reserved.
+            </p>
           </div>
         </div>
       </footer>

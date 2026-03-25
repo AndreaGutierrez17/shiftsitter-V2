@@ -603,6 +603,57 @@ button {
 .footer-ss .small{
   color: var(--ink-2) !important;
 }
+.footer-ss .footer-meta{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+.footer-ss .footer-support{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-direction: column;
+}
+.footer-ss .footer-support-label{
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-2);
+  line-height: 1;
+}
+.footer-ss .footer-support-email{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 49, 75, 0.18);
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+.footer-ss .footer-support-email:hover{
+  border-color: rgba(34, 49, 75, 0.32);
+  color: var(--teal-2);
+  transform: translateY(-1px);
+}
+.footer-ss .footer-legal{
+  margin: 0;
+  font-size: 0.78rem;
+}
+@media (min-width: 640px){
+  .footer-ss .footer-support{
+    flex-direction: row;
+    gap: 14px;
+  }
+}
 
 .ss-legal-modal .modal-dialog {
   max-width: min(820px, calc(100vw - 2rem));

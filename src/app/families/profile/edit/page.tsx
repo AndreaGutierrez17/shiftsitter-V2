@@ -1038,7 +1038,7 @@ export default function EditProfilePage() {
     label: string;
     hint: string;
     accept: string;
-    capture?: string;
+    capture?: boolean | 'user' | 'environment';
     url: string | null;
     icon: typeof FileText;
   }> = [
