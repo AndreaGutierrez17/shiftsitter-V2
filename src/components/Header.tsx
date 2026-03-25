@@ -65,7 +65,6 @@ export default function Header() {
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
   const [userMenuOpenDesktop, setUserMenuOpenDesktop] = useState(false);
-  const [userMenuOpenMobile, setUserMenuOpenMobile] = useState(false);
   const [pushStatus, setPushStatus] = useState<"on" | "off" | "blocked">("off");
   const [isHandlingPush, setIsHandlingPush] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
@@ -712,49 +711,6 @@ export default function Header() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
-              <DropdownMenu
-                open={userMenuOpenMobile}
-                onOpenChange={(open) => {
-                  setUserMenuOpenMobile(open);
-                  if (open) {
-                    setNotifOpenMobile(false);
-                    setIsMenuOpen(false);
-                  }
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <button type="button" className="ss-user-menu-btn ss-user-menu-btn-mobile" aria-label="Account menu">
-                    <span className="ss-user-avatar">{userMenuInitial}</span>
-                    <ChevronDown className="h-4 w-4 text-primary" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="ss-user-menu w-[calc(100vw-2rem)] max-w-sm">
-                  <DropdownMenuLabel className="ss-user-menu-heading">{userMenuName}</DropdownMenuLabel>
-                  {showAdminLink ? (
-                    <>
-                      <DropdownMenuLabel className="ss-user-menu-label">Admin panel</DropdownMenuLabel>
-                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/dashboard")}>
-                        <Shield className="h-4 w-4" />
-                        <span>Admin</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/verification")}>
-                        <BadgeCheck className="h-4 w-4" />
-                        <span>Verification</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  ) : null}
-                  <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push(settingsHref)}>
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="ss-user-menu-item" onSelect={handleSignOut}>
-                    <LogOut className="h-4 w-4" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </>
           </div>
         ) : null}
@@ -773,6 +729,12 @@ export default function Header() {
       </div>
 
       <div className={`ss-mobile-menu${isMenuOpen ? " is-open" : ""}`} role="navigation">
+        {user ? (
+          <div className="ss-mobile-section">
+            <div className="ss-mobile-section-title">{userMenuName}</div>
+          </div>
+        ) : null}
+
         {navLinks.map((link) => (
           <Link
             key={link.href}
@@ -783,23 +745,51 @@ export default function Header() {
             {link.label}
           </Link>
         ))}
+
+        {user ? (
+          <div className="ss-mobile-section">
+            <Link href={settingsHref} className="ss-mobile-link" onClick={handleNavClick}>
+              Settings
+            </Link>
+            <button
+              type="button"
+              className="ss-mobile-link ss-mobile-link-btn"
+              onClick={() => { handleNavClick(); handleSignOut(); }}
+            >
+              Log out
+            </button>
+          </div>
+        ) : null}
+
+        {user && showAdminLink ? (
+          <div className="ss-mobile-section">
+            <div className="ss-mobile-section-subtitle">Admin panel</div>
+            <Link href="/admin/dashboard" className="ss-mobile-link" onClick={handleNavClick}>
+              Admin
+            </Link>
+            <Link href="/admin/verification" className="ss-mobile-link" onClick={handleNavClick}>
+              Verification
+            </Link>
+          </div>
+        ) : null}
+
+        {user && showFamilyTourControls ? (
+          <div className="ss-mobile-section">
+            <button
+              type="button"
+              onClick={() => {
+                handleNavClick();
+                handleOpenTour();
+              }}
+              className="ss-btn-outline ss-nav-btn w-full"
+            >
+              Guided Tour
+            </button>
+          </div>
+        ) : null}
+
         <div className="ss-mobile-actions">
-           {user ? (
-             <>
-              {showFamilyTourControls ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleNavClick();
-                    handleOpenTour();
-                  }}
-                  className="ss-btn-outline ss-nav-btn w-full"
-                >
-                  Guided Tour
-                </button>
-              ) : null}
-             </>
-          ) : (
+          {user ? null : (
             <>
               <Link href="/families" className="ss-btn-outline ss-nav-btn" onClick={handleNavClick}>
                 Log in

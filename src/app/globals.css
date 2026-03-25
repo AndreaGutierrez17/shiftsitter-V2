@@ -686,6 +686,32 @@ button {
     flex-wrap: wrap;
     gap: 0.5rem;
   }
+  .ss-mobile-section {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .ss-mobile-section-title {
+    font-weight: 800;
+    color: var(--navy);
+    font-size: 0.95rem;
+  }
+  .ss-mobile-section-subtitle {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--ink-2);
+    margin-top: 0.35rem;
+  }
+  .ss-mobile-link-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-align: left;
+  }
 }
 
 .ss-nav-link {
@@ -1085,6 +1111,15 @@ button {
   background:rgba(220,38,38,.06);
   border:1px solid rgba(220,38,38,.18);
   color:#991b1b;
+  font-weight:750;
+}
+.q-success{
+  margin-top:.9rem;
+  padding:.85rem .95rem;
+  border-radius:16px;
+  background:rgba(16,185,129,.08);
+  border:1px solid rgba(16,185,129,.25);
+  color:#065f46;
   font-weight:750;
 }
 .q-actions{

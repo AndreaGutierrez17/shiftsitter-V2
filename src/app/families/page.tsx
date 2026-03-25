@@ -239,7 +239,11 @@ export default function FamiliesPage() {
 
     setBusy(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset-password`,
+        handleCodeInApp: true,
+      };
+      await sendPasswordResetEmail(auth, email, actionCodeSettings);
       setMsg("Password reset email sent. Check your inbox.");
     } catch (e: any) {
       const code = e?.code as string | undefined;
