@@ -1030,9 +1030,9 @@ export default function ChatPage() {
                   {messageCreatedAtLabel ? (
                     <div className={cn('chat-message-meta', isSender ? 'is-sender' : 'is-receiver')}>
                       <span>{messageCreatedAtLabel}</span>
-                      {isSender ? (
-                        <CheckCheck className={cn('chat-read-icon', isReadByOtherUser ? 'is-read' : 'is-sent')} />
-                      ) : null}
+                      {isSender
+                        ? <CheckCheck className={cn('chat-read-icon', isReadByOtherUser ? 'is-read' : 'is-sent')} />
+                        : null}
                     </div>
                   ) : null}
                 </div>

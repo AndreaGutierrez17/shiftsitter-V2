@@ -2726,15 +2726,15 @@ button {
 }
 
 .chat-bubble.me{
-  background:rgba(47,196,182,.18);
-  border-color:rgba(47,196,182,.28);
+  background:#fff1e6;
+  border-color:#e3cdbf;
   color:var(--navy);
   border-bottom-right-radius:.6rem;
 }
 
 .chat-bubble.other{
-  background:rgba(255,246,239,.95);
-  border-color:rgba(34,49,75,.12);
+  background:#d4fbf6;
+  border-color:#1aa69a;
   color:var(--navy);
   border-bottom-left-radius:.6rem;
 }
@@ -2745,7 +2745,8 @@ button {
   gap:.35rem;
   margin-top:.35rem;
   font-size:.72rem;
-  opacity:.7;
+  color:var(--ink-2);
+  opacity:.92;
 }
 
 .chat-message-meta.is-sender{
@@ -2762,11 +2763,16 @@ button {
 }
 
 .chat-read-icon.is-sent{
-  color:#5f6b7a;
+  color:#0f172a;
+  opacity:1;
+  stroke-width:2.2;
 }
 
 .chat-read-icon.is-read{
-  color:#00b3a4;
+  color:#00d1c2;
+  opacity:1;
+  stroke-width:2.8;
+  filter:drop-shadow(0 0 2px rgba(0, 209, 194, 0.35));
 }
 
 .chat-input-wrap{
