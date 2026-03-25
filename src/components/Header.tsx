@@ -663,7 +663,6 @@ export default function Header() {
                     setNotifOpenMobile(open);
                     if (open) {
                       setNotifOpenDesktop(false);
-                      setUserMenuOpenMobile(false);
                       setIsMenuOpen(false);
                     }
                   }}

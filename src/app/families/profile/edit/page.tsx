@@ -131,11 +131,10 @@ const profileSchema = z.object({
   smokeFree: z.boolean().optional(),
   petsOk: z.boolean().optional(),
 }).superRefine((data, ctx) => {
-  const isFamilyRole = data.role === 'parent' || data.role === 'reciprocal';
-  if (isFamilyRole && data.needDays.length === 0) {
+  if (data.needDays.length === 0) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['needDays'], message: 'Please select at least one day you need care.' });
   }
-  if (isFamilyRole && data.needShifts.length === 0) {
+  if (data.needShifts.length === 0) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['needShifts'], message: 'Please select at least one shift you need.' });
   }
   if (data.offerDays.length === 0) {
