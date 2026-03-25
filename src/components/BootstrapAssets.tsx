@@ -38,16 +38,10 @@ export default function BootstrapAssets({ includeJs = false }: BootstrapAssetsPr
     }
 
     return () => {
+      // Leave assets in place to avoid DOM mutations that can trip React insertBefore on mobile.
       window.__ssBootstrapCssUsers = Math.max(0, (window.__ssBootstrapCssUsers || 1) - 1);
-      if ((window.__ssBootstrapCssUsers || 0) === 0) {
-        document.getElementById(cssId)?.remove();
-      }
-
       if (includeJs) {
         window.__ssBootstrapJsUsers = Math.max(0, (window.__ssBootstrapJsUsers || 1) - 1);
-        if ((window.__ssBootstrapJsUsers || 0) === 0) {
-          document.getElementById('bootstrap-js-scoped')?.remove();
-        }
       }
     };
   }, [includeJs]);
