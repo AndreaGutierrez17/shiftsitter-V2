@@ -10,6 +10,8 @@ import { signOut } from "firebase/auth";
 import { auth, db } from "@/lib/firebase/client";
 import { requestGuidedTourOpen } from "@/lib/guided-tour";
 import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
+import { enableWebPush, disableWebPush } from "@/lib/firebase/push";
+import { useToast } from "@/hooks/use-toast";
 import {
   collection,
   doc,
@@ -30,6 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 
 const publicNavLinks = [
   { href: "/", label: "Home" },
@@ -61,11 +64,14 @@ export default function Header() {
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
+  const [pushStatus, setPushStatus] = useState<"on" | "off" | "blocked">("off");
+  const [isHandlingPush, setIsHandlingPush] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
   const showFamilyTourControls = Boolean(user && accountType !== "employer" && pathname?.startsWith("/families"));
   useUserPresenceHeartbeat(user?.uid);
+  const { toast } = useToast();
 
   const navLinks = user ? (accountType === "employer" ? EMPLOYER_NAV_LINKS : NAV_LINKS) : publicNavLinks;
 
@@ -383,6 +389,57 @@ export default function Header() {
     };
   }, [user, pathname]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let nextStatus: "on" | "off" | "blocked" = "off";
+    if (Notification.permission === "denied") {
+      nextStatus = "blocked";
+    } else {
+      let optedOut = false;
+      try {
+        optedOut = window.localStorage.getItem("shiftsitter:push-opt-out") === "1";
+      } catch {
+        optedOut = false;
+      }
+      nextStatus = Notification.permission === "granted" && !optedOut ? "on" : "off";
+    }
+    setPushStatus(nextStatus);
+  }, [user]);
+
+  const handleTogglePush = async (nextChecked: boolean) => {
+    if (!user || isHandlingPush) return;
+    setIsHandlingPush(true);
+    try {
+      if (nextChecked) {
+        await enableWebPush(user.uid);
+        setPushStatus("on");
+        toast({
+          title: "Notificaciones activadas",
+          description: "Se habilitaron las notificaciones en este dispositivo.",
+        });
+      } else {
+        await disableWebPush(user.uid);
+        setPushStatus("off");
+        toast({
+          title: "Notificaciones desactivadas",
+          description: "Se desactivaron las notificaciones en este dispositivo.",
+        });
+      }
+    } catch (error: any) {
+      const message = error?.message || "No pudimos cambiar las notificaciones.";
+      toast({
+        variant: "destructive",
+        title: "No se pudo cambiar",
+        description: message,
+      });
+      if (Notification.permission === "denied") {
+        setPushStatus("blocked");
+      }
+    } finally {
+      setIsHandlingPush(false);
+    }
+  };
+
   return (
     <header
       className={`ss-header${isMenuOpen ? " ss-header-open" : ""}`}
@@ -460,6 +517,19 @@ export default function Header() {
                           {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
                         </button>
                       </DropdownMenuLabel>
+                      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+                        <span>Alertas</span>
+                        <Switch
+                          checked={pushStatus === "on"}
+                          onCheckedChange={handleTogglePush}
+                          disabled={isHandlingPush || pushStatus === "blocked"}
+                        />
+                      </div>
+                      {pushStatus === "blocked" ? (
+                        <div className="px-3 pb-2 text-[11px] text-muted-foreground">
+                          Permiso bloqueado en el navegador.
+                        </div>
+                      ) : null}
                       <DropdownMenuSeparator />
                       {notifications.length === 0 ? (
                         <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
@@ -550,6 +620,19 @@ export default function Header() {
                       {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
                     </button>
                   </DropdownMenuLabel>
+                  <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+                    <span>Alertas</span>
+                    <Switch
+                      checked={pushStatus === "on"}
+                      onCheckedChange={handleTogglePush}
+                      disabled={isHandlingPush || pushStatus === "blocked"}
+                    />
+                  </div>
+                  {pushStatus === "blocked" ? (
+                    <div className="px-3 pb-2 text-[11px] text-muted-foreground">
+                      Permiso bloqueado en el navegador.
+                    </div>
+                  ) : null}
                   <DropdownMenuSeparator />
                   {notifications.length === 0 ? (
                     <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>

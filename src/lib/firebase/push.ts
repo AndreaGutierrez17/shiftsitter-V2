@@ -1,6 +1,6 @@
 'use client';
 
-import { doc, setDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, arrayUnion, arrayRemove, updateDoc, deleteField, getDoc } from 'firebase/firestore';
 import { db, messaging } from '@/lib/firebase/client';
 
 const firebasePublicConfig = {
@@ -78,6 +78,13 @@ export async function enableWebPush(uid: string) {
   // Backward compatibility for existing reads.
   await setDoc(doc(db, 'users', uid), { fcmToken: token }, { merge: true });
 
+  try {
+    window.localStorage.setItem('shiftsitter:push-token', token);
+    window.localStorage.removeItem('shiftsitter:push-opt-out');
+  } catch {
+    // ignore storage issues
+  }
+
   const windowWithFlag = window as typeof window & { __shiftSitterForegroundPushBound?: boolean };
   if (!windowWithFlag.__shiftSitterForegroundPushBound) {
     onMessage(messaging, async (payload) => {
@@ -102,4 +109,72 @@ export async function enableWebPush(uid: string) {
   }
 
   return token;
+}
+
+export async function disableWebPush(uid: string) {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    throw new Error('This browser does not support push notifications.');
+  }
+
+  if (!messaging) {
+    throw new Error('Firebase Messaging is not available in this client.');
+  }
+
+  let token = '';
+  try {
+    token = window.localStorage.getItem('shiftsitter:push-token') || '';
+  } catch {
+    token = '';
+  }
+
+  if (!token && Notification.permission === 'granted') {
+    try {
+      const registration =
+        (await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')) ||
+        (await navigator.serviceWorker.ready);
+      const { getToken } = await import('firebase/messaging');
+      token = await getToken(messaging, {
+        vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: registration,
+      });
+    } catch {
+      token = '';
+    }
+  }
+
+  if (token) {
+    try {
+      const { deleteToken } = await import('firebase/messaging');
+      await deleteToken(messaging);
+    } catch {
+      // ignore deleteToken failures
+    }
+
+    try {
+      await updateDoc(doc(db, 'fcm_tokens', uid), {
+        tokens: arrayRemove(token),
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      // ignore missing doc
+    }
+
+    try {
+      const userRef = doc(db, 'users', uid);
+      const userSnap = await getDoc(userRef);
+      const data = userSnap.exists() ? (userSnap.data() as { fcmToken?: string }) : null;
+      if (data?.fcmToken === token) {
+        await updateDoc(userRef, { fcmToken: deleteField() });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    window.localStorage.setItem('shiftsitter:push-opt-out', '1');
+    window.localStorage.removeItem('shiftsitter:push-token');
+  } catch {
+    // ignore
+  }
 }
