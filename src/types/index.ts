@@ -136,6 +136,8 @@ export interface Message {
   senderId: string;
   text: string;
   createdAt: Timestamp;
+  readBy?: string[];
+  readAt?: Timestamp | null;
   attachmentUrl?: string;
   attachmentName?: string;
   attachmentType?: string;
@@ -182,6 +184,7 @@ export interface Review {
   revieweeUid?: string;
   reviewerId: string;
   revieweeId: string;
+  reviewerName?: string | null;
   rating: number;
   comment: string | null;
   createdAt: Timestamp;

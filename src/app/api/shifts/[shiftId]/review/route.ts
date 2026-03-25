@@ -76,7 +76,9 @@ export async function POST(request: Request, context: { params: Promise<{ shiftI
       if (!userIds.includes(revieweeUid) || revieweeUid === currentUid) throw new Error('INVALID_REVIEWEE');
       if (shift.status === 'cancelled') throw new Error('SHIFT_CANCELLED');
 
-      const reviewerRole = String((reviewerSnap.data() as { role?: string } | undefined)?.role || '');
+      const reviewerData = reviewerSnap.data() as { role?: string; name?: string; displayName?: string } | undefined;
+      const reviewerRole = String(reviewerData?.role || '');
+      const reviewerName = String(reviewerData?.name || reviewerData?.displayName || '');
       const currentAggregates = (revieweeSnap.data() as {
         avgRating?: number;
         reviewCount?: number;
@@ -111,6 +113,7 @@ export async function POST(request: Request, context: { params: Promise<{ shiftI
         revieweeUid,
         reviewerId: currentUid, // compatibility
         revieweeId: revieweeUid, // compatibility
+        reviewerName: reviewerName || null,
         rating,
         comment: comment || null,
         createdAt: FieldValue.serverTimestamp(),
@@ -147,4 +150,3 @@ export async function POST(request: Request, context: { params: Promise<{ shiftI
     return NextResponse.json({ error: 'Could not submit review.' }, { status: 500 });
   }
 }
-

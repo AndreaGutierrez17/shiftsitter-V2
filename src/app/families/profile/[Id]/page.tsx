@@ -36,6 +36,7 @@ export default function ProfilePage() {
   const [isUploadingMainPhoto, setIsUploadingMainPhoto] = useState(false);
   const [recentReviews, setRecentReviews] = useState<Review[]>([]);
   const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState<{ url: string; index: number } | null>(null);
+  const [reviewerNames, setReviewerNames] = useState<Record<string, string>>({});
 
   const isOwnProfile = user?.uid === profileId;
 
@@ -150,6 +151,37 @@ export default function ProfilePage() {
           })
           .slice(0, 3);
         setRecentReviews(reviews);
+
+        const missingReviewerIds = Array.from(new Set(
+          reviews
+            .filter((review) => !review.reviewerName)
+            .map((review) => review.reviewerUid || review.reviewerId)
+            .filter(Boolean)
+        )) as string[];
+
+        if (missingReviewerIds.length > 0) {
+          const nameEntries = await Promise.all(
+            missingReviewerIds.map(async (uid) => {
+              try {
+                const snap = await getDoc(doc(db, 'users', uid));
+                if (!snap.exists()) return [uid, ''] as const;
+                const data = snap.data() as { name?: string; displayName?: string } | undefined;
+                return [uid, String(data?.name || data?.displayName || '')] as const;
+              } catch {
+                return [uid, ''] as const;
+              }
+            })
+          );
+          if (!cancelled) {
+            setReviewerNames((prev) => {
+              const next = { ...prev };
+              nameEntries.forEach(([uid, name]) => {
+                if (name) next[uid] = name;
+              });
+              return next;
+            });
+          }
+        }
       } catch {
         if (!cancelled) setRecentReviews([]);
       }
@@ -300,28 +332,28 @@ export default function ProfilePage() {
             <AppBackButton fallbackHref="/families/match" label="Back" />
           </div>
           <div className="grid gap-6 lg:grid-cols-2" data-tour="profile-overview">
-            <Card className="overflow-hidden shadow-lg">
-              <div className="relative h-40 bg-gradient-to-r from-primary/20 via-accent to-primary/10">
+            <Card className="profile-main-card overflow-hidden">
+              <div className="profile-main-hero relative h-44 bg-gradient-to-r from-primary/20 via-accent to-primary/10 sm:h-48">
                 {photos[1] ? (
                   <Image src={photos[1]} alt="Profile banner" fill className="object-cover opacity-70" />
                 ) : null}
               </div>
               <CardContent className="relative p-6">
-                <div className="-mt-20 mb-4 profile-hero-wrap">
+                <div className="mb-4 profile-hero-wrap">
                   <div className="profile-hero-main">
-                    <Avatar className="profile-hero-avatar h-32 w-32 border-4 border-background shadow-lg">
+                    <Avatar className="profile-hero-avatar profile-main-avatar h-32 w-32 border-4 border-background shadow-lg">
                       <AvatarImage src={mainPhoto} />
                       <AvatarFallback>{userProfile.name?.charAt(0) || '?'}</AvatarFallback>
                     </Avatar>
                     <div className="profile-hero-copy">
-                      <h1 className="profile-hero-name font-headline text-3xl font-semibold text-foreground md:text-4xl">
+                      <h1 className="profile-hero-name profile-main-title font-headline text-3xl font-semibold text-foreground md:text-4xl">
                         {userProfile.name}, {userProfile.age}
                       </h1>
                       <p className="profile-hero-location mt-1 flex items-center gap-2 text-sm text-muted-foreground md:text-base">
                         <MapPin className="h-4 w-4 text-primary" />
                         {userProfile.location || 'Location not set'}
                       </p>
-                      <div className="profile-hero-badges mt-3 flex flex-wrap items-center gap-2 text-sm">
+                      <div className="profile-hero-badges mt-3 text-sm">
                         {headlineFacts.map((fact) => {
                           const Icon = fact.icon;
                           return (
@@ -335,7 +367,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   {isOwnProfile ? (
-                    <div className="profile-hero-actions flex flex-wrap gap-2">
+                    <div className="profile-hero-actions">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -461,7 +493,7 @@ export default function ProfilePage() {
             </Card>
 
             <div className="space-y-6">
-              <Card className="shadow-md">
+              <Card className="profile-side-card">
                 <CardContent className="p-5">
                   <h3 className="font-headline mb-3 flex items-center gap-2 text-lg font-semibold text-foreground">
                     <Heart className="h-4 w-4 text-primary" />
@@ -480,7 +512,7 @@ export default function ProfilePage() {
                 </CardContent>
               </Card>
 
-              <Card className="shadow-md">
+              <Card className="profile-side-card">
                 <CardContent className="p-5">
                   <h3 className="font-headline mb-3 flex items-center gap-2 text-lg font-semibold text-foreground">
                     <Star className="h-4 w-4 text-primary" />
@@ -507,7 +539,12 @@ export default function ProfilePage() {
                       recentReviews.map((review) => (
                         <div key={review.id} className="rounded-xl border bg-white p-3">
                           <div className="flex items-center justify-between gap-2">
-                            {renderStars(review.rating)}
+                            <div>
+                              {renderStars(review.rating)}
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Review by {review.reviewerName || reviewerNames[review.reviewerUid || review.reviewerId] || 'ShiftSitter member'}
+                              </p>
+                            </div>
                             <span className="text-xs text-muted-foreground">
                               {typeof review.createdAt?.toDate === 'function'
                                 ? review.createdAt.toDate().toLocaleDateString()
@@ -524,7 +561,7 @@ export default function ProfilePage() {
                 </CardContent>
               </Card>
 
-              <Card className="shadow-md">
+              <Card className="profile-side-card">
                 <CardContent className="p-5">
                   <h3 className="font-headline mb-3 text-lg font-semibold text-foreground">Photo Gallery</h3>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

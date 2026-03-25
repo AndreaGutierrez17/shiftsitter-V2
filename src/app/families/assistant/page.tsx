@@ -88,7 +88,7 @@ export default function AssistantPage() {
     <AuthGuard>
       <div className="ss-page-shell" lang="en" translate="no">
         <div className="ss-page-inner max-w-4xl">
-          <Card className="ss-soft-card">
+          <Card className="ss-soft-card" data-tour="assistant-center">
             <CardHeader>
               <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
               <CardTitle className="font-headline flex items-center gap-2 text-3xl">

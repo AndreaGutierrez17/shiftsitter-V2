@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Trash2, Upload, Loader2, AlertTriangle, BellRing, FileText, BadgeCheck, IdCard, Camera } from 'lucide-react';
+import { Trash2, Upload, Loader2, AlertTriangle, BellRing, FileText, BadgeCheck, IdCard, Camera, Repeat } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { auth, db, storage } from '@/lib/firebase/client';
@@ -86,7 +86,7 @@ const CHILD_COUNT_OPTIONS = [
 ] as const;
 
 const profileSchema = z.object({
-  role: z.enum(['parent', 'sitter', 'reciprocal'], { message: 'Please select a role.' }),
+  role: z.enum(['reciprocal'], { message: 'Please select a role.' }),
   name: z.string().min(2, 'Name must be at least 2 characters.'),
   age: z.coerce.number().min(18, 'You must be at least 18 years old.'),
   location: z.string().optional(),
@@ -168,7 +168,7 @@ function asBoolean(value: unknown, fallback = false) {
 }
 
 function normalizeRole(value: unknown): ProfileFormValues['role'] {
-  return value === 'parent' || value === 'sitter' || value === 'reciprocal' ? value : 'reciprocal';
+  return value === 'reciprocal' ? value : 'reciprocal';
 }
 
 function normalizeSettingPreference(value: unknown): ProfileFormValues['needSettingPreference'] {
@@ -1256,20 +1256,15 @@ export default function EditProfilePage() {
                           name="role"
                           render={({ field }) => (
                             <FormItem className="space-y-3">
-                              <FormLabel>Main goal</FormLabel>
+                              <FormLabel>Main goal *</FormLabel>
                               <FormControl>
-                                <RadioGroup onValueChange={field.onChange} value={field.value} className="grid gap-2">
-                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'parent' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
-                                    <FormControl><RadioGroupItem value="parent" /></FormControl>
-                                    <FormLabel className="cursor-pointer font-normal">I am a parent looking for a sitter.</FormLabel>
-                                  </FormItem>
-                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'sitter' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
-                                    <FormControl><RadioGroupItem value="sitter" /></FormControl>
-                                    <FormLabel className="cursor-pointer font-normal">I am a sitter looking for families.</FormLabel>
-                                  </FormItem>
-                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 ${field.value === 'reciprocal' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
+                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-col gap-2">
+                                  <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 transition-colors ${field.value === 'reciprocal' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
                                     <FormControl><RadioGroupItem value="reciprocal" /></FormControl>
-                                    <FormLabel className="cursor-pointer font-normal">I am a parent looking for reciprocal exchanges.</FormLabel>
+                                    <FormLabel className="flex cursor-pointer items-center gap-3 font-normal">
+                                      <Repeat className="text-primary" />
+                                      I am a parent looking for reciprocal childcare exchanges
+                                    </FormLabel>
                                   </FormItem>
                                 </RadioGroup>
                               </FormControl>

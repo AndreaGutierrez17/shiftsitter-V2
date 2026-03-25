@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, BellOff, CalendarDays, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCheck, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { db, storage } from '@/lib/firebase/client';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where, writeBatch, increment } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where, writeBatch, increment, arrayUnion } from 'firebase/firestore';
 import type { Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -153,7 +153,6 @@ export default function ChatPage() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showDetails, setShowDetails] = useState(false);
-  const [muted, setMuted] = useState(false);
   const [relatedShifts, setRelatedShifts] = useState<Shift[]>([]);
   const [fullProfiles, setFullProfiles] = useState<{ current: UserProfile | null; other: UserProfile | null }>({
     current: null,
@@ -282,6 +281,58 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const markMessagesRead = useCallback(() => {
+    if (!user || !conversationId) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (messages.length === 0) return;
+
+    const unreadFromOther = messages.filter((message) => {
+      if (message.senderId === user.uid) return false;
+      const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+      return !readBy.includes(user.uid);
+    });
+
+    if (unreadFromOther.length === 0) return;
+
+    const chunks: Message[][] = [];
+    for (let i = 0; i < unreadFromOther.length; i += 400) {
+      chunks.push(unreadFromOther.slice(i, i + 400));
+    }
+
+    chunks.forEach(async (batchMessages) => {
+      const batch = writeBatch(db);
+      batchMessages.forEach((message) => {
+        const messageRef = doc(db, 'conversations', conversationId, 'messages', message.id);
+        batch.update(messageRef, {
+          readBy: arrayUnion(user.uid),
+          readAt: serverTimestamp(),
+        });
+      });
+      try {
+        await batch.commit();
+      } catch (error) {
+        console.error('Could not mark messages as read:', error);
+      }
+    });
+  }, [conversationId, messages, user]);
+
+  useEffect(() => {
+    markMessagesRead();
+  }, [markMessagesRead]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        markMessagesRead();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [markMessagesRead]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -521,6 +572,7 @@ export default function ChatPage() {
         senderId: user.uid,
         text: msgText,
         createdAt: serverTimestamp(),
+        readBy: [user.uid],
       });
 
       const recipientId = otherUserId || conversation?.userIds?.find((id: string) => id !== user.uid) || '';
@@ -570,6 +622,7 @@ export default function ChatPage() {
         attachmentType: file.type || 'application/octet-stream',
         attachmentSizeBytes: file.size,
         createdAt: serverTimestamp(),
+        readBy: [user.uid],
       });
 
       const recipientId = otherUserId || conversation?.userIds?.find((id: string) => id !== user.uid) || '';
@@ -899,11 +952,6 @@ export default function ChatPage() {
                   <Info className="mr-2 h-4 w-4" />
                   View Details
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setMuted(v => !v)}>
-                  <BellOff className="mr-2 h-4 w-4" />
-                  {muted ? 'Unmute Notifications' : 'Mute Notifications'}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push('/families/calendar')}>
                   <CalendarDays className="mr-2 h-4 w-4" />
                   View Shifts
@@ -951,6 +999,8 @@ export default function ChatPage() {
               messageCreatedAt && !Number.isNaN(messageCreatedAt.getTime())
                 ? format(messageCreatedAt, 'p')
                 : null;
+            const readBy = Array.isArray(message.readBy) ? message.readBy : [message.senderId];
+            const isReadByOtherUser = Boolean(otherUserId) && readBy.includes(otherUserId as string);
             return (
               <div key={message.id} className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}>
                 {!isSender && (
@@ -977,10 +1027,13 @@ export default function ChatPage() {
                     </a>
                   )}
                   {message.text ? <p className="text-sm">{message.text}</p> : null}
-                   {messageCreatedAtLabel ? (
-                      <p className="text-xs text-right mt-1 opacity-70">
-                        {messageCreatedAtLabel}
-                      </p>
+                  {messageCreatedAtLabel ? (
+                    <div className={cn('chat-message-meta', isSender ? 'is-sender' : 'is-receiver')}>
+                      <span>{messageCreatedAtLabel}</span>
+                      {isSender ? (
+                        <CheckCheck className={cn('chat-read-icon', isReadByOtherUser ? 'is-read' : 'is-sent')} />
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 {isSender && (

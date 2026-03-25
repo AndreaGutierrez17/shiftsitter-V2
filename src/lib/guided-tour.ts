@@ -94,6 +94,16 @@ export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
     placement: 'bottom',
   },
   {
+    id: 'assistant',
+    title: 'ShiftSitter AI assistant',
+    description:
+      'Use the AI assistant for quick guidance on scheduling, communication, and setting expectations before you confirm a shift.',
+    route: '/families/assistant',
+    routeMatcher: /^\/families\/assistant$/,
+    selector: '[data-tour="assistant-center"]',
+    placement: 'bottom',
+  },
+  {
     id: 'calendar',
     title: 'Manage shifts and availability',
     description:

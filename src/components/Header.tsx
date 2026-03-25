@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BadgeCheck, Bell, CheckCheck, ChevronDown, CircleHelp, LogOut, Settings, Shield } from "lucide-react";
+import { BadgeCheck, Bell, CheckCheck, ChevronDown, CircleHelp, LogOut, Settings, Shield, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserPresenceHeartbeat } from "@/hooks/useUserPresenceHeartbeat";
 import { signOut } from "firebase/auth";
@@ -69,6 +69,7 @@ export default function Header() {
   const [isHandlingPush, setIsHandlingPush] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userAvatarUrl, setUserAvatarUrl] = useState("");
   const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
   const showFamilyTourControls = Boolean(user && accountType !== "employer" && pathname?.startsWith("/families"));
   useUserPresenceHeartbeat(user?.uid);
@@ -84,6 +85,7 @@ export default function Header() {
     if (!user) {
       setAccountType(null);
       setIsAdmin(false);
+      setUserAvatarUrl("");
       return;
     }
 
@@ -94,10 +96,17 @@ export default function Header() {
         const snap = await getDoc(doc(db, "users", user.uid));
         if (cancelled) return;
         if (!snap.exists()) {
+          setUserAvatarUrl(typeof user.photoURL === "string" ? user.photoURL : "");
           setAccountType(null);
           return;
         }
-        const data = snap.data() as { accountType?: string; role?: string } | undefined;
+        const data = snap.data() as { accountType?: string; role?: string; photoURL?: string; photoURLs?: unknown } | undefined;
+        const possiblePhotos = Array.isArray(data?.photoURLs) ? data?.photoURLs : [];
+        const nextPhoto =
+          (typeof possiblePhotos[0] === "string" ? possiblePhotos[0] : "") ||
+          (typeof data?.photoURL === "string" ? data?.photoURL : "") ||
+          (typeof user.photoURL === "string" ? user.photoURL : "");
+        setUserAvatarUrl(nextPhoto);
         if (data?.accountType === "employer") {
           setAccountType("employer");
           return;
@@ -188,6 +197,7 @@ export default function Header() {
   };
 
   const userMenuName = user?.displayName || user?.email || "Account";
+  const userMenuPhoto = userAvatarUrl || "";
   const userMenuInitial = userMenuName.trim().charAt(0).toUpperCase();
 
   const settingsHref = accountType === "employer" ? "/employers/settings" : "/families/profile/edit";
@@ -572,7 +582,17 @@ export default function Header() {
               >
                 <DropdownMenuTrigger asChild>
                   <button type="button" className="ss-user-menu-btn" aria-label="Account menu">
-                    <span className="ss-user-avatar">{userMenuInitial}</span>
+                    <span className="ss-user-avatar">
+                      {userMenuPhoto ? (
+                        <img
+                          src={userMenuPhoto}
+                          alt="Profile photo"
+                          onError={() => setUserAvatarUrl("")}
+                        />
+                      ) : (
+                        userMenuInitial
+                      )}
+                    </span>
                     <span className="ss-user-menu-name">{userMenuName}</span>
                     <ChevronDown className="h-4 w-4 text-primary" />
                   </button>
@@ -591,6 +611,12 @@ export default function Header() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                     </>
+                  ) : null}
+                  {accountType !== "employer" ? (
+                    <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/families/matches")}>
+                      <Users className="h-4 w-4" />
+                      <span>Shifters</span>
+                    </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push(settingsHref)}>
                     <Settings className="h-4 w-4" />
@@ -748,6 +774,11 @@ export default function Header() {
 
         {user ? (
           <div className="ss-mobile-section">
+            {accountType !== "employer" ? (
+              <Link href="/families/matches" className="ss-mobile-link" onClick={handleNavClick}>
+                Shifters
+              </Link>
+            ) : null}
             <Link href={settingsHref} className="ss-mobile-link" onClick={handleNavClick}>
               Settings
             </Link>
