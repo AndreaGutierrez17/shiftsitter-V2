@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 
+export const dynamic = "force-dynamic";
+
 export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
