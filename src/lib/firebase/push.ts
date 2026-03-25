@@ -82,14 +82,18 @@ export async function enableWebPush(uid: string) {
   if (!windowWithFlag.__shiftSitterForegroundPushBound) {
     onMessage(messaging, async (payload) => {
       try {
-        const title = payload.notification?.title || payload.data?.title || 'ShiftSitter';
-        const body = payload.notification?.body || payload.data?.body || 'You have a new update.';
+        const data = payload.data || {};
+        const title = payload.notification?.title || data.title || 'ShiftSitter';
+        const body = payload.notification?.body || data.body || 'You have a new update.';
+        const tag = typeof data.notificationId === 'string' ? data.notificationId : typeof data.tag === 'string' ? data.tag : undefined;
         const readySw = await navigator.serviceWorker.ready;
         await readySw.showNotification(title, {
           body,
           icon: '/logo-shiftsitter.png',
           badge: '/logo-shiftsitter.png',
-          data: payload.data || {},
+          tag,
+          renotify: false,
+          data,
         });
       } catch (error) {
         console.error('Foreground notification display failed:', error);

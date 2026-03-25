@@ -110,6 +110,23 @@ export async function POST(request: Request) {
 
     const tokens = Array.from(tokenSet);
     const timestampSeed = Date.now();
+    const notificationId =
+      body.notificationId || `${body.type}_${timestampSeed}_${Math.random().toString(36).slice(2, 8)}`;
+    const extraData = Object.entries(body.data || {}).reduce<Record<string, string>>((acc, [key, value]) => {
+      if (value === null || value === undefined) return acc;
+      acc[key] = String(value);
+      return acc;
+    }, {});
+    const dataPayload: Record<string, string> = {
+      ...extraData,
+      type: body.type,
+      link,
+      title,
+      body: notifBody,
+      notificationId,
+      icon: '/logo-shiftsitter.png',
+      badge: '/logo-shiftsitter.png',
+    };
     await Promise.all(
       targetUserIds.map((uid, index) => {
         if (process.env.NODE_ENV !== 'production') {
@@ -128,7 +145,7 @@ export async function POST(request: Request) {
           .collection('notifications')
           .doc(uid)
           .collection('items')
-          .doc(body.notificationId || `${body.type}_${timestampSeed}_${index}`)
+          .doc(notificationId)
           .set(
             {
               userId: uid,
@@ -152,11 +169,7 @@ export async function POST(request: Request) {
 
     const response = await adminMessaging().sendEachForMulticast({
       tokens,
-      notification: { title, body: notifBody },
-      data: {
-        link,
-        type: body.type,
-      },
+      data: dataPayload,
       webpush: {
         fcmOptions: { link },
       },

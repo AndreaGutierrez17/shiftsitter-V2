@@ -1,12 +1,9 @@
 /* eslint-disable no-undef */
-let firebaseApp = null;
-let messaging = null;
-let firebaseConfig = null;
 
 function normalizePayload(rawPayload) {
   const payload = rawPayload || {};
   const notification = payload.notification || {};
-  const data = payload.data || {};
+  const data = payload.data || payload || {};
 
   const title =
     notification.title ||
@@ -19,6 +16,7 @@ function normalizePayload(rawPayload) {
     'You have a new update.';
 
   const href =
+    data.link ||
     data.href ||
     data.url ||
     '/families/messages';
@@ -27,7 +25,7 @@ function normalizePayload(rawPayload) {
     title,
     options: {
       body,
-      icon: notification.icon || '/logo-shiftsitter.png',
+      icon: data.icon || notification.icon || '/logo-shiftsitter.png',
       badge: data.badge || '/logo-shiftsitter.png',
       tag: data.tag || data.notificationId || undefined,
       renotify: false,
@@ -43,29 +41,6 @@ async function showNormalizedNotification(rawPayload) {
   const { title, options } = normalizePayload(rawPayload);
   await self.registration.showNotification(title, options);
 }
-
-self.addEventListener('message', async (event) => {
-  if (!event?.data || event.data.type !== 'FIREBASE_CONFIG') return;
-  firebaseConfig = event.data.payload;
-
-  try {
-    if (!self.firebase) {
-      importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-      importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
-    }
-
-    if (!firebaseApp && firebaseConfig) {
-      firebaseApp = self.firebase.initializeApp(firebaseConfig);
-      messaging = self.firebase.messaging();
-
-      messaging.onBackgroundMessage((payload) => {
-        showNormalizedNotification(payload);
-      });
-    }
-  } catch (error) {
-    console.error('[firebase-messaging-sw] init error', error);
-  }
-});
 
 self.addEventListener('push', (event) => {
   if (!event?.data) return;
