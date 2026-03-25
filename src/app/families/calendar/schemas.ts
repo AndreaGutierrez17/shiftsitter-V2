@@ -1,5 +1,13 @@
 import * as z from 'zod';
 
+const isOnOrAfterToday = (value: string) => {
+  const candidate = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(candidate.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return candidate.getTime() >= today.getTime();
+};
+
 export const shiftProposalSchema = z.object({
   accepterId: z.string().min(1, { message: 'You must select a match to propose to.' }),
   date: z.string().min(1, { message: 'Date is required.' }),
@@ -13,6 +21,14 @@ export const shiftProposalSchema = z.object({
 }).refine(data => data.endTime > data.startTime, {
   message: 'End time must be after start time.',
   path: ['endTime'],
+}).superRefine((data, ctx) => {
+  if (!isOnOrAfterToday(data.date)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Date cannot be in the past.',
+      path: ['date'],
+    });
+  }
 });
 
 export type ShiftProposalState = {
@@ -28,6 +44,14 @@ export const shiftSwapProposalSchema = z.object({
 }).refine(data => data.newEndTime > data.newStartTime, {
   message: 'New end time must be after new start time.',
   path: ['newEndTime'],
+}).superRefine((data, ctx) => {
+  if (!isOnOrAfterToday(data.newDate)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'New date cannot be in the past.',
+      path: ['newDate'],
+    });
+  }
 });
 
 export type ShiftSwapProposalState = {

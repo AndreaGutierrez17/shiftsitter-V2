@@ -19,13 +19,8 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
-import {
-  ONBOARDING_STEPS,
-  VERIFICATION_COMING_SOON_MESSAGE,
-  VERIFICATION_COMING_SOON_NOTE,
-  VERIFICATION_COMING_SOON_TITLE,
-} from '@/lib/constants';
-import { ArrowLeft, ArrowRight, Repeat, User, Users } from 'lucide-react';
+import { ONBOARDING_STEPS } from '@/lib/constants';
+import { ArrowLeft, ArrowRight, Repeat } from 'lucide-react';
 import { AuthGuard } from '@/components/AuthGuard';
 
 const US_STATE_OPTIONS = [
@@ -80,8 +75,8 @@ const profileSchema = z.object({
   age: z.coerce.number().min(18, 'You must be at least 18 years old.'),
   location: z.string().optional(),
   state: z.string().optional(),
-  city: z.string().optional(),
-  zip: z.string().optional(),
+  city: z.string().trim().min(1, 'City is required.'),
+  zip: z.string().trim().min(1, 'ZIP code is required.'),
   workplace: z.string().optional(),
   numberOfChildren: z.coerce.number().optional(),
   childAge: z.coerce.number().optional(),
@@ -98,8 +93,7 @@ const profileSchema = z.object({
   requireSmokeFree: z.boolean().optional(),
   needPetsInHome: z.enum(['none', 'dog', 'cat', 'multiple', 'unknown']),
   needOkWithPets: z.boolean().optional(),
-  needZipHome: z.string().optional(),
-  needZipWork: z.string().optional(),
+  needZipWork: z.string().trim().min(1, 'Work ZIP code is required.'),
   needHandoffPreference: z.enum(['pickup', 'dropoff', 'my_workplace', 'their_workplace', 'either']),
   needMaxTravelMinutes: z.string(),
   needExtrasNeeded: z.array(z.string()),
@@ -224,7 +218,6 @@ function OnboardingForm() {
       requireSmokeFree: false,
       needPetsInHome: 'unknown',
       needOkWithPets: false,
-      needZipHome: '',
       needZipWork: '',
       needHandoffPreference: 'either',
       needMaxTravelMinutes: '30',
@@ -327,7 +320,7 @@ function OnboardingForm() {
       const normalizedChildrenCount = parseNumericText(data.needChildrenCount);
       const normalizedOfferCapacity = parseNumericText(data.offerMaxChildrenTotal);
       const normalizedTravelMinutes = parseNumericText(data.needMaxTravelMinutes) || 30;
-      const normalizedNeedZipHome = data.needZipHome?.trim() || data.zip?.trim() || '';
+      const normalizedNeedZipHome = data.zip?.trim() || '';
       const normalizedNeedZipWork = data.needZipWork?.trim() || data.zip?.trim() || '';
       const needDays = data.needDays;
       const needShifts = data.needShifts;
@@ -519,17 +512,9 @@ function OnboardingForm() {
                           <FormLabel>Main goal *</FormLabel>
                           <FormControl>
                             <RadioGroup onValueChange={field.onChange} value={field.value} className="flex flex-col gap-2">
-                              <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 transition-colors ${field.value === 'parent' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
-                                <FormControl><RadioGroupItem value="parent" /></FormControl>
-                                <FormLabel className="flex cursor-pointer items-center gap-3 font-normal"><User className="text-primary" /> I am a parent looking for a sitter.</FormLabel>
-                              </FormItem>
-                              <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 transition-colors ${field.value === 'sitter' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
-                                <FormControl><RadioGroupItem value="sitter" /></FormControl>
-                                <FormLabel className="flex cursor-pointer items-center gap-3 font-normal"><Users className="text-primary" /> I am a sitter looking for families.</FormLabel>
-                              </FormItem>
                               <FormItem className={`flex items-center space-x-3 space-y-0 rounded-xl border p-4 transition-colors ${field.value === 'reciprocal' ? 'border-primary/50 bg-accent' : 'bg-white hover:bg-accent/40'}`}>
                                 <FormControl><RadioGroupItem value="reciprocal" /></FormControl>
-                                <FormLabel className="flex cursor-pointer items-center gap-3 font-normal"><Repeat className="text-primary" /> I am a parent looking for reciprocal exchanges.</FormLabel>
+                                <FormLabel className="flex cursor-pointer items-center gap-3 font-normal"><Repeat className="text-primary" /> I am a parent looking for reciprocal childcare exchanges</FormLabel>
                               </FormItem>
                             </RadioGroup>
                           </FormControl>
@@ -607,7 +592,7 @@ function OnboardingForm() {
                           name="city"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>City (optional)</FormLabel>
+                              <FormLabel>City *</FormLabel>
                               <FormControl><Input placeholder="e.g., Baltimore" {...field} value={field.value ?? ''} /></FormControl>
                               <FormMessage />
                             </FormItem>
@@ -619,7 +604,7 @@ function OnboardingForm() {
                           name="zip"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>ZIP / Postal code (optional)</FormLabel>
+                              <FormLabel>ZIP / Postal code *</FormLabel>
                               <FormControl>
                                 <Input
                                   inputMode="text"
@@ -642,22 +627,27 @@ function OnboardingForm() {
 
                   {currentStep === 2 && (
                     <div className="space-y-6">
-                      <p className="text-sm text-muted-foreground">Step 1 from the match engine: define exactly what you need so hard filters only show relevant matches.</p>
+                      <p className="text-sm text-muted-foreground">Tell us what you need so we can find the best matches.</p>
 
                       <FormField
                         control={form.control}
                         name="needDays"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Which days do you typically need childcare? *</FormLabel>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <FormLabel>Which days do you typically need childcare? *</FormLabel>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                               {DAY_OPTIONS.map((day) => {
                                 const selected = (field.value ?? []).includes(day);
                                 return (
-                                  <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                    <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
-                                    <span>{day}</span>
-                                  </label>
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                    aria-pressed={selected}
+                                    onClick={() => field.onChange(toggleArrayValue(field.value ?? [], day, !selected))}
+                                  >
+                                    {day}
+                                  </button>
                                 );
                               })}
                             </div>
@@ -671,15 +661,20 @@ function OnboardingForm() {
                         name="needShifts"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Which shift(s) do you need help with? *</FormLabel>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <FormLabel>Which shift(s) do you need help with? *</FormLabel>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                               {SHIFT_OPTIONS.map((shift) => {
                                 const selected = (field.value ?? []).includes(shift);
                                 return (
-                                  <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                    <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
-                                    <span>{shift}</span>
-                                  </label>
+                                  <button
+                                    key={shift}
+                                    type="button"
+                                    className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                    aria-pressed={selected}
+                                    onClick={() => field.onChange(toggleArrayValue(field.value ?? [], shift, !selected))}
+                                  >
+                                    {shift}
+                                  </button>
                                 );
                               })}
                             </div>
@@ -795,16 +790,9 @@ function OnboardingForm() {
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <FormField control={form.control} name="needZipHome" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Home ZIP / Postal code (optional)</FormLabel>
-                            <FormControl><Input inputMode="text" maxLength={12} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.slice(0, 12))} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
                         <FormField control={form.control} name="needZipWork" render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Work ZIP / Postal code (optional)</FormLabel>
+                            <FormLabel>Work ZIP / Postal code *</FormLabel>
                             <FormControl><Input inputMode="text" maxLength={12} value={field.value || ''} onChange={(e) => field.onChange(e.target.value.slice(0, 12))} /></FormControl>
                             <FormMessage />
                           </FormItem>
@@ -845,11 +833,11 @@ function OnboardingForm() {
                       <FormField control={form.control} name="needExtrasNeeded" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Which extras do you need help with?</FormLabel>
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {EXTRA_OPTIONS.map((extra) => {
                               const selected = (field.value ?? []).includes(extra);
                               return (
-                                <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                <label key={extra} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                   <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
                                   <span>{extra}</span>
                                 </label>
@@ -864,22 +852,27 @@ function OnboardingForm() {
 
                   {currentStep === 3 && (
                     <div className="space-y-6">
-                      <p className="text-sm text-muted-foreground">Step 2 from the match engine: define what you can offer in return so reciprocity is visible and rankable.</p>
+                      <p className="text-sm text-muted-foreground">Tell us what you can offer so we can find the best matches.</p>
 
                       <FormField
                         control={form.control}
                         name="offerDays"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Which days can you provide care? *</FormLabel>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <FormLabel>Which days can you provide care? *</FormLabel>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                               {DAY_OPTIONS.map((day) => {
                                 const selected = (field.value ?? []).includes(day);
                                 return (
-                                  <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                    <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
-                                    <span>{day}</span>
-                                  </label>
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                    aria-pressed={selected}
+                                    onClick={() => field.onChange(toggleArrayValue(field.value ?? [], day, !selected))}
+                                  >
+                                    {day}
+                                  </button>
                                 );
                               })}
                             </div>
@@ -893,15 +886,20 @@ function OnboardingForm() {
                         name="offerShifts"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Which shift(s) can you cover? *</FormLabel>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <FormLabel>Which shift(s) can you cover? *</FormLabel>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                               {SHIFT_OPTIONS.map((shift) => {
                                 const selected = (field.value ?? []).includes(shift);
                                 return (
-                                  <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                    <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
-                                    <span>{shift}</span>
-                                  </label>
+                                  <button
+                                    key={shift}
+                                    type="button"
+                                    className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                    aria-pressed={selected}
+                                    onClick={() => field.onChange(toggleArrayValue(field.value ?? [], shift, !selected))}
+                                  >
+                                    {shift}
+                                  </button>
                                 );
                               })}
                             </div>
@@ -967,11 +965,11 @@ function OnboardingForm() {
                       <FormField control={form.control} name="offerAgeRanges" render={({ field }) => (
                         <FormItem>
                           <FormLabel>What age ranges are you comfortable caring for? *</FormLabel>
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {AGE_RANGE_OPTIONS.map((range) => {
                               const selected = (field.value ?? []).includes(range);
                               return (
-                                <label key={range} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                <label key={range} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                   <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], range, checked === true))} />
                                   <span>{range}</span>
                                 </label>
@@ -994,11 +992,11 @@ function OnboardingForm() {
                       <FormField control={form.control} name="offerExtrasOffered" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Optional extras you&apos;re willing to offer</FormLabel>
-                          <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {EXTRA_OPTIONS.map((extra) => {
                               const selected = (field.value ?? []).includes(extra);
                               return (
-                                <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                <label key={extra} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                   <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
                                   <span>{extra}</span>
                                 </label>
@@ -1066,11 +1064,11 @@ function OnboardingForm() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Interests *</FormLabel>
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-3 sm:grid-cols-2">
                               {INTEREST_OPTIONS.map((interest) => {
                                 const selected = (field.value ?? []).includes(interest);
                                 return (
-                                  <label key={interest} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                  <label key={interest} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                     <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], interest, checked === true))} />
                                     <span>{interest}</span>
                                   </label>
@@ -1102,6 +1100,9 @@ function OnboardingForm() {
                         <h3 className="text-lg font-semibold">Summary</h3>
                         <p className="mt-2 text-sm text-muted-foreground">Review your details before saving your match profile.</p>
                         <div className="mt-4 space-y-2 text-sm">
+                          <div><span className="font-medium">Availability:</span> {form.getValues('availability') || 'Not set'}</div>
+                          <div><span className="font-medium">Location:</span> {form.getValues('location') || 'Not set'}</div>
+                          <div><span className="font-medium">Max travel distance:</span> {form.getValues('needMaxTravelMinutes') === '45' ? 'More than 30 minutes' : `${form.getValues('needMaxTravelMinutes')} minutes`}</div>
                           <div><span className="font-medium">Need:</span> {watchedNeedDays.join(', ') || 'No days'} {watchedNeedShifts.length ? `(${watchedNeedShifts.join(', ')})` : ''}</div>
                           <div><span className="font-medium">Offer:</span> {watchedOfferDays.join(', ') || 'No days'} {watchedOfferShifts.length ? `(${watchedOfferShifts.join(', ')})` : ''}</div>
                           <div><span className="font-medium">Children needing care:</span> {form.getValues('needChildrenCount')}</div>
@@ -1109,11 +1110,6 @@ function OnboardingForm() {
                           <div><span className="font-medium">Need extras:</span> {form.getValues('needExtrasNeeded').join(', ') || 'None'}</div>
                           <div><span className="font-medium">Offer extras:</span> {form.getValues('offerExtrasOffered').join(', ') || 'None'}</div>
                         </div>
-                      </div>
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-800">
-                        <p className="font-semibold">{VERIFICATION_COMING_SOON_TITLE}</p>
-                        <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
-                        <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
                       </div>
                     </div>
                   )}

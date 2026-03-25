@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Bell, CheckCheck, CircleHelp } from "lucide-react";
+import { BadgeCheck, Bell, CheckCheck, ChevronDown, CircleHelp, LogOut, Settings, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserPresenceHeartbeat } from "@/hooks/useUserPresenceHeartbeat";
 import { signOut } from "firebase/auth";
@@ -64,6 +64,8 @@ export default function Header() {
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
   const [notifOpenMobile, setNotifOpenMobile] = useState(false);
+  const [userMenuOpenDesktop, setUserMenuOpenDesktop] = useState(false);
+  const [userMenuOpenMobile, setUserMenuOpenMobile] = useState(false);
   const [pushStatus, setPushStatus] = useState<"on" | "off" | "blocked">("off");
   const [isHandlingPush, setIsHandlingPush] = useState(false);
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
@@ -185,6 +187,11 @@ export default function Header() {
     await signOut(auth);
     router.push('/');
   };
+
+  const userMenuName = user?.displayName || user?.email || "Account";
+  const userMenuInitial = userMenuName.trim().charAt(0).toUpperCase();
+
+  const settingsHref = accountType === "employer" ? "/employers/settings" : "/families/profile/edit";
 
   useEffect(() => {
     if (!user) return;
@@ -414,22 +421,22 @@ export default function Header() {
         await enableWebPush(user.uid);
         setPushStatus("on");
         toast({
-          title: "Notificaciones activadas",
-          description: "Se habilitaron las notificaciones en este dispositivo.",
+          title: "Notifications enabled",
+          description: "Notifications are enabled on this device.",
         });
       } else {
         await disableWebPush(user.uid);
         setPushStatus("off");
         toast({
-          title: "Notificaciones desactivadas",
-          description: "Se desactivaron las notificaciones en este dispositivo.",
+          title: "Notifications disabled",
+          description: "Notifications are disabled on this device.",
         });
       }
     } catch (error: any) {
-      const message = error?.message || "No pudimos cambiar las notificaciones.";
+      const message = error?.message || "We couldn't update notifications.";
       toast({
         variant: "destructive",
-        title: "No se pudo cambiar",
+        title: "Couldn't update",
         description: message,
       });
       if (Notification.permission === "denied") {
@@ -459,16 +466,6 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
-          {showAdminLink ? (
-            <>
-              <Link href="/admin/dashboard" className="ss-nav-link">
-                Admin
-              </Link>
-              <Link href="/admin/verification" className="ss-nav-link">
-                Verification
-              </Link>
-            </>
-          ) : null}
         </nav>
 
         <div className="ss-header-actions ss-nav-desktop">
@@ -491,6 +488,9 @@ export default function Header() {
                     open={notifOpenDesktop}
                     onOpenChange={(open) => {
                       setNotifOpenDesktop(open);
+                      if (open) {
+                        setUserMenuOpenDesktop(false);
+                      }
                       if (open) setNotifOpenMobile(false);
                     }}
                   >
@@ -518,7 +518,14 @@ export default function Header() {
                         </button>
                       </DropdownMenuLabel>
                       <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
-                        <span>Alertas</span>
+                        <div className="flex items-center gap-2">
+                          <span>Alerts</span>
+                          {pushStatus === "on" ? (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                              Enabled
+                            </span>
+                          ) : null}
+                        </div>
                         <Switch
                           checked={pushStatus === "on"}
                           onCheckedChange={handleTogglePush}
@@ -527,7 +534,7 @@ export default function Header() {
                       </div>
                       {pushStatus === "blocked" ? (
                         <div className="px-3 pb-2 text-[11px] text-muted-foreground">
-                          Permiso bloqueado en el navegador.
+                          Permission blocked in the browser.
                         </div>
                       ) : null}
                       <DropdownMenuSeparator />
@@ -557,9 +564,46 @@ export default function Header() {
                   </DropdownMenu>
                 </>
               ) : null}
-              <button onClick={handleSignOut} className="ss-btn-outline ss-nav-btn">
-                Log out
-              </button>
+              <DropdownMenu
+                open={userMenuOpenDesktop}
+                onOpenChange={(open) => {
+                  setUserMenuOpenDesktop(open);
+                  if (open) setNotifOpenDesktop(false);
+                }}
+              >
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="ss-user-menu-btn" aria-label="Account menu">
+                    <span className="ss-user-avatar">{userMenuInitial}</span>
+                    <span className="ss-user-menu-name">{userMenuName}</span>
+                    <ChevronDown className="h-4 w-4 text-primary" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="ss-user-menu w-64">
+                  {showAdminLink ? (
+                    <>
+                      <DropdownMenuLabel className="ss-user-menu-label">Admin panel</DropdownMenuLabel>
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/dashboard")}>
+                        <Shield className="h-4 w-4" />
+                        <span>Admin</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/verification")}>
+                        <BadgeCheck className="h-4 w-4" />
+                        <span>Verification</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push(settingsHref)}>
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={handleSignOut}>
+                    <LogOut className="h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
              </>
           ) : (
             <>
@@ -573,7 +617,7 @@ export default function Header() {
           )}
         </div>
 
-        {user && accountType !== "employer" ? (
+        {user ? (
           <div className="ss-mobile-top-actions">
             <>
               {showFamilyTourControls ? (
@@ -587,75 +631,128 @@ export default function Header() {
                 <CircleHelp className="h-4 w-4" />
               </button>
               ) : null}
+              {accountType !== "employer" ? (
+                <DropdownMenu
+                  open={notifOpenMobile}
+                  onOpenChange={(open) => {
+                    setNotifOpenMobile(open);
+                    if (open) {
+                      setNotifOpenDesktop(false);
+                      setUserMenuOpenMobile(false);
+                      setIsMenuOpen(false);
+                    }
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
+                      <Bell className="h-4 w-4" />
+                      {unreadCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
+                    <DropdownMenuLabel className="flex items-center justify-between">
+                      <span>Notifications</span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                        onClick={markAllNotificationsRead}
+                        disabled={unreadCount === 0 || isMarkingAllRead}
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                      </button>
+                    </DropdownMenuLabel>
+                    <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span>Alerts</span>
+                        {pushStatus === "on" ? (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Enabled
+                          </span>
+                        ) : null}
+                      </div>
+                      <Switch
+                        checked={pushStatus === "on"}
+                        onCheckedChange={handleTogglePush}
+                        disabled={isHandlingPush || pushStatus === "blocked"}
+                      />
+                    </div>
+                    {pushStatus === "blocked" ? (
+                      <div className="px-3 pb-2 text-[11px] text-muted-foreground">
+                        Permission blocked in the browser.
+                      </div>
+                    ) : null}
+                    <DropdownMenuSeparator />
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                    ) : (
+                      notifications.slice(0, 8).map((notif) => (
+                        <DropdownMenuItem
+                          key={notif.id}
+                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            void markNotificationRead(notif.id);
+                            setNotifOpenMobile(false);
+                            if (notif.href) router.push(notif.href);
+                          }}
+                        >
+                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{notif.title}</div>
+                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <DropdownMenu
-                open={notifOpenMobile}
+                open={userMenuOpenMobile}
                 onOpenChange={(open) => {
-                  setNotifOpenMobile(open);
+                  setUserMenuOpenMobile(open);
                   if (open) {
-                    setNotifOpenDesktop(false);
+                    setNotifOpenMobile(false);
                     setIsMenuOpen(false);
                   }
                 }}
               >
                 <DropdownMenuTrigger asChild>
-                  <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
-                    <Bell className="h-4 w-4" />
-                    {unreadCount > 0 ? (
-                      <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    ) : null}
+                  <button type="button" className="ss-user-menu-btn ss-user-menu-btn-mobile" aria-label="Account menu">
+                    <span className="ss-user-avatar">{userMenuInitial}</span>
+                    <ChevronDown className="h-4 w-4 text-primary" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
-                  <DropdownMenuLabel className="flex items-center justify-between">
-                    <span>Notifications</span>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
-                      onClick={markAllNotificationsRead}
-                      disabled={unreadCount === 0 || isMarkingAllRead}
-                    >
-                      <CheckCheck className="h-3.5 w-3.5" />
-                      {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
-                    </button>
-                  </DropdownMenuLabel>
-                  <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
-                    <span>Alertas</span>
-                    <Switch
-                      checked={pushStatus === "on"}
-                      onCheckedChange={handleTogglePush}
-                      disabled={isHandlingPush || pushStatus === "blocked"}
-                    />
-                  </div>
-                  {pushStatus === "blocked" ? (
-                    <div className="px-3 pb-2 text-[11px] text-muted-foreground">
-                      Permiso bloqueado en el navegador.
-                    </div>
-                  ) : null}
-                  <DropdownMenuSeparator />
-                  {notifications.length === 0 ? (
-                    <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
-                  ) : (
-                    notifications.slice(0, 8).map((notif) => (
-                      <DropdownMenuItem
-                        key={notif.id}
-                        className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          void markNotificationRead(notif.id);
-                          setNotifOpenMobile(false);
-                          if (notif.href) router.push(notif.href);
-                        }}
-                      >
-                        <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{notif.title}</div>
-                          <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
-                        </div>
+                <DropdownMenuContent align="end" className="ss-user-menu w-[calc(100vw-2rem)] max-w-sm">
+                  <DropdownMenuLabel className="ss-user-menu-heading">{userMenuName}</DropdownMenuLabel>
+                  {showAdminLink ? (
+                    <>
+                      <DropdownMenuLabel className="ss-user-menu-label">Admin panel</DropdownMenuLabel>
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/dashboard")}>
+                        <Shield className="h-4 w-4" />
+                        <span>Admin</span>
                       </DropdownMenuItem>
-                    ))
-                  )}
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/verification")}>
+                        <BadgeCheck className="h-4 w-4" />
+                        <span>Verification</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push(settingsHref)}>
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={handleSignOut}>
+                    <LogOut className="h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
@@ -686,17 +783,6 @@ export default function Header() {
             {link.label}
           </Link>
         ))}
-        {showAdminLink ? (
-          <>
-            <Link href="/admin/dashboard" className="ss-mobile-link" onClick={handleNavClick}>
-              Admin
-            </Link>
-            <Link href="/admin/verification" className="ss-mobile-link" onClick={handleNavClick}>
-              Verification
-            </Link>
-          </>
-        ) : null}
-
         <div className="ss-mobile-actions">
            {user ? (
              <>
@@ -712,9 +798,6 @@ export default function Header() {
                   Guided Tour
                 </button>
               ) : null}
-              <button onClick={() => { handleNavClick(); handleSignOut(); }} className="ss-btn-outline ss-nav-btn w-full">
-                Log out
-              </button>
              </>
           ) : (
             <>

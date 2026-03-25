@@ -21,11 +21,6 @@ import { db } from '@/lib/firebase/client';
 import type { Conversation, Review, Shift, UserProfile } from '@/lib/types';
 import { shiftProposalSchema } from './schemas';
 import AppBackButton from '@/components/AppBackButton';
-import {
-  VERIFICATION_COMING_SOON_MESSAGE,
-  VERIFICATION_COMING_SOON_NOTE,
-  VERIFICATION_COMING_SOON_TITLE,
-} from '@/lib/constants';
 import type { z } from 'zod';
 
 type ShiftFormValues = z.input<typeof shiftProposalSchema>;
@@ -114,12 +109,13 @@ function CalendarPageContent() {
   const [acceptConfirmShift, setAcceptConfirmShift] = useState<Shift | null>(null);
   const autoCompletedShiftIdsRef = useRef<Set<string>>(new Set());
   const focusedShiftId = searchParams.get('shift') || '';
+  const todayDate = format(new Date(), 'yyyy-MM-dd');
 
   const form = useForm<ShiftFormValues>({
     resolver: zodResolver(shiftProposalSchema),
     defaultValues: {
       accepterId: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: todayDate,
       startTime: '',
       endTime: '',
       numberOfChildren: undefined,
@@ -133,7 +129,7 @@ function CalendarPageContent() {
   const resetProposalForm = () => {
     form.reset({
       accepterId: '',
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: todayDate,
       startTime: '',
       endTime: '',
       numberOfChildren: undefined,
@@ -754,7 +750,7 @@ function CalendarPageContent() {
                           <FormItem>
                             <FormLabel>Date</FormLabel>
                             <FormControl>
-                              <Input type="date" {...field} />
+                              <Input type="date" min={todayDate} {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -991,7 +987,7 @@ function CalendarPageContent() {
                   <div className="space-y-4">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-foreground">New date</label>
-                      <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                      <Input type="date" min={todayDate} value={editDate} onChange={(e) => setEditDate(e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -1031,9 +1027,7 @@ function CalendarPageContent() {
             <CardContent className="space-y-3">
               {!canAccessSecureCalendar ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <p className="font-medium">{VERIFICATION_COMING_SOON_TITLE}</p>
-                  <p className="mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
-                  <p className="mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
+                  <p className="font-medium">Calendar access is currently unavailable for this account.</p>
                   <Button className="mt-3" size="sm" onClick={() => window.location.assign('/families/profile/edit')}>
                     Go to Profile Edit
                   </Button>
@@ -1069,9 +1063,7 @@ function CalendarPageContent() {
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
-              {!canAccessSecureCalendar ? (
-                <p className="text-sm text-muted-foreground">Shift actions stay active during beta while verification tools are being prepared.</p>
-              ) : upcomingShifts.length === 0 ? (
+              {!canAccessSecureCalendar ? null : upcomingShifts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {selectedMatchFilterId ? 'No shifts found for the selected shifter yet.' : 'No shifts scheduled yet.'}
                 </p>
@@ -1289,8 +1281,12 @@ function CalendarPageContent() {
             <DialogContent className="border shadow-lg">
               <DialogHeader>
                 <DialogTitle>Accept this shift?</DialogTitle>
-                <DialogDescription>
-                  By accepting this shift you agree to provide the coverage requested to the best of your ability.
+                <DialogDescription asChild>
+                  <div className="space-y-3 text-sm text-muted-foreground">
+                    <p>By accepting this shift, you agree to communicate clearly and provide appropriate care based on the details agreed between both parties.</p>
+                    <p>ShiftSitter facilitates connections between users but does not supervise, verify, or take responsibility for individual care arrangements.</p>
+                    <p>Please ensure you are comfortable with your match and take appropriate steps to confirm identity, safety, and expectations.</p>
+                  </div>
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

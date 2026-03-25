@@ -40,7 +40,7 @@ export const EMPLOYER_NAV_LINKS = [
 export const ONBOARDING_STEPS = [
   { id: 'step1', title: 'Role', fields: ['role'] },
   { id: 'step2', title: 'Basics & Location', fields: ['name', 'age', 'state', 'city', 'zip', 'location'] },
-  { id: 'step3', title: 'What You Need', fields: ['needDays', 'needShifts', 'needChildrenCount', 'needZipHome'] },
+  { id: 'step3', title: 'What You Need', fields: ['needDays', 'needShifts', 'needChildrenCount', 'needZipWork'] },
   { id: 'step4', title: 'What You Offer', fields: ['offerDays', 'offerShifts', 'offerHoursPerMonthBucket', 'offerMaxChildrenTotal'] },
   { id: 'step5', title: 'Preferences & Extras', fields: ['interestSelections', 'interestsOther', 'interests'] },
   { id: 'step6', title: 'Summary', fields: [] },

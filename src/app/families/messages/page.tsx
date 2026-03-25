@@ -11,11 +11,6 @@ import { useEffect, useState } from 'react';
 import type { Timestamp } from 'firebase/firestore';
 import { AuthGuard } from '@/components/AuthGuard';
 import AppBackButton from '@/components/AppBackButton';
-import {
-  VERIFICATION_COMING_SOON_MESSAGE,
-  VERIFICATION_COMING_SOON_NOTE,
-  VERIFICATION_COMING_SOON_TITLE,
-} from '@/lib/constants';
 import { isConversationTypingActive } from '@/lib/presence';
 
 export default function MessagesPage() {
@@ -160,7 +155,7 @@ export default function MessagesPage() {
                     <AppBackButton fallbackHref="/families" label="Back" className="mb-3" />
                     <CardTitle className="font-headline messages-title">Messages</CardTitle>
                     <CardDescription className="messages-subtitle">
-                      {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Your account remains active while verification tools are prepared.'}
+                      {canAccessSecureMessaging ? 'Here are your recent conversations.' : 'Messaging is currently unavailable for this account.'}
                     </CardDescription>
                   </div>
                 </div>
@@ -187,9 +182,7 @@ export default function MessagesPage() {
               )}
               {!canAccessSecureMessaging ? (
                 <div className="text-center py-12">
-                  <p className="font-medium">{VERIFICATION_COMING_SOON_TITLE}</p>
-                  <p className="text-muted-foreground mt-1">{VERIFICATION_COMING_SOON_MESSAGE}</p>
-                  <p className="text-muted-foreground mt-1">{VERIFICATION_COMING_SOON_NOTE}</p>
+                  <p className="font-medium">Messaging is currently unavailable for this account.</p>
                   <Link href="/families/profile/edit" className="messages-link-btn mt-4">
                     Go to Profile Edit
                   </Link>

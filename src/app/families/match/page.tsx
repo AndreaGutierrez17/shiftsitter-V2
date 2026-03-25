@@ -788,11 +788,9 @@ export default function MatchPage() {
     <AuthGuard>
       <div className="match-shell">
         <div className="match-inner">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Discovery</p>
-              <h1 className="font-headline text-3xl font-semibold text-foreground">{FIND_SHIFTERS_LABEL}</h1>
-            </div>
+          <div className="match-header">
+            <p className="match-eyebrow text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Discovery</p>
+            <h1 className="match-title font-headline text-3xl font-semibold text-foreground">{FIND_SHIFTERS_LABEL}</h1>
           </div>
           <div className="match-deck-wrap" data-tour="match-feed">
             {currentProfile ? (

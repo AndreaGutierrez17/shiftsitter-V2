@@ -91,8 +91,8 @@ const profileSchema = z.object({
   age: z.coerce.number().min(18, 'You must be at least 18 years old.'),
   location: z.string().optional(),
   state: z.string().optional(),
-  city: z.string().optional(),
-  zip: z.string().optional(),
+  city: z.string().trim().min(1, 'City is required.'),
+  zip: z.string().trim().min(1, 'ZIP code is required.'),
   workplace: z.string().optional(),
   numberOfChildren: z.coerce.number().optional(),
   childAge: z.coerce.number().optional(),
@@ -109,8 +109,7 @@ const profileSchema = z.object({
   requireSmokeFree: z.boolean().optional(),
   needPetsInHome: z.enum(['none', 'dog', 'cat', 'multiple', 'unknown']),
   needOkWithPets: z.boolean().optional(),
-  needZipHome: z.string().optional(),
-  needZipWork: z.string().optional(),
+  needZipWork: z.string().trim().min(1, 'Work ZIP code is required.'),
   needHandoffPreference: z.enum(['pickup', 'dropoff', 'my_workplace', 'their_workplace', 'either']),
   needMaxTravelMinutes: z.string(),
   needExtrasNeeded: z.array(z.string()),
@@ -323,7 +322,6 @@ export default function EditProfilePage() {
       requireSmokeFree: false,
       needPetsInHome: 'unknown',
       needOkWithPets: false,
-      needZipHome: '',
       needZipWork: '',
       needHandoffPreference: 'either',
       needMaxTravelMinutes: '30',
@@ -446,8 +444,15 @@ export default function EditProfilePage() {
             requireSmokeFree: asBoolean(need.requireSmokeFree ?? answers.smoke_free_required),
             needPetsInHome: normalizePetsInHome(need.petsInHome ?? answers.pets_in_home),
             needOkWithPets: asBoolean(need.okWithPets ?? answers.okay_with_pets),
-            needZipHome: asString(need.zipHome ?? answers.home_zip ?? publicProfile.homeZip ?? profile.zip),
-            needZipWork: asString(need.zipWork ?? answers.work_zip ?? publicProfile.workZip),
+            needZipWork: asString(
+              need.zipWork ??
+                answers.work_zip ??
+                publicProfile.workZip ??
+                need.zipHome ??
+                answers.home_zip ??
+                publicProfile.homeZip ??
+                profile.zip
+            ),
             needHandoffPreference: normalizeHandoffPreference(need.handoffPreference ?? answers.handoff_need),
             needMaxTravelMinutes: String(travelMinutes),
             needExtrasNeeded: asStringArray(need.extrasNeeded ?? answers.extras_need),
@@ -749,7 +754,7 @@ export default function EditProfilePage() {
       const normalizedChildrenCount = parseNumericText(values.needChildrenCount);
       const normalizedOfferCapacity = parseNumericText(values.offerMaxChildrenTotal);
       const normalizedTravelMinutes = parseNumericText(values.needMaxTravelMinutes) || 30;
-      const normalizedNeedZipHome = values.needZipHome?.trim() || values.zip?.trim() || '';
+      const normalizedNeedZipHome = values.zip?.trim() || '';
       const normalizedNeedZipWork = values.needZipWork?.trim() || values.zip?.trim() || '';
       const resolvedLocation = values.location || buildLocation(values.city, values.state, values.zip);
       const needDays = values.needDays;
@@ -1311,10 +1316,10 @@ export default function EditProfilePage() {
                             </FormItem>
                           )} />
                           <FormField control={form.control} name="city" render={({ field }) => (
-                            <FormItem><FormLabel>City (optional)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>City *</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                           )} />
                           <FormField control={form.control} name="zip" render={({ field }) => (
-                            <FormItem><FormLabel>ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>ZIP / Postal code *</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                           )} />
                         </div>
 
@@ -1369,37 +1374,47 @@ export default function EditProfilePage() {
                           <h3 className="text-lg font-semibold text-foreground">What you need</h3>
                           <FormField control={form.control} name="needDays" render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Which days do you typically need childcare?</FormLabel>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {DAY_OPTIONS.map((day) => {
-                                  const selected = (field.value ?? []).includes(day);
-                                  return (
-                                    <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
-                                      <span>{day}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <FormMessage />
+                          <FormLabel>Which days do you typically need childcare?</FormLabel>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {DAY_OPTIONS.map((day) => {
+                              const selected = (field.value ?? []).includes(day);
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                  aria-pressed={selected}
+                                  onClick={() => field.onChange(toggleArrayValue(field.value ?? [], day, !selected))}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
                             </FormItem>
                           )} />
 
                           <FormField control={form.control} name="needShifts" render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Which shifts do you need help with?</FormLabel>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {SHIFT_OPTIONS.map((shift) => {
-                                  const selected = (field.value ?? []).includes(shift);
-                                  return (
-                                    <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
-                                      <span>{shift}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <FormMessage />
+                          <FormLabel>Which shifts do you need help with?</FormLabel>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {SHIFT_OPTIONS.map((shift) => {
+                              const selected = (field.value ?? []).includes(shift);
+                              return (
+                                <button
+                                  key={shift}
+                                  type="button"
+                                  className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                  aria-pressed={selected}
+                                  onClick={() => field.onChange(toggleArrayValue(field.value ?? [], shift, !selected))}
+                                >
+                                  {shift}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
                             </FormItem>
                           )} />
 
@@ -1449,11 +1464,8 @@ export default function EditProfilePage() {
                           </div>
 
                           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                            <FormField control={form.control} name="needZipHome" render={({ field }) => (
-                              <FormItem><FormLabel>Home ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
                             <FormField control={form.control} name="needZipWork" render={({ field }) => (
-                              <FormItem><FormLabel>Work ZIP / Postal code (optional)</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                              <FormItem><FormLabel>Work ZIP / Postal code *</FormLabel><FormControl><Input maxLength={12} {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                             )} />
                           </div>
 
@@ -1538,11 +1550,11 @@ export default function EditProfilePage() {
                           <FormField control={form.control} name="needExtrasNeeded" render={({ field }) => (
                             <FormItem>
                               <FormLabel>Extras you need help with</FormLabel>
-                              <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="grid gap-3 sm:grid-cols-2">
                                 {EXTRA_OPTIONS.map((extra) => {
                                   const selected = (field.value ?? []).includes(extra);
                                   return (
-                                    <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                    <label key={extra} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                       <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
                                       <span>{extra}</span>
                                     </label>
@@ -1558,37 +1570,47 @@ export default function EditProfilePage() {
                           <h3 className="text-lg font-semibold text-foreground">What you offer</h3>
                           <FormField control={form.control} name="offerDays" render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Which days can you provide care?</FormLabel>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {DAY_OPTIONS.map((day) => {
-                                  const selected = (field.value ?? []).includes(day);
-                                  return (
-                                    <label key={day} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], day, checked === true))} />
-                                      <span>{day}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <FormMessage />
+                          <FormLabel>Which days can you provide care?</FormLabel>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {DAY_OPTIONS.map((day) => {
+                              const selected = (field.value ?? []).includes(day);
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                  aria-pressed={selected}
+                                  onClick={() => field.onChange(toggleArrayValue(field.value ?? [], day, !selected))}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
                             </FormItem>
                           )} />
 
                           <FormField control={form.control} name="offerShifts" render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Which shifts can you cover?</FormLabel>
-                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {SHIFT_OPTIONS.map((shift) => {
-                                  const selected = (field.value ?? []).includes(shift);
-                                  return (
-                                    <label key={shift} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
-                                      <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], shift, checked === true))} />
-                                      <span>{shift}</span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                              <FormMessage />
+                          <FormLabel>Which shifts can you cover?</FormLabel>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {SHIFT_OPTIONS.map((shift) => {
+                              const selected = (field.value ?? []).includes(shift);
+                              return (
+                                <button
+                                  key={shift}
+                                  type="button"
+                                  className={`ss-choice-btn ${selected ? 'is-selected' : ''}`}
+                                  aria-pressed={selected}
+                                  onClick={() => field.onChange(toggleArrayValue(field.value ?? [], shift, !selected))}
+                                >
+                                  {shift}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
                             </FormItem>
                           )} />
 
@@ -1661,11 +1683,11 @@ export default function EditProfilePage() {
                           <FormField control={form.control} name="offerAgeRanges" render={({ field }) => (
                             <FormItem>
                               <FormLabel>Age ranges you can support</FormLabel>
-                              <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="grid gap-3 sm:grid-cols-2">
                                 {AGE_RANGE_OPTIONS.map((range) => {
                                   const selected = (field.value ?? []).includes(range);
                                   return (
-                                    <label key={range} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                    <label key={range} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                       <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], range, checked === true))} />
                                       <span>{range}</span>
                                     </label>
@@ -1679,11 +1701,11 @@ export default function EditProfilePage() {
                           <FormField control={form.control} name="offerExtrasOffered" render={({ field }) => (
                             <FormItem>
                               <FormLabel>Extras you are willing to offer</FormLabel>
-                              <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="grid gap-3 sm:grid-cols-2">
                                 {EXTRA_OPTIONS.map((extra) => {
                                   const selected = (field.value ?? []).includes(extra);
                                   return (
-                                    <label key={extra} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                    <label key={extra} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                       <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], extra, checked === true))} />
                                       <span>{extra}</span>
                                     </label>
@@ -1716,11 +1738,11 @@ export default function EditProfilePage() {
                           <FormField control={form.control} name="interestSelections" render={({ field }) => (
                             <FormItem>
                               <FormLabel>Interests</FormLabel>
-                              <div className="grid gap-2 sm:grid-cols-2">
+                              <div className="grid gap-3 sm:grid-cols-2">
                                 {INTEREST_OPTIONS.map((interest) => {
                                   const selected = (field.value ?? []).includes(interest);
                                   return (
-                                    <label key={interest} className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
+                                    <label key={interest} className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm ${selected ? 'border-primary/50 bg-accent' : ''}`}>
                                       <Checkbox checked={selected} onCheckedChange={(checked) => field.onChange(toggleArrayValue(field.value ?? [], interest, checked === true))} />
                                       <span>{interest}</span>
                                     </label>
