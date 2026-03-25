@@ -506,34 +506,6 @@ export default function ChatPage() {
     ].join('\n');
   };
 
-  const notifyMessageRecipient = async (recipientId: string, preview: string) => {
-    if (!user || !recipientId) return;
-    try {
-      const idToken = await user.getIdToken();
-      await fetch('/api/notify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          type: 'message',
-          conversationId,
-          targetUserIds: [recipientId],
-          title: 'New message',
-          body: preview || 'You received a new message.',
-          link: `/families/messages/${conversationId}`,
-          data: {
-            conversationId,
-            senderId: user.uid,
-          },
-        }),
-      });
-    } catch (error) {
-      console.error('Could not send message notification:', error);
-    }
-  };
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedMessage = newMessage.trim();
@@ -559,10 +531,6 @@ export default function ChatPage() {
         ...(recipientId ? { [`unreadCount.${recipientId}`]: increment(1) } : {}),
         [`unreadCount.${user.uid}`]: 0,
       });
-
-      if (recipientId) {
-        void notifyMessageRecipient(recipientId, msgText.slice(0, 140));
-      }
     } catch (error: unknown) {
       const notifyError = error as FirestoreError;
       console.error('Message send failed:', notifyError.message ?? error);
@@ -612,10 +580,6 @@ export default function ChatPage() {
         ...(recipientId ? { [`unreadCount.${recipientId}`]: increment(1) } : {}),
         [`unreadCount.${user.uid}`]: 0,
       });
-
-      if (recipientId) {
-        void notifyMessageRecipient(recipientId, summary.slice(0, 140));
-      }
     } catch (error) {
       console.error('Attachment upload failed:', error);
       setSendError('Could not upload attachment. Please try again.');
