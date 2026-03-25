@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 
 export const dynamic = "force-dynamic";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const oobCode = searchParams.get("oobCode") || "";
@@ -57,58 +57,75 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <main className="auth-shell">
-      <div className="auth-card" style={{ maxWidth: "420px" }}>
-        <div className="auth-card-head">
-          <h2>Reset your password</h2>
-          <p className="muted">Create a new password for your account.</p>
-        </div>
-
-        <div className="form-field">
-          <label>New password</label>
-          <input
-            type="password"
-            className="ss-input"
-            autoComplete="new-password"
-            placeholder="At least 8 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={busy || success}
-          />
-        </div>
-
-        <div className="form-field">
-          <label>Confirm password</label>
-          <input
-            type="password"
-            className="ss-input"
-            autoComplete="new-password"
-            placeholder="Re-enter your password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            disabled={busy || success}
-          />
-        </div>
-
-        {msg ? <div className={`auth-msg ${success ? "q-success" : "q-error"}`}>{msg}</div> : null}
-
-        <button
-          type="button"
-          className="ss-btn w-100 auth-primary"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-        >
-          {busy ? "Updating..." : "Update password"}
-        </button>
-
-        <button
-          type="button"
-          className="auth-forgot"
-          onClick={() => router.push("/families")}
-        >
-          Back to sign in
-        </button>
+    <div className="auth-card" style={{ maxWidth: "420px" }}>
+      <div className="auth-card-head">
+        <h2>Reset your password</h2>
+        <p className="muted">Create a new password for your account.</p>
       </div>
+
+      <div className="form-field">
+        <label>New password</label>
+        <input
+          type="password"
+          className="ss-input"
+          autoComplete="new-password"
+          placeholder="At least 8 characters"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={busy || success}
+        />
+      </div>
+
+      <div className="form-field">
+        <label>Confirm password</label>
+        <input
+          type="password"
+          className="ss-input"
+          autoComplete="new-password"
+          placeholder="Re-enter your password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          disabled={busy || success}
+        />
+      </div>
+
+      {msg ? <div className={`auth-msg ${success ? "q-success" : "q-error"}`}>{msg}</div> : null}
+
+      <button
+        type="button"
+        className="ss-btn w-100 auth-primary"
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+      >
+        {busy ? "Updating..." : "Update password"}
+      </button>
+
+      <button
+        type="button"
+        className="auth-forgot"
+        onClick={() => router.push("/families")}
+      >
+        Back to sign in
+      </button>
+    </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <main className="auth-shell">
+      <Suspense
+        fallback={
+          <div className="auth-card" style={{ maxWidth: "420px" }}>
+            <div className="auth-card-head">
+              <h2>Reset your password</h2>
+              <p className="muted">Loading reset link...</p>
+            </div>
+          </div>
+        }
+      >
+        <ResetPasswordContent />
+      </Suspense>
     </main>
   );
 }
