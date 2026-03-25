@@ -92,7 +92,6 @@ export async function enableWebPush(uid: string) {
           icon: '/logo-shiftsitter.png',
           badge: '/logo-shiftsitter.png',
           tag,
-          renotify: false,
           data,
         });
       } catch (error) {
