@@ -96,6 +96,7 @@ function CalendarPageContent() {
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [respondingShiftId, setRespondingShiftId] = useState<string | null>(null);
   const [selectedMatchFilterId, setSelectedMatchFilterId] = useState<string>('');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('');
   const [cancellingShiftId, setCancellingShiftId] = useState<string | null>(null);
   const [cancelTargetShift, setCancelTargetShift] = useState<Shift | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState<CancelReasonCode | ''>('');
@@ -200,9 +201,13 @@ function CalendarPageContent() {
   }, [user, authLoading]);
 
   const upcomingShifts = useMemo(() => {
-    const filtered = selectedMatchFilterId
+    let filtered = selectedMatchFilterId
       ? shifts.filter((shift) => (shift.userIds || []).includes(selectedMatchFilterId))
       : shifts;
+
+    if (selectedStatusFilter) {
+      filtered = filtered.filter((shift) => shift.status === selectedStatusFilter);
+    }
 
     const getSortTime = (shift: Shift) => {
       const withTimestamp = (shift as unknown as { startAt?: { toDate?: () => Date } }).startAt;
@@ -217,7 +222,7 @@ function CalendarPageContent() {
     return [...filtered]
       .sort((a, b) => getSortTime(a) - getSortTime(b))
       .slice(0, 20);
-  }, [shifts, selectedMatchFilterId]);
+  }, [shifts, selectedMatchFilterId, selectedStatusFilter]);
 
   const conversationOptions = useMemo(() => {
     return Array.from(
@@ -1048,6 +1053,20 @@ function CalendarPageContent() {
                       {option.name}
                     </option>
                   ))}
+                </select>
+              </div>
+              <div className="rounded-xl border border-border/80 bg-white p-3 shadow-sm">
+                <label className="mb-2 block text-sm font-medium text-foreground">Filter by status</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={selectedStatusFilter}
+                  onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                  disabled={!canAccessSecureCalendar}
+                >
+                  <option value="">All statuses</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
               {!canAccessSecureCalendar ? (
