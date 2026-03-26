@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BadgeCheck, Bell, CheckCheck, ChevronDown, CircleHelp, LogOut, Settings, Shield, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserPresenceHeartbeat } from "@/hooks/useUserPresenceHeartbeat";
@@ -15,9 +15,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   collection,
   doc,
-  getDocs,
   getDoc,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -70,6 +70,7 @@ export default function Header() {
   const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userAvatarUrl, setUserAvatarUrl] = useState("");
+  const hasRefreshedPushRef = useRef(false);
   const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
   const showFamilyTourControls = Boolean(user && accountType !== "employer" && pathname?.startsWith("/families"));
   useUserPresenceHeartbeat(user?.uid);
@@ -353,18 +354,15 @@ export default function Header() {
       return;
     }
 
-    let cancelled = false;
     const notificationsQuery = query(
       collection(db, "notifications", user.uid, "items"),
       orderBy("createdAt", "desc"),
       limit(24)
     );
 
-    const loadNotifications = async () => {
-      try {
-        const snapshot = await getDocs(notificationsQuery);
-        if (cancelled) return;
-
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
         const nextNotifications = snapshot.docs.map((notificationDoc) => {
           const data = notificationDoc.data() as {
             title?: string;
@@ -386,24 +384,15 @@ export default function Header() {
 
         setNotifications(nextNotifications);
         setUnreadCount(nextNotifications.filter((notification) => !isNotificationRead(notification)).length);
-      } catch {
-        if (!cancelled) {
-          setNotifications([]);
-          setUnreadCount(0);
-        }
+      },
+      () => {
+        setNotifications([]);
+        setUnreadCount(0);
       }
-    };
+    );
 
-    void loadNotifications();
-    const intervalId = window.setInterval(() => {
-      void loadNotifications();
-    }, 30000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [user, pathname]);
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -420,6 +409,28 @@ export default function Header() {
       nextStatus = Notification.permission === "granted" && !optedOut ? "on" : "off";
     }
     setPushStatus(nextStatus);
+  }, [user]);
+
+  useEffect(() => {
+    hasRefreshedPushRef.current = false;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user || hasRefreshedPushRef.current) return;
+    if (typeof window === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    let optedOut = false;
+    try {
+      optedOut = window.localStorage.getItem("shiftsitter:push-opt-out") === "1";
+    } catch {
+      optedOut = false;
+    }
+    if (optedOut) return;
+
+    hasRefreshedPushRef.current = true;
+    void enableWebPush(user.uid, { allowPrompt: false }).catch(() => {
+      // Silent refresh: ignore failures to avoid noisy errors on unsupported clients.
+    });
   }, [user]);
 
   const handleTogglePush = async (nextChecked: boolean) => {

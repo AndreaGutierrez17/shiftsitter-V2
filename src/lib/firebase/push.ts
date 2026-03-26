@@ -1,7 +1,7 @@
 'use client';
 
 import { doc, setDoc, serverTimestamp, arrayUnion, arrayRemove, updateDoc, deleteField, getDoc } from 'firebase/firestore';
-import { db, messaging } from '@/lib/firebase/client';
+import { app, db, messaging } from '@/lib/firebase/client';
 
 const firebasePublicConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,7 +12,18 @@ const firebasePublicConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-export async function enableWebPush(uid: string) {
+async function getMessagingInstance() {
+  if (messaging) return messaging;
+  try {
+    const { getMessaging } = await import('firebase/messaging');
+    return getMessaging(app);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function enableWebPush(uid: string, options: { allowPrompt?: boolean } = {}) {
+  const allowPrompt = options.allowPrompt ?? true;
   if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
     throw new Error('This browser does not support push notifications.');
   }
@@ -32,12 +43,13 @@ export async function enableWebPush(uid: string) {
     throw new Error('NEXT_PUBLIC_FIREBASE_VAPID_KEY is missing.');
   }
 
-  if (!messaging) {
+  const messagingInstance = await getMessagingInstance();
+  if (!messagingInstance) {
     throw new Error('Firebase Messaging is not available in this client.');
   }
 
   let permission = Notification.permission;
-  if (permission === 'default') {
+  if (permission === 'default' && allowPrompt) {
     permission = await Notification.requestPermission();
   }
   if (permission !== 'granted') {
@@ -55,7 +67,7 @@ export async function enableWebPush(uid: string) {
 
   const { getToken } = await import('firebase/messaging');
   const { onMessage } = await import('firebase/messaging');
-  const token = await getToken(messaging, {
+  const token = await getToken(messagingInstance, {
     vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
     serviceWorkerRegistration: registration,
   });
@@ -87,19 +99,23 @@ export async function enableWebPush(uid: string) {
 
   const windowWithFlag = window as typeof window & { __shiftSitterForegroundPushBound?: boolean };
   if (!windowWithFlag.__shiftSitterForegroundPushBound) {
-    onMessage(messaging, async (payload) => {
+    onMessage(messagingInstance, async (payload) => {
       try {
         const data = payload.data || {};
         const title = payload.notification?.title || data.title || 'ShiftSitter';
         const body = payload.notification?.body || data.body || 'You have a new update.';
         const tag = typeof data.notificationId === 'string' ? data.notificationId : typeof data.tag === 'string' ? data.tag : undefined;
+        const dataWithUrl = {
+          ...data,
+          url: data.link || data.href || data.url || '/families/messages',
+        };
         const readySw = await navigator.serviceWorker.ready;
         await readySw.showNotification(title, {
           body,
           icon: '/logo-shiftsitter.png',
           badge: '/logo-shiftsitter.png',
           tag,
-          data,
+          data: dataWithUrl,
         });
       } catch (error) {
         console.error('Foreground notification display failed:', error);
@@ -116,7 +132,8 @@ export async function disableWebPush(uid: string) {
     throw new Error('This browser does not support push notifications.');
   }
 
-  if (!messaging) {
+  const messagingInstance = await getMessagingInstance();
+  if (!messagingInstance) {
     throw new Error('Firebase Messaging is not available in this client.');
   }
 
@@ -133,7 +150,7 @@ export async function disableWebPush(uid: string) {
         (await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')) ||
         (await navigator.serviceWorker.ready);
       const { getToken } = await import('firebase/messaging');
-      token = await getToken(messaging, {
+      token = await getToken(messagingInstance, {
         vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
         serviceWorkerRegistration: registration,
       });
@@ -145,7 +162,7 @@ export async function disableWebPush(uid: string) {
   if (token) {
     try {
       const { deleteToken } = await import('firebase/messaging');
-      await deleteToken(messaging);
+      await deleteToken(messagingInstance);
     } catch {
       // ignore deleteToken failures
     }

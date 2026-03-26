@@ -180,13 +180,18 @@ const SwipeCard = ({
       : totalScore >= 65
         ? 'Strong fit'
         : 'Compatible'
-    : 'Low Compatibility';
-
+      : 'Low Compatibility';
   useEffect(() => {
     setImageSrc(preferredPhoto);
   }, [preferredPhoto]);
 
   const barWidth = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
+  const compatibilityRows = [
+    ['Location', breakdown.location],
+    ['Availability', breakdown.availability],
+    ['Needs & Values', breakdown.needsValues],
+    ['Preferences', breakdown.preferences],
+  ];
 
   return (
     <motion.div
@@ -296,12 +301,7 @@ const SwipeCard = ({
                 </p>
               ) : null}
               <div className="space-y-2 text-xs text-white/90">
-                {[
-                  ['Location', breakdown.location],
-                  ['Availability', breakdown.availability],
-                  ['Needs & Values', breakdown.needsValues],
-                  ['Preferences', breakdown.preferences],
-                ].map(([label, value]) => (
+                {compatibilityRows.map(([label, value]) => (
                   <div key={String(label)}>
                     <div className="mb-1 flex items-center justify-between">
                       <span>{label}</span>
