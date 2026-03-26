@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
 import { Loader2, PlusCircle, Star } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AuthGuard } from '@/components/AuthGuard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -81,6 +81,7 @@ const TIME_OPTIONS = Array.from({ length: 18 }, (_, index) => {
 
 function CalendarPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [shifts, setShifts] = useState<Shift[]>([]);
