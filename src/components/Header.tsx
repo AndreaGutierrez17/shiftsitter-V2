@@ -518,7 +518,7 @@ export default function Header() {
                       <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
                         <Bell className="h-4 w-4" />
                         {unreadCount > 0 ? (
-                          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                          <span className="absolute -right-1 -top-1 min-w-5 rounded-full ss-notif-badge px-1 text-[10px] font-bold leading-5 text-white">
                             {unreadCount > 9 ? '9+' : unreadCount}
                           </span>
                         ) : null}
@@ -572,7 +572,7 @@ export default function Header() {
                               if (notif.href) router.push(notif.href);
                             }}
                           >
-                            <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                            <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold">{notif.title}</div>
                               <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
@@ -682,7 +682,7 @@ export default function Header() {
                     <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
                       <Bell className="h-4 w-4" />
                       {unreadCount > 0 ? (
-                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1 text-[10px] font-bold leading-5 text-white">
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full ss-notif-badge px-1 text-[10px] font-bold leading-5 text-white">
                           {unreadCount > 9 ? '9+' : unreadCount}
                         </span>
                       ) : null}
@@ -736,7 +736,7 @@ export default function Header() {
                             if (notif.href) router.push(notif.href);
                           }}
                         >
-                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'bg-primary' : 'bg-muted'}`} />
+                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold">{notif.title}</div>
                             <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>

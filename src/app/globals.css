@@ -354,6 +354,15 @@ button {
   box-shadow: none;
 }
 
+.ss-notif-badge{
+  background: var(--navy);
+  color: #fff;
+}
+
+.ss-notif-dot{
+  background: var(--navy);
+}
+
 /* HERO (MISMO ESTILO) + SPLIT VIDEO */
 .hero.hero-split {
   display: grid;
@@ -1190,6 +1199,11 @@ button {
   display:flex;
   align-items:center;
   justify-content:space-between;
+}
+.match-hero-actions{
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
 }
 .match-hero-icon{
   width:56px;
@@ -3005,10 +3019,17 @@ button {
     padding:.78rem .9rem;
   }
   .ss-page-shell--messages-page .chat-bubble{
-    max-width:calc(100% - 2.25rem);
+    max-width:calc(100% - 3.1rem);
   }
   .chat-row-avatar{
-    display:none !important;
+    display:inline-flex !important;
+    width:24px !important;
+    height:24px !important;
+    min-width:24px !important;
+    min-height:24px !important;
+    max-width:24px !important;
+    max-height:24px !important;
+    flex:0 0 24px !important;
   }
   .chat-image-preview{
     max-width:100%;

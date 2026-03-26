@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
 import { Loader2, PlusCircle, Star } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -19,6 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
 import type { Conversation, Review, Shift, UserProfile } from '@/lib/types';
+import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { shiftProposalSchema } from './schemas';
 import AppBackButton from '@/components/AppBackButton';
 import type { z } from 'zod';
@@ -107,6 +108,10 @@ function CalendarPageContent() {
   const [submittingReviewShiftId, setSubmittingReviewShiftId] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null | undefined>(undefined);
   const [acceptConfirmShift, setAcceptConfirmShift] = useState<Shift | null>(null);
+  const [expandedShift, setExpandedShift] = useState<Shift | null>(null);
+  const [expandedShiftProfile, setExpandedShiftProfile] = useState<UserProfile | null>(null);
+  const [expandedShiftCompatibility, setExpandedShiftCompatibility] = useState<ReturnType<typeof calculateCompatibility> | null>(null);
+  const [expandedShiftLoading, setExpandedShiftLoading] = useState(false);
   const autoCompletedShiftIdsRef = useRef<Set<string>>(new Set());
   const focusedShiftId = searchParams.get('shift') || '';
   const todayDate = format(new Date(), 'yyyy-MM-dd');
@@ -196,6 +201,49 @@ function CalendarPageContent() {
     };
   }, [user, authLoading]);
 
+  useEffect(() => {
+    if (!expandedShift || !user) {
+      setExpandedShiftProfile(null);
+      setExpandedShiftCompatibility(null);
+      setExpandedShiftLoading(false);
+      return;
+    }
+
+    const otherUserId = (expandedShift.userIds || []).find((id) => id !== user.uid);
+    if (!otherUserId) {
+      setExpandedShiftProfile(null);
+      setExpandedShiftCompatibility(null);
+      return;
+    }
+
+    let cancelled = false;
+    setExpandedShiftLoading(true);
+    void (async () => {
+      try {
+        const snapshot = await getDoc(doc(db, 'users', otherUserId));
+        if (cancelled) return;
+        const profile = snapshot.exists()
+          ? ({ id: snapshot.id, ...snapshot.data() } as UserProfile)
+          : null;
+        setExpandedShiftProfile(profile);
+        setExpandedShiftCompatibility(
+          profile && currentUserProfile ? calculateCompatibility(currentUserProfile, profile) : null
+        );
+      } catch {
+        if (!cancelled) {
+          setExpandedShiftProfile(null);
+          setExpandedShiftCompatibility(null);
+        }
+      } finally {
+        if (!cancelled) setExpandedShiftLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedShift, currentUserProfile, user]);
+
   const upcomingShifts = useMemo(() => {
     let filtered = selectedMatchFilterId
       ? shifts.filter((shift) => (shift.userIds || []).includes(selectedMatchFilterId))
@@ -234,6 +282,63 @@ function CalendarPageContent() {
 
   const handleAcceptClick = (shift: Shift) => {
     setAcceptConfirmShift(shift);
+  };
+
+  const handleOpenProposalDetails = (shift: Shift) => {
+    setExpandedShift(shift);
+  };
+
+  const handleOpenProposalChat = async (shift: Shift) => {
+    if (!user) return;
+    const otherUserId = (shift.userIds || []).find((id) => id !== user.uid);
+    if (!otherUserId) {
+      toast({ variant: 'destructive', title: 'Unable to open chat', description: 'Missing participant information.' });
+      return;
+    }
+
+    try {
+      const existing = conversations.find((conv) => conv.userIds?.includes(otherUserId));
+      if (existing) {
+        router.push(`/families/messages/${existing.id}`);
+        return;
+      }
+
+      const [meSnap, otherSnap] = await Promise.all([
+        getDoc(doc(db, 'users', user.uid)),
+        getDoc(doc(db, 'users', otherUserId)),
+      ]);
+      const meData = meSnap.exists() ? (meSnap.data() as Record<string, unknown>) : {};
+      const otherData = otherSnap.exists() ? (otherSnap.data() as Record<string, unknown>) : {};
+      const userIds = [user.uid, otherUserId].sort();
+      const conversationId = `${userIds[0]}_${userIds[1]}`;
+
+      await setDoc(
+        doc(db, 'conversations', conversationId),
+        {
+          userIds: [user.uid, otherUserId],
+          createdAt: serverTimestamp(),
+          lastMessage: '',
+          lastMessageAt: serverTimestamp(),
+          lastMessageSenderId: '',
+          userProfiles: {
+            [user.uid]: {
+              name: (typeof meData.name === 'string' && meData.name) || user.displayName || 'You',
+              photoURLs: Array.isArray(meData.photoURLs) ? meData.photoURLs : [],
+            },
+            [otherUserId]: {
+              name: (typeof otherData.name === 'string' && otherData.name) || 'Shifter',
+              photoURLs: Array.isArray(otherData.photoURLs) ? otherData.photoURLs : [],
+            },
+          },
+        },
+        { merge: true }
+      );
+
+      router.push(`/families/messages/${conversationId}`);
+    } catch (error) {
+      console.error('Could not open conversation:', error);
+      toast({ variant: 'destructive', title: 'Could not open chat', description: 'Please try again.' });
+    }
   };
 
   const handleRespond = async (shiftId: string, response: 'accepted' | 'rejected') => {
@@ -408,6 +513,19 @@ function CalendarPageContent() {
     if (!otherUserId) return { id: null, name: 'Unknown match' };
     const fromConversation = conversationOptions.find((option) => option.userId === otherUserId);
     return { id: otherUserId, name: fromConversation?.name || 'Shifter' };
+  };
+
+  const formatProfileLocation = (profile?: UserProfile | null) => {
+    if (!profile) return 'Location not available';
+    if (profile.location) return profile.location;
+    return [profile.city, profile.state, profile.zip].filter(Boolean).join(', ') || 'Location not available';
+  };
+
+  const formatCareLocation = (value?: Shift['careLocation']) => {
+    if (!value) return 'Not specified';
+    if (value === 'my_home') return 'My home';
+    if (value === 'their_home') return 'Their home';
+    return 'Either home';
   };
 
   const getReviewDraft = (shiftId: string) => reviewDrafts[shiftId] || { rating: 0, comment: '' };
@@ -1081,6 +1199,7 @@ function CalendarPageContent() {
                     const endAt = getShiftEndDate(shift);
                     return !!endAt && endAt.getTime() <= Date.now();
                   })();
+                  const canQuickChat = shift.status === 'proposed';
                   const isReviewEligible = shift.status === 'completed' || (shift.status === 'accepted' && shiftEnded);
                   const canLeaveReview = isReviewEligible && !reviewedShiftIds.has(shift.id);
                   const existingReview = myReviewsByShiftId[shift.id];
@@ -1116,25 +1235,45 @@ function CalendarPageContent() {
                           {statusLabel}
                         </Badge>
                       </div>
-                      {canRespond ? (
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={isThisUserResponding}
-                            onClick={() => void handleAcceptClick(shift)}
-                          >
-                            {isThisUserResponding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Accept
-                          </Button>
+                      {canRespond || canQuickChat ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {canRespond ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={isThisUserResponding}
+                                onClick={() => void handleAcceptClick(shift)}
+                              >
+                                {isThisUserResponding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                Accept
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isThisUserResponding}
+                                onClick={() => handleRespond(shift.id, 'rejected')}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : null}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={isThisUserResponding}
-                            onClick={() => handleRespond(shift.id, 'rejected')}
+                            onClick={() => handleOpenProposalChat(shift)}
                           >
-                            Reject
+                            Message
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenProposalDetails(shift)}
+                          >
+                            View details
                           </Button>
                         </div>
                       ) : null}
@@ -1277,6 +1416,97 @@ function CalendarPageContent() {
               )}
             </CardContent>
           </Card>
+          <Dialog open={Boolean(expandedShift)} onOpenChange={(open) => !open && setExpandedShift(null)}>
+            <DialogContent className="border shadow-lg sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>Shift proposal details</DialogTitle>
+                <DialogDescription>
+                  Review everything in one place before you respond.
+                </DialogDescription>
+              </DialogHeader>
+              {expandedShift ? (
+                <div className="space-y-4 text-sm text-foreground">
+                  <div className="rounded-lg border border-border/70 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date & Time</p>
+                    <p className="mt-2 font-medium">
+                      {formatShiftDateLabel(expandedShift.date)} · {expandedShift.startTime} - {expandedShift.endTime}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-border/70 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location</p>
+                      <p className="mt-2 font-medium">{formatProfileLocation(expandedShiftProfile)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Care location: {formatCareLocation(expandedShift.careLocation)}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/70 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Travel distance</p>
+                      {typeof expandedShiftCompatibility?.distanceKm === 'number' ? (
+                        <p className="mt-2 font-medium">
+                          {expandedShiftCompatibility.distanceKm} km
+                          {typeof expandedShiftCompatibility.estimatedTravelMinutes === 'number'
+                            ? ` · ${expandedShiftCompatibility.estimatedTravelMinutes} min`
+                            : ''}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-sm text-muted-foreground">Not available yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-border/70 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Care details</p>
+                    <div className="mt-2 space-y-1 text-sm text-slate-700">
+                      {typeof expandedShift.numberOfChildren === 'number' ? (
+                        <p>Children: {expandedShift.numberOfChildren}</p>
+                      ) : (
+                        <p className="text-muted-foreground">Children count not provided.</p>
+                      )}
+                      {expandedShift.extras ? <p>Extras: {expandedShift.extras}</p> : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-border/70 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">About the shifter</p>
+                    <div className="mt-2 space-y-1 text-sm text-slate-700">
+                      <p className="font-medium">{expandedShiftProfile?.name || getShiftCounterpart(expandedShift).name}</p>
+                      <p>{formatProfileLocation(expandedShiftProfile)}</p>
+                      {expandedShiftProfile?.availability ? (
+                        <p>Availability: {expandedShiftProfile.availability}</p>
+                      ) : null}
+                      {expandedShiftProfile?.needs ? (
+                        <p>Needs: {expandedShiftProfile.needs}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {expandedShift.primaryPhone || expandedShift.emergencyContact ? (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Contact info</p>
+                      {expandedShift.primaryPhone ? <p className="mt-2">Primary phone: {expandedShift.primaryPhone}</p> : null}
+                      {expandedShift.emergencyContact ? <p className="mt-1">Emergency contact: {expandedShift.emergencyContact}</p> : null}
+                    </div>
+                  ) : null}
+
+                  {expandedShiftLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading full profile details…</p>
+                  ) : null}
+                </div>
+              ) : null}
+              <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setExpandedShift(null)}>
+                  Close
+                </Button>
+                {expandedShift ? (
+                  <Button type="button" onClick={() => handleOpenProposalChat(expandedShift)}>
+                    Message
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={Boolean(acceptConfirmShift)} onOpenChange={(open) => !open && setAcceptConfirmShift(null)}>
             <DialogContent className="border shadow-lg">
               <DialogHeader>

@@ -15,7 +15,7 @@ export default function AppFooter() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-5 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <p className="font-medium text-foreground">Support</p>
-          <a href="mailto:info@shiftsitter.com" className="hover:text-primary">
+          <a href="mailto:info@shiftsitter.com" className="text-foreground no-underline hover:text-primary">
             info@shiftsitter.com
           </a>
         </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Heart, X, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, X, MapPin, ArrowRight, CalendarDays, Baby, ChevronLeft, ChevronRight, Share2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -165,6 +165,7 @@ const SwipeCard = ({
   currentUserProfile?: UserProfile | null,
   onSwipe: (id: string, direction: 'left' | 'right') => void,
 }) => {
+  const { toast } = useToast();
   const primaryPhoto = userProfile.photoURLs?.[0] || '';
   const fallbackPhoto = '/ShiftSitter.jpeg';
   const avatarLikePhoto = /dicebear|ui-avatars|robohash|avatar|initial|placeholder|profile-default|\.svg/i.test(primaryPhoto);
@@ -184,6 +185,43 @@ const SwipeCard = ({
   useEffect(() => {
     setImageSrc(preferredPhoto);
   }, [preferredPhoto]);
+
+  const handleShareProfile = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (typeof window === 'undefined') return;
+    const profileUrl = `${window.location.origin}/families/profile/${userProfile.id}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${userProfile.name || 'ShiftSitter'} profile`,
+          text: 'Check out this ShiftSitter profile.',
+          url: profileUrl,
+        });
+        return;
+      }
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(profileUrl);
+        toast({
+          title: 'Link copied',
+          description: 'Share this link to open the profile.',
+        });
+      } else {
+        window.prompt('Copy this link to share the profile:', profileUrl);
+      }
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Could not share profile',
+        description: error?.message || 'Please copy the link manually.',
+      });
+    }
+  };
 
   const barWidth = (value: number) => `${Math.max(0, Math.min(100, value))}%`;
   const compatibilityRows = [
@@ -236,13 +274,25 @@ const SwipeCard = ({
                 <MapPin className="h-5 w-5" />
               </button>
             )}
-            <Link
-              href={`/families/profile/${userProfile.id}`}
-              onClick={(event) => event.stopPropagation()}
-              className="match-hero-icon"
-            >
-              <ArrowRight className="h-5 w-5" />
-            </Link>
+            <div className="match-hero-actions">
+              <Link
+                href={`/families/profile/${userProfile.id}`}
+                onClick={(event) => event.stopPropagation()}
+                className="match-hero-icon"
+                aria-label="Open profile"
+              >
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+              <button
+                type="button"
+                className="match-hero-icon"
+                onClick={handleShareProfile}
+                aria-label="Share profile"
+                title="Share profile"
+              >
+                <Share2 className="h-5 w-5" />
+              </button>
+            </div>
           </div>
           <div className="match-hero-content">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
