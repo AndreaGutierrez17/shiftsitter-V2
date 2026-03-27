@@ -175,81 +175,83 @@ export default function MessagesPage() {
                 </div>
               </CardHeader>
             <CardContent className="pt-0 messages-scroll-area">
-              {loadError && (
-                <div className="text-center py-4">
-                  <p className="text-sm text-destructive">{loadError}</p>
-                </div>
-              )}
-              {!canAccessSecureMessaging ? (
-                <div className="text-center py-12">
-                  <p className="font-medium">Messaging is currently unavailable for this account.</p>
-                  <Link href="/families/profile/edit" className="messages-link-btn mt-4">
-                    Go to Profile Edit
-                  </Link>
-                </div>
-              ) : conversations.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">You have no messages yet.</p>
-                  <p className="text-muted-foreground mt-1">Start finding shifters to begin conversations.</p>
-                </div>
-              ) : (
-                <div className="messages-list">
-                  {conversations.map(conv => {
-                    const otherUser = getOtherUser(conv);
-                    const otherUserId = Array.isArray(conv.userIds)
-                      ? conv.userIds.find((id) => id !== user?.uid)
-                      : null;
-                    const otherUserIsTyping = otherUserId
-                      ? isConversationTypingActive(
-                          conv.typingStatus?.[otherUserId],
-                          conv.typingUpdatedAt?.[otherUserId],
-                          presenceNow
-                        )
-                      : false;
-                    if (!otherUser) return null;
-                    const unreadForMe = Math.max(
-                      0,
-                      Number(messageUnreadCounts[conv.id] || conv.unreadCount?.[user?.uid || ''] || 0)
-                    );
-                    return (
-                      <Link
-                        key={conv.id}
-                        href={`/families/messages/${conv.id}`}
-                        className="messages-item"
-                      >
-                        <Avatar className="messages-avatar">
-                          <AvatarImage src={otherUser.photoURLs?.[0]} alt={otherUser.name || 'User'} />
-                          <AvatarFallback>{(otherUser.name || 'U').charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="messages-main">
-                          <div className="messages-head">
-                            <p className="messages-name">{otherUser.name || 'Unknown user'}</p>
-                            <div className="flex items-center gap-2">
-                              {unreadForMe > 0 ? (
-                                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold leading-5 text-white">
-                                  {unreadForMe > 9 ? '9+' : unreadForMe}
-                                </span>
-                              ) : null}
-                              {conv.lastMessageAt ? (
-                                <p className="messages-time">
-                                  {typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
-                                    ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
-                                    : ''}
-                                </p>
-                              ) : null}
+              <div className="messages-scroll-inner">
+                {loadError && (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-destructive">{loadError}</p>
+                  </div>
+                )}
+                {!canAccessSecureMessaging ? (
+                  <div className="text-center py-12">
+                    <p className="font-medium">Messaging is currently unavailable for this account.</p>
+                    <Link href="/families/profile/edit" className="messages-link-btn mt-4">
+                      Go to Profile Edit
+                    </Link>
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">You have no messages yet.</p>
+                    <p className="text-muted-foreground mt-1">Start finding shifters to begin conversations.</p>
+                  </div>
+                ) : (
+                  <div className="messages-list">
+                    {conversations.map(conv => {
+                      const otherUser = getOtherUser(conv);
+                      const otherUserId = Array.isArray(conv.userIds)
+                        ? conv.userIds.find((id) => id !== user?.uid)
+                        : null;
+                      const otherUserIsTyping = otherUserId
+                        ? isConversationTypingActive(
+                            conv.typingStatus?.[otherUserId],
+                            conv.typingUpdatedAt?.[otherUserId],
+                            presenceNow
+                          )
+                        : false;
+                      if (!otherUser) return null;
+                      const unreadForMe = Math.max(
+                        0,
+                        Number(messageUnreadCounts[conv.id] || conv.unreadCount?.[user?.uid || ''] || 0)
+                      );
+                      return (
+                        <Link
+                          key={conv.id}
+                          href={`/families/messages/${conv.id}`}
+                          className="messages-item"
+                        >
+                          <Avatar className="messages-avatar">
+                            <AvatarImage src={otherUser.photoURLs?.[0]} alt={otherUser.name || 'User'} />
+                            <AvatarFallback>{(otherUser.name || 'U').charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div className="messages-main">
+                            <div className="messages-head">
+                              <p className="messages-name">{otherUser.name || 'Unknown user'}</p>
+                              <div className="flex items-center gap-2">
+                                {unreadForMe > 0 ? (
+                                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold leading-5 text-white">
+                                    {unreadForMe > 9 ? '9+' : unreadForMe}
+                                  </span>
+                                ) : null}
+                                {conv.lastMessageAt ? (
+                                  <p className="messages-time">
+                                    {typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
+                                      ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
+                                      : ''}
+                                  </p>
+                                ) : null}
+                              </div>
                             </div>
+                            <p className={otherUserIsTyping ? 'messages-preview text-primary' : 'messages-preview'}>
+                              {otherUserIsTyping
+                                ? 'Escribiendo...'
+                                : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
+                            </p>
                           </div>
-                          <p className={otherUserIsTyping ? 'messages-preview text-primary' : 'messages-preview'}>
-                            {otherUserIsTyping
-                              ? 'Escribiendo...'
-                              : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
-                          </p>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -2191,13 +2191,27 @@ button {
 }
 
 .messages-scroll-area{
-  overflow-y:auto;
+  overflow:hidden;
   flex:1;
   overflow-x:hidden !important;
   overflow-x:clip;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
+}
+
+.messages-scroll-inner{
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden !important;
+  overflow-x:clip;
+  max-width:100%;
+  min-width:0;
+  overscroll-behavior-x:none;
+}
+
+.messages-scroll-inner::-webkit-scrollbar:horizontal{
+  height:0;
 }
 
 .messages-scroll-area::-webkit-scrollbar:horizontal{
