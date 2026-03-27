@@ -211,9 +211,9 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
             <FileText className="h-4 w-4" />
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-slate-700">Reporte de Cuidado</p>
+            <p className="text-sm font-bold text-slate-700">Care Report</p>
             <p className="text-[10px] text-slate-400">
-              {logs.length === 0 ? "Sin reportes aún" : `${logs.length} actualizaciones hoy`}
+              {logs.length === 0 ? "No reports yet" : `${logs.length} updates today`}
             </p>
           </div>
         </div>
@@ -226,14 +226,14 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <DialogTitle className="font-headline text-2xl text-[var(--navy)]">Reporte de Cuidado</DialogTitle>
+                  <DialogTitle className="font-headline text-2xl text-[var(--navy)]">Care Report</DialogTitle>
                   <DialogDescription className="text-slate-500 text-xs">
-                    Seguimiento horario compartido del turno
+                    Shared hourly shift tracking
                   </DialogDescription>
                 </div>
                 {isAccepted && (
                   <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse">
-                    En vivo
+                    Live
                   </Badge>
                 )}
               </div>
@@ -261,7 +261,7 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
                         : "border-dashed border-slate-200 bg-white/50 text-slate-400 hover:border-primary/30 hover:bg-white hover:text-primary shadow-none"
                     )}
                   >
-                    <span className="text-[10px] font-bold uppercase mb-2 tracking-wider">Hora {hour}</span>
+                    <span className="text-[10px] font-bold uppercase mb-2 tracking-wider">Hour {hour}</span>
                     {isDone ? (
                       <div className="flex -space-x-1 mb-1">
                         {hourLogs.map((l: CareLogEntry) => (
@@ -284,7 +284,7 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
             {/* Recent Logs List */}
             {logs.length > 0 && (
               <div className="space-y-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Actualizaciones recientes</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Recent updates</p>
                 <div className="space-y-2">
                   {sortedLogs.slice().reverse().map((log: CareLogEntry) => (
                     <div key={log.id} className="flex items-start gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
@@ -293,7 +293,7 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-700 text-sm">Hora {log.hourIndex}: {log.label}</span>
+                          <span className="font-bold text-slate-700 text-sm">Hour {log.hourIndex}: {log.label}</span>
                           <span className="text-[10px] text-slate-400 font-medium">{format(new Date(log.time), 'h:mm a')}</span>
                         </div>
                         {log.note && <p className="text-slate-500 mt-1 text-xs italic leading-relaxed">"{log.note}"</p>}
@@ -311,14 +311,14 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
                 className="w-full ss-pill-btn h-12 text-sm font-bold shadow-lg shadow-primary/20"
               >
                 {isFinalizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Finalizar Turno y Enviar Reporte
+                Finalize Shift & Send Report
               </Button>
             )}
           </div>
 
           <DialogFooter className="p-4 pt-0">
             <Button variant="ghost" className="w-full text-slate-400 text-xs" onClick={() => setIsMainModalOpen(false)}>
-              Cerrar Resumen
+              Close Summary
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -331,9 +331,9 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
       }}>
         <DialogContent className="max-w-[400px] p-6 border-none bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
           <DialogHeader className="mb-6">
-            <DialogTitle className="font-headline text-2xl text-[var(--navy)] text-center">Hora {activeHour}</DialogTitle>
+            <DialogTitle className="font-headline text-2xl text-[var(--navy)] text-center">Hour {activeHour}</DialogTitle>
             <DialogDescription className="text-slate-500 text-center text-sm">
-              ¿Qué sucedió durante esta hora?
+              What happened during this hour?
             </DialogDescription>
           </DialogHeader>
           
@@ -356,9 +356,9 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
           </div>
 
           <div className="mt-6 space-y-2">
-             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Nota (Opcional)</label>
+             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Note (Optional)</label>
              <Input 
-                placeholder="Ej. Tomó 4oz de leche..." 
+                placeholder="E.g. Drank 4oz of milk..." 
                 value={logNote} 
                 onChange={(e) => setLogNote(e.target.value)} 
                 className="rounded-xl border-slate-100 bg-slate-50 h-11 text-sm focus:ring-primary/20"
@@ -366,10 +366,10 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
           </div>
 
           <DialogFooter className="mt-8 gap-2 sm:gap-0">
-            <Button variant="ghost" onClick={() => setIsAdding(false)} className="rounded-xl">Cancelar</Button>
+            <Button variant="ghost" onClick={() => setIsAdding(false)} className="rounded-xl">Cancel</Button>
             <Button onClick={handleAddLog} disabled={isSubmitting} className="rounded-xl ss-pill-btn flex-1 h-11">
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Guardar Hora
+              Save Hour
             </Button>
           </DialogFooter>
         </DialogContent>
