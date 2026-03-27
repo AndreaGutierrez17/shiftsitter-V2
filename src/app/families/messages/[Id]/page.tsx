@@ -1430,7 +1430,8 @@ export default function ChatPage() {
                     <div className={cn('chat-reactions', isSender ? 'is-sender' : 'is-receiver')}>
                       {reactionEntries.map(([emoji, users]) => {
                         const list = Array.isArray(users) ? users : [];
-                        const reacted = Boolean(user?.uid) && list.includes(user.uid);
+                        const currentUserId = user?.uid ?? '';
+                        const reacted = currentUserId.length > 0 && list.includes(currentUserId);
                         return (
                           <button
                             key={`${message.id}-${emoji}`}
