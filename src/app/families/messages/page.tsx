@@ -255,7 +255,7 @@ export default function MessagesPage() {
                             </div>
                             <p className={otherUserIsTyping ? 'messages-preview text-primary' : 'messages-preview'}>
                               {otherUserIsTyping
-                                ? 'Escribiendo...'
+                                ? 'Typing...'
                                 : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
                             </p>
                           </div>

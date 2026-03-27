@@ -22,18 +22,18 @@ function buildFallbackAdvice(query: string): string {
   }
 
   if (compact.includes('confirm') || compact.includes('siguiente') || compact.includes('next')) {
-    return '¡Perfecto! El siguiente paso es ponernos de acuerdo en los detalles prácticos: fecha, hora, rutinas del niño y el momento de entrega. Así todos estarán en la misma página.';
+    return 'Perfect! The next step is to agree on the practical details: date, time, child’s routines, and handoff. This way everyone is on the same page.';
   }
 
   if (compact.includes('match') || compact.includes('perfil')) {
-    return 'Revisar los perfiles es clave. Fíjate bien en la compatibilidad de horarios, distancias y rutinas de cuidado. ¡Recuerda que la confianza es lo más importante en ShiftSitter!';
+    return 'Reviewing profiles is key. Pay close attention to schedule compatibility, distances, and care routines. Remember that trust is the most important thing at ShiftSitter!';
   }
 
   if (compact.length <= 6) {
     return '¡Por supuesto! Si estás empezando, te sugiero que vayas al calendario o chatees con una familia para coordinar. ¿Quieres que te ayude a redactar un mensaje inicial?';
   }
 
-  return '¡Claro que sí! Puedo ayudarte con consejos sobre horarios, perfiles, comunicación y cómo usar ShiftSitter de la mejor forma. Cuéntame un poco más de lo que necesitas y lo resolvemos.';
+  return 'Of course! I can help you with advice on schedules, profiles, communication, and how to use ShiftSitter in the best way. Tell me a bit more about what you need and we’ll solve it.';
 }
 
 async function callGeminiAssistant(userProfile: string, query: string, apiKey: string): Promise<string | null> {

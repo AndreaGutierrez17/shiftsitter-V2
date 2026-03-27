@@ -1,0 +1,5 @@
+"Path","LineNumber","Line"
+"C:\Users\Carlitos Almaraz\Desktop\shiftsitter-V2\src\app\api\assistant\route.ts","25","    return '?Perfecto! El siguiente paso es ponernos de acuerdo en los detalles pr?cticos: fecha, hora, rutinas del ni?o y el momento de entrega. As? todos estar?n en la misma p?gina.';"
+"C:\Users\Carlitos Almaraz\Desktop\shiftsitter-V2\src\app\api\assistant\route.ts","29","    return 'Revisar los perfiles es clave. F?jate bien en la compatibilidad de horarios, distancias y rutinas de cuidado. ?Recuerda que la confianza es lo m?s importante en ShiftSitter!';"
+"C:\Users\Carlitos Almaraz\Desktop\shiftsitter-V2\src\app\api\assistant\route.ts","36","  return '?Claro que s?! Puedo ayudarte con consejos sobre horarios, perfiles, comunicaci?n y c?mo usar ShiftSitter de la mejor forma. Cu?ntame un poco m?s de lo que necesitas y lo resolvemos.';"
+"C:\Users\Carlitos Almaraz\Desktop\shiftsitter-V2\src\app\families\messages\page.tsx","258","                                ? 'Escribiendo...'"

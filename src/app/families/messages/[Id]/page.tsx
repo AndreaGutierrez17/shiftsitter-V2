@@ -615,12 +615,12 @@ export default function ChatPage() {
   const otherUserIsOnline = isUserOnlineFromLastSeen(otherLiveProfile?.lastSeen, presenceNow);
   const otherUserLastSeenMillis = getTimestampMillis(otherLiveProfile?.lastSeen);
   const otherUserPresenceLabel = otherUserIsTyping
-    ? 'Escribiendo...'
+    ? 'Typing...'
     : otherUserIsOnline
-      ? 'En línea'
+      ? 'Online'
       : otherUserLastSeenMillis
-        ? `Desconectado · Última vez ${formatDistanceToNow(otherUserLastSeenMillis, { addSuffix: true })}`
-        : 'Desconectado';
+        ? `Offline · Last seen ${formatDistanceToNow(otherUserLastSeenMillis, { addSuffix: true })}`
+        : 'Offline';
 
   useEffect(() => {
     if (!user || !conversationId || !canAccessSecureMessaging || isClosingConversation) return;
@@ -1256,7 +1256,7 @@ export default function ChatPage() {
                   </div>
                   <p className={cn('chat-sidebar-item-preview', listOtherIsTyping && 'text-primary')}>
                     {listOtherIsTyping
-                      ? 'Escribiendo...'
+                      ? 'Typing...'
                       : `${conv.lastMessageSenderId === user?.uid ? 'You: ' : ''}${conv.lastMessage || 'No messages yet.'}`}
                   </p>
                 </div>
@@ -1565,7 +1565,7 @@ export default function ChatPage() {
                 <AvatarFallback>{getChatAvatarFallback(otherUserProfile.name)}</AvatarFallback>
               </Avatar>
               <div className="rounded-2xl border bg-white px-3 py-2 text-sm text-muted-foreground shadow-sm">
-                {otherUserProfile.name || 'Este usuario'} está escribiendo...
+                {otherUserProfile.name || 'This user'} is typing...
               </div>
             </div>
           ) : null}
@@ -1678,7 +1678,7 @@ export default function ChatPage() {
                 onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
                 className="ss-pill-btn-outline h-11 px-6 font-semibold"
               >
-                Cancelar
+                Cancel
               </Button>
               <Button 
                 onClick={() => {
@@ -1690,7 +1690,7 @@ export default function ChatPage() {
                   confirmDialog.variant !== 'destructive' && "bg-[#8B4C70] hover:bg-[#723e5c] text-white"
                 )}
               >
-                {confirmDialog.isLoading ? 'Processing...' : 'Aceptar'}
+                {confirmDialog.isLoading ? 'Processing...' : 'Accept'}
               </Button>
             </DialogFooter>
           </DialogContent>
