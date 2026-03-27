@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Conversation, UserProfile } from '@/lib/types';
-import { formatDistanceToNow } from 'date-fns';
+import { differenceInDays, differenceInHours, differenceInMinutes, format, isThisYear, isYesterday } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase/client';
 import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
@@ -12,6 +12,21 @@ import type { Timestamp } from 'firebase/firestore';
 import { AuthGuard } from '@/components/AuthGuard';
 import AppBackButton from '@/components/AppBackButton';
 import { isConversationTypingActive } from '@/lib/presence';
+
+const formatChatListTime = (timestamp?: Timestamp | null) => {
+  if (!timestamp || typeof timestamp.toDate !== 'function') return '';
+  const date = timestamp.toDate();
+  const now = new Date();
+  const minutes = differenceInMinutes(now, date);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = differenceInHours(now, date);
+  if (hours < 24) return `${hours}h`;
+  if (isYesterday(date)) return 'Yesterday';
+  const days = differenceInDays(now, date);
+  if (days < 7) return format(date, 'EEE');
+  return isThisYear(date) ? format(date, 'M/d') : format(date, 'M/d/yy');
+};
 
 export default function MessagesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -231,13 +246,11 @@ export default function MessagesPage() {
                                     {unreadForMe > 9 ? '9+' : unreadForMe}
                                   </span>
                                 ) : null}
-                                {conv.lastMessageAt ? (
-                                  <p className="messages-time">
-                                    {typeof (conv.lastMessageAt as Timestamp)?.toDate === 'function'
-                                      ? formatDistanceToNow((conv.lastMessageAt as Timestamp).toDate(), { addSuffix: true })
-                                      : ''}
-                                  </p>
-                                ) : null}
+                              {conv.lastMessageAt ? (
+                                <p className="messages-time">
+                                  {formatChatListTime(conv.lastMessageAt as Timestamp)}
+                                </p>
+                              ) : null}
                               </div>
                             </div>
                             <p className={otherUserIsTyping ? 'messages-preview text-primary' : 'messages-preview'}>
