@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback, createElement, forwardRef } from 'react';
-import type { TouchEvent, HTMLAttributes } from 'react';
+import type { TouchEvent, HTMLAttributes, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, CalendarDays, CheckCheck, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink, SmilePlus, X, Trash2, Smile, ChevronDown, Reply } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -176,7 +175,7 @@ export default function ChatPage() {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
   const lastTypingHeartbeatAtRef = useRef(0);
   const typingStateRef = useRef(false);
@@ -202,6 +201,16 @@ export default function ChatPage() {
     }, 15_000);
 
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const setVh = () => {
+      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+    };
+    setVh();
+    window.addEventListener('resize', setVh);
+    return () => window.removeEventListener('resize', setVh);
   }, []);
 
   useEffect(() => {
@@ -653,6 +662,23 @@ export default function ChatPage() {
     inputRef.current?.focus();
   };
 
+  const resizeInput = useCallback((element?: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+  }, []);
+
+  const handleInputResize = useCallback(
+    (event: FormEvent<HTMLTextAreaElement>) => {
+      resizeInput(event.currentTarget);
+    },
+    [resizeInput]
+  );
+
+  useEffect(() => {
+    resizeInput(inputRef.current);
+  }, [newMessage, resizeInput]);
+
   const clearLongPress = () => {
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
@@ -811,7 +837,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmedMessage = newMessage.trim();
     if (!user || trimmedMessage === '' || trimmedMessage.length > MAX_MESSAGE_LENGTH) return;
@@ -1529,15 +1555,22 @@ export default function ChatPage() {
                 <EmojiPicker ref={emojiPickerRef} className="chat-emoji-picker" />
               </PopoverContent>
             </Popover>
-            <Input
+            <Textarea
               ref={inputRef}
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
+              onInput={handleInputResize}
               placeholder={isUploadingAttachment ? 'Uploading attachment...' : 'Type a message...'}
               maxLength={MAX_MESSAGE_LENGTH}
               className="flex-1 chat-input"
-              autoComplete="off"
+              rows={1}
               disabled={isUploadingAttachment}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSendMessage(event as unknown as FormEvent<HTMLFormElement>);
+                }
+              }}
             />
             <Button
               type="button"

@@ -1949,6 +1949,15 @@ button {
   max-width:1180px;
   margin:0 auto;
 }
+
+.ss-page-shell--messages-page{
+  padding:0;
+  height:calc(100vh - 64px);
+  max-height:calc(100vh - 64px);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
 @media (max-width: 768px){
   .ss-page-shell{
     padding:5rem 1rem 1.5rem;
@@ -2162,6 +2171,15 @@ button {
   overflow-x:hidden;
   max-width:100%;
   min-width:0;
+}
+
+.ss-page-shell--messages-page .messages-shell-wrap{
+  flex:1;
+  min-height:0;
+  height:100%;
+  padding:1rem;
+  overflow:hidden;
+  box-sizing:border-box;
 }
 
 .messages-layout{
@@ -2420,6 +2438,35 @@ button {
   min-height:calc(100vh - 10rem);
   max-height:calc(100vh - 10rem);
   overflow:hidden;
+  overflow-x:hidden;
+}
+
+.ss-page-shell--messages-page .chat-workspace{
+  flex:1;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+}
+
+.ss-page-shell--messages-page .chat-shell{
+  height:100%;
+  min-height:0;
+  max-height:100%;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+.ss-page-shell--messages-page .chat-sidebar{
+  height:100%;
+  min-height:0;
+  max-height:100%;
+}
+
+.ss-page-shell--messages-page .chat-details-panel{
+  height:100%;
+  min-height:0;
+  max-height:100%;
 }
 
 .chat-sidebar-top{
@@ -2441,9 +2488,15 @@ button {
 
 .chat-sidebar-list{
   overflow-y:auto;
+  overflow-x:hidden;
   padding:.6rem;
   display:grid;
   gap:.5rem;
+  min-width:0;
+}
+
+.chat-sidebar-list::-webkit-scrollbar:horizontal{
+  height:0;
 }
 
 .chat-sidebar-item{
@@ -2455,6 +2508,14 @@ button {
   padding:.85rem;
   background:#fff;
   box-shadow:0 10px 22px rgba(34,49,75,.05);
+  overflow:hidden;
+  overflow-x:hidden;
+  min-width:0;
+  width:100%;
+}
+
+.chat-sidebar-item > *{
+  min-width:0;
 }
 
 .chat-sidebar-item:hover{
@@ -2478,21 +2539,30 @@ button {
   gap:.5rem;
   justify-content:space-between;
   align-items:center;
+  min-width:0;
+  width:100%;
 }
 
 .chat-sidebar-item-name{
   color:var(--navy);
   font-weight:600;
   font-size:.94rem;
+  flex:1 1 auto;
+  min-width:0;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+  max-width:100%;
 }
 
 .chat-sidebar-item-time{
   color:var(--ink-2);
   font-size:.7rem;
   flex-shrink:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:7ch;
 }
 
 .chat-sidebar-item-preview{
@@ -2501,6 +2571,7 @@ button {
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+  max-width:100%;
 }
 
 .chat-shell--workspace{
@@ -2593,7 +2664,7 @@ button {
 
 .chat-input-form{
   display:flex;
-  align-items:center;
+  align-items:flex-end;
   gap:.5rem;
 }
 
@@ -2833,11 +2904,14 @@ button {
 
 .chat-messages{
   flex:1;
+  min-height:0;
   overflow-y:auto;
   overflow-x:hidden;
   padding:1rem;
   background:linear-gradient(180deg,rgba(255,246,239,.45),#fff);
-  display:grid;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
   gap:.8rem;
 }
 
@@ -3233,11 +3307,21 @@ button {
   background:#fff;
   position:sticky;
   bottom:0;
+  flex-shrink:0;
 }
 
 .chat-input{
   border-radius:999px !important;
   border-color:rgba(47,196,182,.35) !important;
+  resize:none;
+  overflow-y:auto;
+  max-height:120px;
+  min-height:40px;
+  width:100%;
+  box-sizing:border-box;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  word-break:break-word;
 }
 
 .chat-empty-cta{
@@ -3283,7 +3367,11 @@ button {
 
 @media (max-width: 640px){
   .ss-page-shell--messages-page{
-    padding:4.75rem 0 0;
+    padding:0;
+    height:100dvh;
+    height:calc(var(--vh, 1vh) * 100);
+    min-height:100dvh;
+    max-height:100dvh;
     overflow:hidden;
   }
   .messages-shell-wrap{
@@ -3291,6 +3379,9 @@ button {
   }
   .ss-page-shell--messages-page .messages-shell-wrap{
     padding:0;
+    height:100%;
+    min-height:0;
+    overflow:hidden;
   }
   .messages-panel{
     width:100%;
@@ -3350,20 +3441,29 @@ button {
     border-radius:20px;
   }
   .ss-page-shell--messages-page .chat-shell{
+    position:fixed;
+    inset:0;
     width:100%;
-    min-height:calc(100dvh - 4.75rem);
-    height:calc(100dvh - 4.75rem);
-    max-height:calc(100dvh - 4.75rem);
+    height:100dvh;
+    height:calc(var(--vh, 1vh) * 100);
+    min-height:100dvh;
+    max-height:100dvh;
     border-radius:0;
     border-left:0;
     border-right:0;
     border-bottom:0;
     box-shadow:none;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
   }
   .chat-workspace,
   .chat-workspace--details{
     display:block;
     width:100%;
+    height:100%;
+    min-height:0;
+    overflow:hidden;
   }
   .chat-sidebar{
     display:none;
@@ -3392,6 +3492,7 @@ button {
   .chat-head{
     padding:.75rem .8rem;
     min-height:74px;
+    flex-shrink:0;
   }
   .chat-conversation-head{
     gap:.7rem;
@@ -3420,10 +3521,14 @@ button {
     border-radius:16px;
     text-align:center;
     font-size:.82rem;
+    flex-shrink:0;
   }
   .chat-messages{
     padding:.85rem .75rem;
     overflow-x:hidden;
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
   }
   .ss-page-shell--messages-page .chat-messages{
     padding:.75rem .6rem;
@@ -3478,6 +3583,7 @@ button {
   }
   .chat-input-wrap{
     padding:.75rem;
+    flex-shrink:0;
   }
   .ss-page-shell--messages-page .chat-input-wrap{
     padding:.65rem .6rem calc(.65rem + env(safe-area-inset-bottom));
