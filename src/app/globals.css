@@ -2142,6 +2142,7 @@ button {
   display:grid;
   gap:.55rem;
   overflow-x:hidden !important;
+  overflow-x:clip;
   width:100%;
   max-width:100%;
   min-width:0;
@@ -2173,6 +2174,7 @@ button {
   box-shadow:0 16px 42px rgba(34,49,75,.10);
   overflow:hidden;
   overflow-x:hidden !important;
+  overflow-x:clip;
   max-width:100%;
   min-width:0;
 }
@@ -2192,6 +2194,7 @@ button {
   overflow-y:auto;
   flex:1;
   overflow-x:hidden !important;
+  overflow-x:clip;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
@@ -2258,6 +2261,8 @@ button {
   cursor:pointer;
   max-width:100%;
   overflow:hidden;
+  overflow-x:hidden;
+  overflow-x:clip;
   width:100%;
   min-width:0;
   box-sizing:border-box;
@@ -2283,6 +2288,7 @@ button {
   flex:1;
   display:grid;
   gap:.28rem;
+  overflow-x:hidden;
 }
 
 .messages-head{
@@ -2292,6 +2298,7 @@ button {
   gap:.55rem;
   max-width:100%;
   min-width:0;
+  overflow-x:hidden;
 }
 
 .messages-name{
@@ -2319,6 +2326,11 @@ button {
   overflow:hidden;
   text-overflow:ellipsis;
   max-width:100%;
+  overflow-x:hidden;
+}
+
+.messages-scroll-area::-webkit-scrollbar{
+  height:0;
 }
 
 .chat-shell{
