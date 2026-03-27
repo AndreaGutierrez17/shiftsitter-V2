@@ -23,6 +23,7 @@ import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { shiftProposalSchema } from './schemas';
 import AppBackButton from '@/components/AppBackButton';
 import type { z } from 'zod';
+import { LiveCareLogPanel } from '@/components/LiveCareLogPanel';
 
 type ShiftFormValues = z.input<typeof shiftProposalSchema>;
 
@@ -74,9 +75,15 @@ function formatShiftDateLabel(date: unknown) {
   return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : format(parsed, 'EEEE, MMM d');
 }
 
-const TIME_OPTIONS = Array.from({ length: 18 }, (_, index) => {
-  const hour = index + 6;
-  return `${String(hour).padStart(2, '0')}:00`;
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2);
+  const m = i % 2 === 0 ? '00' : '30';
+  const displayH = h % 12 || 12;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  return {
+    value: `${h.toString().padStart(2, '0')}:${m}`,
+    label: `${displayH}:${m} ${ampm}`
+  };
 });
 
 function CalendarPageContent() {
@@ -265,8 +272,8 @@ function CalendarPageContent() {
     };
 
     return [...filtered]
-      .sort((a, b) => getSortTime(a) - getSortTime(b))
-      .slice(0, 20);
+      .sort((a, b) => getSortTime(b) - getSortTime(a))
+      .slice(0, 50);
   }, [shifts, selectedMatchFilterId, selectedStatusFilter]);
 
   const conversationOptions = useMemo(() => {
@@ -883,18 +890,18 @@ function CalendarPageContent() {
                             <FormItem>
                               <FormLabel>Start time</FormLabel>
                               <FormControl>
-                                <select
-                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                  value={field.value}
-                                  onChange={(e) => field.onChange(e.target.value)}
-                                >
-                                  <option value="">Select start time</option>
-                                  {TIME_OPTIONS.map((time) => (
-                                    <option key={`start-${time}`} value={time}>
-                                      {time}
-                                    </option>
-                                  ))}
-                                </select>
+                              <select
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={field.value}
+                                onChange={(e) => field.onChange(e.target.value)}
+                              >
+                                <option value="">Select start time</option>
+                                {TIME_OPTIONS.map((opt) => (
+                                  <option key={`start-${opt.value}`} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -907,18 +914,18 @@ function CalendarPageContent() {
                             <FormItem>
                               <FormLabel>End time</FormLabel>
                               <FormControl>
-                                <select
-                                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                  value={field.value}
-                                  onChange={(e) => field.onChange(e.target.value)}
-                                >
-                                  <option value="">Select end time</option>
-                                  {TIME_OPTIONS.map((time) => (
-                                    <option key={`end-${time}`} value={time}>
-                                      {time}
-                                    </option>
-                                  ))}
-                                </select>
+                              <select
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={field.value}
+                                onChange={(e) => field.onChange(e.target.value)}
+                              >
+                                <option value="">Select end time</option>
+                                {TIME_OPTIONS.map((opt) => (
+                                  <option key={`end-${opt.value}`} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -1111,19 +1118,33 @@ function CalendarPageContent() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-foreground">New start</label>
-                        <Input
-                          type="time"
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                           value={editStartTime}
                           onChange={(e) => setEditStartTime(e.target.value)}
-                        />
+                        >
+                          <option value="">Select start time</option>
+                          {TIME_OPTIONS.map((opt) => (
+                            <option key={`edit-start-${opt.value}`} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-medium text-foreground">New end</label>
-                        <Input
-                          type="time"
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                           value={editEndTime}
                           onChange={(e) => setEditEndTime(e.target.value)}
-                        />
+                        >
+                          <option value="">Select end time</option>
+                          {TIME_OPTIONS.map((opt) => (
+                            <option key={`edit-end-${opt.value}`} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1177,6 +1198,7 @@ function CalendarPageContent() {
                   disabled={!canAccessSecureCalendar}
                 >
                   <option value="">All statuses</option>
+                  <option value="proposed">Proposed</option>
                   <option value="accepted">Accepted</option>
                   <option value="rejected">Rejected</option>
                   <option value="cancelled">Cancelled</option>
@@ -1219,6 +1241,14 @@ function CalendarPageContent() {
                       key={shift.id}
                       className={`rounded-xl border bg-white p-4 shadow-sm ${isFocusedShift ? 'border-primary ring-2 ring-primary/20' : 'border-border/90'}`}
                     >
+                      {user && (shift.status === 'accepted' || shift.status === 'completed') && (
+                        <div className="mb-4">
+                          <LiveCareLogPanel 
+                            shift={shift} 
+                            currentUserId={user.uid} 
+                          />
+                        </div>
+                      )}
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="font-semibold">{formatShiftDateLabel(shift.date)}</p>
@@ -1322,6 +1352,7 @@ function CalendarPageContent() {
                           </div>
                         </div>
                       ) : null}
+
                       {shift.status === 'accepted' && (shift.primaryPhone || shift.emergencyContact) ? (
                         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                           <p className="font-medium">Accepted shift contacts</p>
@@ -1468,6 +1499,13 @@ function CalendarPageContent() {
                       {expandedShift.extras ? <p>Extras: {expandedShift.extras}</p> : null}
                     </div>
                   </div>
+
+                  {user && (
+                    <LiveCareLogPanel 
+                      shift={expandedShift} 
+                      currentUserId={user.uid} 
+                    />
+                  )}
 
                   <div className="rounded-lg border border-border/70 bg-white p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">About the shifter</p>

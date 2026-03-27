@@ -114,6 +114,16 @@ export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
     placement: 'bottom',
   },
   {
+    id: 'live-care-log',
+    title: 'Hourly Care Report',
+    description:
+      'Once a shift starts, use this section to create an hourly report. Both the parent and the sitter can add and edit updates in real-time for each hour of the shift.',
+    route: '/families/calendar',
+    routeMatcher: /^\/families\/calendar$/,
+    selector: '[data-tour="calendar-live-log"]',
+    placement: 'top',
+  },
+  {
     id: 'profile',
     title: 'Keep your profile strong',
     description:

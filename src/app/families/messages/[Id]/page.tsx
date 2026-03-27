@@ -178,6 +178,19 @@ export default function ChatPage() {
   const [messageUnreadCounts, setMessageUnreadCounts] = useState<Record<string, number>>({});
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+    isLoading?: boolean;
+    variant?: 'destructive' | 'default';
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const isNearBottomRef = useRef(true);
@@ -857,25 +870,26 @@ export default function ChatPage() {
 
   const handleDeleteForAll = async (message: Message) => {
     if (!user || !conversationId || message.senderId !== user.uid) return;
-    const confirmed = window.confirm('Delete this message for everyone?');
-    if (!confirmed) return;
-    try {
-      await updateDoc(doc(db, 'conversations', conversationId, 'messages', message.id), {
-        deletedForAll: true,
-        deletedBy: user.uid,
-        deletedAt: serverTimestamp(),
-      });
-    } catch (error) {
-      const firestoreError = error as { code?: string };
-      if (firestoreError?.code === 'permission-denied') {
-        toast({
-          variant: 'destructive',
-          title: 'Permissions blocked',
-          description: 'Deploy the updated Firestore rules to delete messages.',
-        });
+    
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete for everyone',
+      description: 'Are you sure you want to delete this message for everyone? This action cannot be undone.',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          await updateDoc(doc(db, 'conversations', conversationId, 'messages', message.id), {
+            deletedForAll: true,
+            deletedBy: user.uid,
+            deletedAt: serverTimestamp(),
+          });
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error('Delete for all failed:', error);
+          toast({ variant: 'destructive', title: 'Error', description: 'Could not delete message.' });
+        }
       }
-      console.error('Delete for all failed:', error);
-    }
+    });
   };
 
   const handleSendMessage = async (e: FormEvent<HTMLFormElement>) => {
@@ -1075,74 +1089,83 @@ export default function ChatPage() {
   const handleClearChat = async () => {
     if (!user || !conversationId || isClearingChat) return;
 
-    const confirmed = window.confirm('Clear this chat history? You can still message this person again later.');
-    if (!confirmed) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Clear Chat History',
+      description: 'Are you sure you want to clear this chat history? You can still message this person again later.',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setIsClearingChat(true);
+        setSendError(null);
+        try {
+          const idToken = await user.getIdToken();
+          const response = await fetch('/api/conversations/clear', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({ conversationId }),
+          });
 
-    setIsClearingChat(true);
-    setSendError(null);
-
-    try {
-      const idToken = await user.getIdToken();
-      const response = await fetch('/api/conversations/clear', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ conversationId }),
-      });
-
-      if (!response.ok) {
-        const err = await response.text().catch(() => '');
-        throw new Error(err || 'Could not clear this chat.');
+          if (!response.ok) {
+            const err = await response.text().catch(() => '');
+            throw new Error(err || 'Could not clear this chat.');
+          }
+          setMessages([]);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error('Clear chat failed:', error);
+          setSendError('Could not clear this chat. Please try again.');
+        } finally {
+          setIsClearingChat(false);
+        }
       }
-
-      setMessages([]);
-    } catch (error) {
-      console.error('Clear chat failed:', error);
-      setSendError('Could not clear this chat. Please try again.');
-    } finally {
-      setIsClearingChat(false);
-    }
+    });
   };
 
   const handleEndMatch = async () => {
     if (!user || !conversationId || !otherUserId || isEndingMatch) return;
 
-    const confirmed = window.confirm('End this match and remove the conversation?');
-    if (!confirmed) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'End Connection',
+      description: 'Are you sure you want to end this match and remove the conversation?',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setIsEndingMatch(true);
+        setIsClosingConversation(true);
+        setSendError(null);
+        try {
+          const idToken = await user.getIdToken();
+          const response = await fetch('/api/matches/unmatch', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              conversationId,
+              otherUserId,
+            }),
+          });
 
-    setIsEndingMatch(true);
-    setIsClosingConversation(true);
-    setSendError(null);
-
-    try {
-      const idToken = await user.getIdToken();
-      const response = await fetch('/api/matches/unmatch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          conversationId,
-          otherUserId,
-        }),
-      });
-
-      if (!response.ok) {
-        const err = await response.text().catch(() => '');
-        throw new Error(err || 'Could not end this match.');
+          if (!response.ok) {
+            const err = await response.text().catch(() => '');
+            throw new Error(err || 'Could not end this match.');
+          }
+          router.replace('/families/messages');
+          // No need to close dialog since we're redirecting
+        } catch (error) {
+          console.error('End match failed:', error);
+          setSendError('Could not end this match. Please try again.');
+          setIsClosingConversation(false);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        } finally {
+          setIsEndingMatch(false);
+        }
       }
-
-      router.replace('/families/messages');
-    } catch (error) {
-      console.error('End match failed:', error);
-      setSendError('Could not end this match. Please try again.');
-      setIsClosingConversation(false);
-    } finally {
-      setIsEndingMatch(false);
-    }
+    });
   };
 
   if (isClosingConversation) {
@@ -1246,14 +1269,13 @@ export default function ChatPage() {
         {/* Header */}
         <div className="chat-head chat-head--workspace">
           <div className="chat-conversation-head">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="chat-quick-back ss-pill-btn-outline md:hidden"
+            <button
+              type="button"
+              className="ss-pill-btn-outline flex h-9 w-9 items-center justify-center p-0"
               onClick={handleBack}
             >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
+              <ArrowLeft className="h-4 w-4" />
+            </button>
             <div className="relative">
               <Avatar className="chat-user-avatar">
                 <AvatarImage src={otherUserProfile.photoURLs?.[0]} className="object-cover" />
@@ -1630,11 +1652,49 @@ export default function ChatPage() {
             <Button type="submit" size="icon" className="ss-pill-btn chat-send-btn" disabled={isSending || isUploadingAttachment || !newMessage.trim() || newMessage.trim().length > MAX_MESSAGE_LENGTH}>
               <Send className="h-5 w-5" />
             </Button>
-          </form>
-          <p className="mt-1 text-right text-xs text-muted-foreground">
-            {newMessage.length}/{MAX_MESSAGE_LENGTH}
-          </p>
-        </div>
+            </form>
+            <p className="mt-1 text-right text-xs text-muted-foreground">
+              {newMessage.length}/{MAX_MESSAGE_LENGTH}
+            </p>
+          </div>
+
+        {/* Global Confirmation Dialog */}
+        <Dialog 
+          open={confirmDialog.isOpen} 
+          onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, isOpen: open }))}
+        >
+          <DialogContent className="w-[92vw] max-w-[400px] rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <DialogHeader className="p-0 text-left">
+              <DialogTitle className="font-headline text-xl text-[var(--navy)]">
+                {confirmDialog.title}
+              </DialogTitle>
+              <DialogDescription className="mt-2 text-sm leading-6 text-slate-600">
+                {confirmDialog.description}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-6 flex flex-row items-center justify-end gap-3 p-0">
+              <Button 
+                variant="ghost" 
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="ss-pill-btn-outline h-11 px-6 font-semibold"
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={() => {
+                  void confirmDialog.onConfirm();
+                }}
+                variant={confirmDialog.variant === 'destructive' ? 'destructive' : 'default'}
+                className={cn(
+                  "h-11 px-6 font-semibold rounded-full",
+                  confirmDialog.variant !== 'destructive' && "bg-[#8B4C70] hover:bg-[#723e5c] text-white"
+                )}
+              >
+                {confirmDialog.isLoading ? 'Processing...' : 'Aceptar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* AI Icebreaker Dialog */}
         <Dialog open={isAiOpen} onOpenChange={setIsAiOpen}>

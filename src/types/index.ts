@@ -1,4 +1,7 @@
 import type { Timestamp } from "firebase/firestore";
+import { Sparkles } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export type UserRole = "parent" | "sitter" | "reciprocal";
 
@@ -185,6 +188,17 @@ export interface Shift {
     newStartTime: string;
     newEndTime: string;
   };
+  careLogs?: CareLogEntry[];
+}
+
+export interface CareLogEntry {
+  id: string;
+  emoji: string;
+  label: string;
+  time: string;
+  note?: string;
+  hourIndex?: number;
+  postedBy?: string;
 }
 
 export interface Review {

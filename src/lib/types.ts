@@ -8,4 +8,5 @@ export type {
   Shift,
   Review,
   Notification,
+  CareLogEntry,
 } from "@/types";

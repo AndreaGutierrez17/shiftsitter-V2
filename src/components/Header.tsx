@@ -11,6 +11,7 @@ import { auth, db } from "@/lib/firebase/client";
 import { requestGuidedTourOpen } from "@/lib/guided-tour";
 import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
 import { enableWebPush, disableWebPush } from "@/lib/firebase/push";
+import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import {
   collection,
@@ -59,6 +60,7 @@ export default function Header() {
     href: string | null;
     read?: boolean;
     readAt: unknown | null;
+    createdAt?: any;
   }>>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
@@ -370,7 +372,13 @@ export default function Header() {
             href?: string | null;
             read?: boolean;
             readAt?: unknown | null;
+            createdAt?: any;
           };
+
+          let stamp = data.createdAt;
+          if (stamp && typeof stamp.toDate === 'function') {
+            stamp = stamp.toDate();
+          }
 
           return {
             id: notificationDoc.id,
@@ -379,6 +387,7 @@ export default function Header() {
             href: data.href || null,
             read: data.read ?? false,
             readAt: data.readAt ?? null,
+            createdAt: stamp ?? null,
           };
         });
 
@@ -572,9 +581,16 @@ export default function Header() {
                               if (notif.href) router.push(notif.href);
                             }}
                           >
-                            <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold">{notif.title}</div>
+                            <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="truncate text-sm font-semibold">{notif.title}</div>
+                                {notif.createdAt && (
+                                  <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap pt-[2px]">
+                                    {formatDistanceToNow(notif.createdAt as Date, { addSuffix: true })}
+                                  </span>
+                                )}
+                              </div>
                               <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
                             </div>
                           </DropdownMenuItem>
@@ -736,9 +752,16 @@ export default function Header() {
                             if (notif.href) router.push(notif.href);
                           }}
                         >
-                          <span className={`mt-1 h-2 w-2 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{notif.title}</div>
+                          <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="truncate text-sm font-semibold">{notif.title}</div>
+                              {notif.createdAt && (
+                                <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap pt-[2px]">
+                                  {formatDistanceToNow(notif.createdAt as Date, { addSuffix: true })}
+                                </span>
+                              )}
+                            </div>
                             <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
                           </div>
                         </DropdownMenuItem>
