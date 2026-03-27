@@ -917,11 +917,20 @@ export default function EditProfilePage() {
         throw new Error('You must be signed in to delete your account.');
       }
 
+      const safeDelete = (url: string) => {
+        if (!url || !url.includes('firebasestorage.googleapis.com')) return Promise.resolve();
+        try {
+          return deleteObject(ref(storage, url));
+        } catch {
+          return Promise.resolve();
+        }
+      };
+
       await Promise.allSettled([
-        ...photos.map((url) => deleteObject(ref(storage, url))),
-        ...(cvUrl ? [deleteObject(ref(storage, cvUrl))] : []),
-        ...(idFrontUrl ? [deleteObject(ref(storage, idFrontUrl))] : []),
-        ...(selfieUrl ? [deleteObject(ref(storage, selfieUrl))] : []),
+        ...photos.map(safeDelete),
+        ...(cvUrl ? [safeDelete(cvUrl)] : []),
+        ...(idFrontUrl ? [safeDelete(idFrontUrl)] : []),
+        ...(selfieUrl ? [safeDelete(selfieUrl)] : []),
       ]);
 
       const idToken = await currentUser.getIdToken(true);
