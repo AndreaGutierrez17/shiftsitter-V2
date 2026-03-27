@@ -233,17 +233,17 @@ function estimateTravel(currentUser: MatchProfile, candidate: MatchProfile, myNe
 
   // Fallback to states if no ZIP alignment or ZIPs missing
   if (stateMatch === true) {
-    return { minutes: 45, distanceKm: 60, locationScore: 55 };
+    return { minutes: 25, distanceKm: 24, locationScore: zipA && zipB ? 72 : 60 };
   }
   if (stateMatch === false) {
-    return { minutes: null, distanceKm: null, locationScore: 20 };
+    return { minutes: 45, distanceKm: 80, locationScore: 25 };
   }
 
   if (zipA || zipB) {
-    return { minutes: null, distanceKm: null, locationScore: 45 };
+    return { minutes: 30, distanceKm: 32, locationScore: 45 };
   }
 
-  return { minutes: null, distanceKm: null, locationScore: 40 };
+  return { minutes: null, distanceKm: null, locationScore: 45 };
 }
 
 function settingCompatible(needSetting?: SettingPreference, offerSetting?: SettingPreference) {
