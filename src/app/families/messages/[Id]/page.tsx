@@ -1259,7 +1259,8 @@ export default function ChatPage() {
           {messages.map((message) => {
             const isSender = message.senderId === user?.uid;
             const deletedFor = Array.isArray(message.deletedFor) ? message.deletedFor : [];
-            const isHiddenForMe = Boolean(user?.uid) && deletedFor.includes(user.uid);
+            const currentUserId = user?.uid;
+            const isHiddenForMe = Boolean(currentUserId) && deletedFor.includes(currentUserId);
             if (isHiddenForMe) return null;
             const isDeletedForAll = Boolean(message.deletedForAll);
             const profile = isSender ? currentUserProfile : otherUserProfile;
