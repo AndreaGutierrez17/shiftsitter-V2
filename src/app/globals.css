@@ -2179,6 +2179,17 @@ button {
   min-width:0;
 }
 
+.messages-panel,
+.messages-panel *{
+  overflow-x:hidden !important;
+  scrollbar-width:none;
+}
+
+.messages-panel *::-webkit-scrollbar{
+  width:0 !important;
+  height:0 !important;
+}
+
 .messages-sidebar{
   border:1px solid var(--border);
   border-radius:16px;
@@ -2208,6 +2219,8 @@ button {
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
+  box-sizing:border-box;
+  padding-right:.5rem;
 }
 
 .messages-scroll-inner::-webkit-scrollbar:horizontal{
