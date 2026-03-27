@@ -39,6 +39,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "embla-carousel-react": "^8.6.0",
+    "emoji-picker-element": "^1.29.1",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.6.1",
     "firebase-functions": "^7.0.5",

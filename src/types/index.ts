@@ -138,6 +138,16 @@ export interface Message {
   createdAt: Timestamp;
   readBy?: string[];
   readAt?: Timestamp | null;
+  replyTo?: {
+    messageId: string;
+    senderId: string;
+    text: string;
+  };
+  reactions?: Record<string, string[]>;
+  deletedFor?: string[];
+  deletedForAll?: boolean;
+  deletedAt?: Timestamp | null;
+  deletedBy?: string;
   attachmentUrl?: string;
   attachmentName?: string;
   attachmentType?: string;

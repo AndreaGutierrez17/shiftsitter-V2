@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import type { TouchEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
@@ -8,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, CalendarDays, CheckCheck, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCheck, Eraser, FileText, ImageIcon, Info, MoreVertical, Paperclip, Send, Sparkles, Unlink, SmilePlus, X, Trash2, Smile, ChevronDown, Reply } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,13 +28,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { db, storage } from '@/lib/firebase/client';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where, writeBatch, increment, arrayUnion } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc, updateDoc, where, writeBatch, increment, arrayUnion, arrayRemove } from 'firebase/firestore';
 import type { Timestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { AuthGuard } from '@/components/AuthGuard';
 import { calculateCompatibility } from '@/lib/match/calculateCompatibility';
 import { getVisibleVerificationStatus } from '@/lib/constants';
+import { useToast } from '@/hooks/use-toast';
 import {
   getTimestampMillis,
   isConversationTypingActive,
@@ -52,6 +55,7 @@ type AssistantReplyPayload = {
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_ATTACHMENT_MB = 8;
 const BLOCKED_DOC_KEYWORDS = ['license', 'licencia', 'id', 'identification', 'passport', 'driver'];
+const REACTION_SET = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
 const validateChatAttachment = (file: File) => {
   const lowerName = file.name.toLowerCase();
@@ -133,8 +137,11 @@ export default function ChatPage() {
   const params = rawParams as Record<string, string | string[] | undefined>;
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [replyTarget, setReplyTarget] = useState<{ messageId: string; senderId: string; text: string } | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AiIcebreakerSuggestionOutput | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
@@ -162,10 +169,16 @@ export default function ChatPage() {
   const [otherLiveProfile, setOtherLiveProfile] = useState<UserProfile | null>(null);
   const [messageUnreadCounts, setMessageUnreadCounts] = useState<Record<string, number>>({});
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const emojiPickerRef = useRef<HTMLElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
   const lastTypingHeartbeatAtRef = useRef(0);
   const typingStateRef = useRef(false);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const touchStartRef = useRef<{ x: number; y: number; message: Message } | null>(null);
 
   const conversationId =
     (typeof params.id === 'string' ? params.id : '') ||
@@ -186,6 +199,66 @@ export default function ChatPage() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!emojiPickerOpen || typeof window === 'undefined') return;
+    let cancelled = false;
+    let cleanup = () => {};
+
+    const setupPicker = async () => {
+      await import('emoji-picker-element');
+      await customElements.whenDefined('emoji-picker');
+      if (cancelled) return;
+      const attachListeners = () => {
+        const picker = emojiPickerRef.current;
+        if (!picker) {
+          requestAnimationFrame(attachListeners);
+          return;
+        }
+
+        const handleEmojiClick = (event: Event) => {
+          const detail = (event as CustomEvent).detail as {
+            unicode?: string;
+            emoji?: { unicode?: string; native?: string; emoji?: string; char?: string; symbol?: string };
+          } | undefined;
+          const emoji =
+            detail?.unicode ||
+            detail?.emoji?.unicode ||
+            detail?.emoji?.native ||
+            detail?.emoji?.emoji ||
+            detail?.emoji?.char ||
+            detail?.emoji?.symbol;
+          if (!emoji) return;
+          setNewMessage((prev) => `${prev}${emoji}`);
+          setEmojiPickerOpen(false);
+          inputRef.current?.focus();
+        };
+
+        picker.addEventListener('emoji-click', handleEmojiClick as EventListener);
+        picker.addEventListener('emoji-select', handleEmojiClick as EventListener);
+
+        const shadowRoot = (picker as HTMLElement & { shadowRoot?: ShadowRoot }).shadowRoot;
+        if (shadowRoot) {
+          const favorites = shadowRoot.querySelector('.favorites') as HTMLElement | null;
+          if (favorites) favorites.style.display = 'none';
+          const tabpanel = shadowRoot.querySelector('.tabpanel') as HTMLElement | null;
+          if (tabpanel) tabpanel.style.overflowX = 'hidden';
+        }
+        cleanup = () => {
+          picker.removeEventListener('emoji-click', handleEmojiClick as EventListener);
+          picker.removeEventListener('emoji-select', handleEmojiClick as EventListener);
+        };
+      };
+
+      attachListeners();
+    };
+
+    void setupPicker();
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [emojiPickerOpen]);
 
   useEffect(() => {
     if (!user || isClosingConversation) return;
@@ -557,6 +630,183 @@ export default function ChatPage() {
     ].join('\n');
   };
 
+  const buildReplyPreview = (message: Message) => {
+    if (message.deletedForAll) return 'Message deleted';
+    const text = message.text?.trim();
+    if (text) return text;
+    if (message.attachmentName) return `Attachment: ${message.attachmentName}`;
+    if (message.attachmentUrl) return 'Attachment';
+    return 'Message';
+  };
+
+  const handleSetReply = (message: Message) => {
+    setReplyTarget({
+      messageId: message.id,
+      senderId: message.senderId,
+      text: buildReplyPreview(message),
+    });
+    setActiveMessageId(null);
+    inputRef.current?.focus();
+  };
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleTouchStartMessage = (message: Message, event: TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, message };
+    longPressTriggeredRef.current = false;
+    clearLongPress();
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      setActiveMessageId(message.id);
+    }, 420);
+  };
+
+  const handleTouchMoveMessage = (event: TouchEvent<HTMLDivElement>) => {
+    const start = touchStartRef.current;
+    if (!start || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const dx = Math.abs(touch.clientX - start.x);
+    const dy = Math.abs(touch.clientY - start.y);
+    if (dx > 12 || dy > 12) {
+      clearLongPress();
+    }
+  };
+
+  const handleTouchEndMessage = (event: TouchEvent<HTMLDivElement>) => {
+    const start = touchStartRef.current;
+    clearLongPress();
+    if (!start) return;
+    const touch = event.changedTouches[0];
+    const dx = (touch?.clientX ?? start.x) - start.x;
+    const dy = (touch?.clientY ?? start.y) - start.y;
+    touchStartRef.current = null;
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    if (absDx > 60 && absDx > absDy * 1.5 && dx > 0) {
+      handleSetReply(start.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!activeMessageId) return;
+    const handleOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.chat-message-col')) {
+        setActiveMessageId(null);
+      }
+    };
+    document.addEventListener('click', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('click', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [activeMessageId]);
+
+  const handleToggleReaction = async (message: Message, emoji: string) => {
+    if (!user || !conversationId) return;
+    const current = message.reactions?.[emoji] || [];
+    const reacted = current.includes(user.uid);
+    try {
+      await updateDoc(doc(db, 'conversations', conversationId, 'messages', message.id), {
+        [`reactions.${emoji}`]: reacted ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      });
+
+      if (!reacted && message.senderId !== user.uid) {
+        try {
+          const idToken = await user.getIdToken();
+          const actorName =
+            fullProfiles.current?.name || currentUserProfile?.name || user.displayName || 'A shifter';
+          await fetch('/api/notify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              type: 'message',
+              notificationId: `reaction_${message.id}_${emoji}_${user.uid}`,
+              targetUserIds: [message.senderId],
+              title: 'New reaction',
+              body: `${actorName} reacted ${emoji} to your message.`,
+              link: `/families/messages/${conversationId}`,
+              data: {
+                conversationId,
+                messageId: message.id,
+                emoji,
+              },
+            }),
+          });
+        } catch (notifyError) {
+          console.error('Reaction notification failed:', notifyError);
+        }
+      }
+    } catch (error) {
+      const firestoreError = error as { code?: string };
+      if (firestoreError?.code === 'permission-denied') {
+        toast({
+          variant: 'destructive',
+          title: 'Permissions blocked',
+          description: 'Deploy the updated Firestore rules to enable reactions.',
+        });
+      }
+      console.error('Reaction update failed:', error);
+    }
+  };
+
+  const handleDeleteForMe = async (message: Message) => {
+    if (!user || !conversationId) return;
+    try {
+      await updateDoc(doc(db, 'conversations', conversationId, 'messages', message.id), {
+        deletedFor: arrayUnion(user.uid),
+      });
+    } catch (error) {
+      const firestoreError = error as { code?: string };
+      if (firestoreError?.code === 'permission-denied') {
+        toast({
+          variant: 'destructive',
+          title: 'Permissions blocked',
+          description: 'Deploy the updated Firestore rules to delete messages.',
+        });
+      }
+      console.error('Delete for me failed:', error);
+    }
+  };
+
+  const handleDeleteForAll = async (message: Message) => {
+    if (!user || !conversationId || message.senderId !== user.uid) return;
+    const confirmed = window.confirm('Delete this message for everyone?');
+    if (!confirmed) return;
+    try {
+      await updateDoc(doc(db, 'conversations', conversationId, 'messages', message.id), {
+        deletedForAll: true,
+        deletedBy: user.uid,
+        deletedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      const firestoreError = error as { code?: string };
+      if (firestoreError?.code === 'permission-denied') {
+        toast({
+          variant: 'destructive',
+          title: 'Permissions blocked',
+          description: 'Deploy the updated Firestore rules to delete messages.',
+        });
+      }
+      console.error('Delete for all failed:', error);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedMessage = newMessage.trim();
@@ -573,6 +823,15 @@ export default function ChatPage() {
         text: msgText,
         createdAt: serverTimestamp(),
         readBy: [user.uid],
+        ...(replyTarget
+          ? {
+              replyTo: {
+                messageId: replyTarget.messageId,
+                senderId: replyTarget.senderId,
+                text: replyTarget.text,
+              },
+            }
+          : {}),
       });
 
       const recipientId = otherUserId || conversation?.userIds?.find((id: string) => id !== user.uid) || '';
@@ -590,6 +849,7 @@ export default function ChatPage() {
       setNewMessage(msgText);
     } finally {
       setIsSending(false);
+      setReplyTarget(null);
     }
   };
 
@@ -623,6 +883,15 @@ export default function ChatPage() {
         attachmentSizeBytes: file.size,
         createdAt: serverTimestamp(),
         readBy: [user.uid],
+        ...(replyTarget
+          ? {
+              replyTo: {
+                messageId: replyTarget.messageId,
+                senderId: replyTarget.senderId,
+                text: replyTarget.text,
+              },
+            }
+          : {}),
       });
 
       const recipientId = otherUserId || conversation?.userIds?.find((id: string) => id !== user.uid) || '';
@@ -638,6 +907,7 @@ export default function ChatPage() {
       setSendError('Could not upload attachment. Please try again.');
     } finally {
       setIsUploadingAttachment(false);
+      setReplyTarget(null);
     }
   };
   
@@ -988,9 +1258,13 @@ export default function ChatPage() {
 
           {messages.map((message) => {
             const isSender = message.senderId === user?.uid;
+            const deletedFor = Array.isArray(message.deletedFor) ? message.deletedFor : [];
+            const isHiddenForMe = Boolean(user?.uid) && deletedFor.includes(user.uid);
+            if (isHiddenForMe) return null;
+            const isDeletedForAll = Boolean(message.deletedForAll);
             const profile = isSender ? currentUserProfile : otherUserProfile;
             const isImageAttachment =
-              Boolean(message.attachmentUrl) && (message.attachmentType || '').startsWith('image/');
+              !isDeletedForAll && Boolean(message.attachmentUrl) && (message.attachmentType || '').startsWith('image/');
             const messageCreatedAt =
               typeof (message.createdAt as Timestamp | undefined)?.toDate === 'function'
                 ? (message.createdAt as Timestamp).toDate()
@@ -1001,6 +1275,14 @@ export default function ChatPage() {
                 : null;
             const readBy = Array.isArray(message.readBy) ? message.readBy : [message.senderId];
             const isReadByOtherUser = Boolean(otherUserId) && readBy.includes(otherUserId as string);
+            const replyInfo = message.replyTo;
+            const replyName = replyInfo
+              ? (replyInfo.senderId === user?.uid ? 'You' : otherUserProfile?.name || 'Shifter')
+              : '';
+            const reactionEntries = Object.entries(isDeletedForAll ? {} : (message.reactions || {})).filter(
+              ([, users]) => Array.isArray(users) && users.length > 0
+            );
+            const isActive = activeMessageId === message.id;
             return (
               <div key={message.id} className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}>
                 {!isSender && (
@@ -1009,32 +1291,163 @@ export default function ChatPage() {
                     <AvatarFallback>{getChatAvatarFallback(profile?.name)}</AvatarFallback>
                   </Avatar>
                 )}
-                  <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
-                  {isImageAttachment ? (
-                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-image-link">
-                      <img
-                        src={message.attachmentUrl}
-                        alt={message.attachmentName || 'Chat attachment'}
-                        className="chat-image-preview"
-                        loading="lazy"
-                      />
-                    </a>
-                  ) : null}
-                  {message.attachmentUrl && !isImageAttachment && (
-                    <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-attachment-link">
-                      {(message.attachmentType || '').startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                      <span className="truncate">{message.attachmentName || 'Attachment'}</span>
-                    </a>
-                  )}
-                  {message.text ? <p className="text-sm">{message.text}</p> : null}
-                  {messageCreatedAtLabel ? (
-                    <div className={cn('chat-message-meta', isSender ? 'is-sender' : 'is-receiver')}>
-                      <span>{messageCreatedAtLabel}</span>
-                      {isSender
-                        ? <CheckCheck className={cn('chat-read-icon', isReadByOtherUser ? 'is-read' : 'is-sent')} />
-                        : null}
+                <div
+                  className={cn('chat-message-col', isSender ? 'items-end' : 'items-start', isActive && 'is-active')}
+                  onClick={() => {
+                    if (activeMessageId === message.id) {
+                      setActiveMessageId(null);
+                    }
+                  }}
+                  onTouchStart={(event) => handleTouchStartMessage(message, event)}
+                  onTouchMove={handleTouchMoveMessage}
+                  onTouchEnd={handleTouchEndMessage}
+                >
+                  {isActive && !isDeletedForAll ? (
+                    <div
+                      className={cn('chat-quick-reactions', isSender ? 'is-sender' : 'is-receiver')}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {REACTION_SET.map((emoji) => {
+                        const reacted = Boolean(user?.uid) && (message.reactions?.[emoji] || []).includes(user.uid);
+                        return (
+                          <button
+                            key={`${message.id}-quick-${emoji}`}
+                            type="button"
+                            className={cn('chat-quick-reaction', reacted && 'active')}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleToggleReaction(message, emoji);
+                              setActiveMessageId(null);
+                            }}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : null}
+                  <div className={cn('chat-bubble-wrap', isSender ? 'is-sender' : 'is-receiver')}>
+                    <div className={cn('chat-bubble', isSender ? 'me' : 'other')}>
+                      {!isDeletedForAll ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="chat-bubble-menu"
+                              title="Message options"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align={isSender ? 'end' : 'start'} className="w-48">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                handleSetReply(message);
+                              }}
+                            >
+                              <Reply className="mr-2 h-4 w-4" />
+                              Reply
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                void handleDeleteForMe(message);
+                                setActiveMessageId(null);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete for me
+                            </DropdownMenuItem>
+                            {isSender ? (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  void handleDeleteForAll(message);
+                                  setActiveMessageId(null);
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete for everyone
+                              </DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                      {replyInfo ? (
+                        <div className="chat-reply">
+                          <p className="chat-reply-label">{replyName}</p>
+                          <p className="chat-reply-text">{replyInfo.text}</p>
+                        </div>
+                      ) : null}
+                      {isImageAttachment ? (
+                        <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-image-link">
+                          <img
+                            src={message.attachmentUrl}
+                            alt={message.attachmentName || 'Chat attachment'}
+                            className="chat-image-preview"
+                            loading="lazy"
+                          />
+                        </a>
+                      ) : null}
+                      {!isDeletedForAll && message.attachmentUrl && !isImageAttachment && (
+                        <a href={message.attachmentUrl} target="_blank" rel="noreferrer" className="chat-attachment-link">
+                          {(message.attachmentType || '').startsWith('image/') ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          <span className="truncate">{message.attachmentName || 'Attachment'}</span>
+                        </a>
+                      )}
+                      {isDeletedForAll ? (
+                        <p className="text-sm italic text-muted-foreground">Message deleted</p>
+                      ) : (
+                        message.text ? <p className="text-sm">{message.text}</p> : null
+                      )}
+                      {messageCreatedAtLabel ? (
+                        <div className={cn('chat-message-meta', isSender ? 'is-sender' : 'is-receiver')}>
+                          <span>{messageCreatedAtLabel}</span>
+                          {isSender
+                            ? <CheckCheck className={cn('chat-read-icon', isReadByOtherUser ? 'is-read' : 'is-sent')} />
+                            : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    {!isDeletedForAll ? (
+                      <button
+                        type="button"
+                        className="chat-react-trigger"
+                        title="React"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setActiveMessageId(message.id);
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                      >
+                        <Smile className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {reactionEntries.length > 0 ? (
+                    <div className={cn('chat-reactions', isSender ? 'is-sender' : 'is-receiver')}>
+                      {reactionEntries.map(([emoji, users]) => {
+                        const list = Array.isArray(users) ? users : [];
+                        const reacted = Boolean(user?.uid) && list.includes(user.uid);
+                        return (
+                          <button
+                            key={`${message.id}-${emoji}`}
+                            type="button"
+                            className={cn('chat-reaction-pill', reacted && 'active')}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleToggleReaction(message, emoji);
+                            }}
+                          >
+                            <span className="chat-reaction-emoji">{emoji}</span>
+                            <span className="chat-reaction-count">{list.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {isDeletedForAll ? null : null}
                 </div>
                 {isSender && (
                   <Avatar className="chat-row-avatar">
@@ -1062,6 +1475,19 @@ export default function ChatPage() {
         {/* Input */}
         <div className="chat-input-wrap">
           {sendError && <p className="mb-2 text-xs text-destructive">{sendError}</p>}
+          {replyTarget ? (
+            <div className="chat-reply-preview">
+              <div>
+                <p className="chat-reply-preview-label">
+                  Replying to {replyTarget.senderId === user?.uid ? 'You' : otherUserProfile?.name || 'Shifter'}
+                </p>
+                <p className="chat-reply-preview-text">{replyTarget.text}</p>
+              </div>
+              <button type="button" className="chat-reply-preview-close" onClick={() => setReplyTarget(null)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
           <form onSubmit={handleSendMessage} className="chat-input-form">
             <input
               id="chat-attachment-input"
@@ -1078,7 +1504,26 @@ export default function ChatPage() {
             >
               <Paperclip className="h-5 w-5" />
             </label>
+            <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" className="chat-emoji-btn" title="Add emoji">
+                  <SmilePlus className="h-5 w-5" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="chat-emoji-panel"
+                side="top"
+                align="start"
+                onInteractOutside={(event) => event.preventDefault()}
+              >
+                <button type="button" className="chat-emoji-close" onClick={() => setEmojiPickerOpen(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+                <emoji-picker ref={emojiPickerRef} className="chat-emoji-picker" />
+              </PopoverContent>
+            </Popover>
             <Input
+              ref={inputRef}
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder={isUploadingAttachment ? 'Uploading attachment...' : 'Type a message...'}
