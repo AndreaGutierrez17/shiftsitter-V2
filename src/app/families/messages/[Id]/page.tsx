@@ -700,8 +700,8 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!activeMessageId) return;
-    const handleOutside = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as HTMLElement | null;
+    const handleOutside: EventListener = (event) => {
+      const target = (event.target as HTMLElement | null);
       if (!target?.closest('.chat-message-col')) {
         setActiveMessageId(null);
       }
