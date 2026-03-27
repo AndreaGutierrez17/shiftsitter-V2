@@ -2167,7 +2167,8 @@ button {
 }
 
 .messages-panel{
-  width:min(1120px, 96vw);
+  width:100%;
+  max-width:1120px;
   border:1px solid var(--border);
   border-radius:16px;
   background:linear-gradient(180deg, rgba(255,246,239,.78), #fff);
@@ -2175,7 +2176,6 @@ button {
   overflow:hidden;
   overflow-x:hidden !important;
   overflow-x:clip;
-  max-width:100%;
   min-width:0;
 }
 
@@ -2199,6 +2199,8 @@ button {
   overflow-x:hidden;
   display:flex;
   flex-direction:column;
+  width:100%;
+  max-width:320px;
 }
 
 .messages-scroll-area{
