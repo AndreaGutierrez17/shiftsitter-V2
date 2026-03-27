@@ -2141,7 +2141,7 @@ button {
 .messages-list{
   display:grid;
   gap:.55rem;
-  overflow-x:hidden;
+  overflow-x:hidden !important;
   width:100%;
   max-width:100%;
   min-width:0;
@@ -2172,7 +2172,7 @@ button {
   background:linear-gradient(180deg, rgba(255,246,239,.78), #fff);
   box-shadow:0 16px 42px rgba(34,49,75,.10);
   overflow:hidden;
-  overflow-x:hidden;
+  overflow-x:hidden !important;
   max-width:100%;
   min-width:0;
 }
@@ -2191,9 +2191,14 @@ button {
 .messages-scroll-area{
   overflow-y:auto;
   flex:1;
-  overflow-x:hidden;
+  overflow-x:hidden !important;
   max-width:100%;
   min-width:0;
+  overscroll-behavior-x:none;
+}
+
+.messages-scroll-area::-webkit-scrollbar:horizontal{
+  height:0;
 }
 
 .messages-preview-panel{
@@ -2255,6 +2260,7 @@ button {
   overflow:hidden;
   width:100%;
   min-width:0;
+  box-sizing:border-box;
 }
 
 .messages-item:hover{
