@@ -52,6 +52,8 @@ type AssistantReplyPayload = {
   advice?: string;
   source?: 'ai' | 'fallback';
 };
+const EmojiPicker = (props: React.HTMLAttributes<HTMLElement>) =>
+  React.createElement('emoji-picker', props);
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_ATTACHMENT_MB = 8;
 const BLOCKED_DOC_KEYWORDS = ['license', 'licencia', 'id', 'identification', 'passport', 'driver'];
@@ -1522,7 +1524,7 @@ export default function ChatPage() {
                 <button type="button" className="chat-emoji-close" onClick={() => setEmojiPickerOpen(false)}>
                   <X className="h-4 w-4" />
                 </button>
-                <emoji-picker ref={emojiPickerRef} className="chat-emoji-picker" />
+                <EmojiPicker ref={emojiPickerRef} className="chat-emoji-picker" />
               </PopoverContent>
             </Popover>
             <Input
