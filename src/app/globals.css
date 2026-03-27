@@ -2202,33 +2202,32 @@ button {
 }
 
 .messages-scroll-area{
-  overflow:hidden;
+  overflow:visible !important;
   flex:1;
-  overflow-x:hidden !important;
-  overflow-x:clip;
+  overflow-x:visible !important;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
 }
 
 .messages-scroll-inner{
-  height:100%;
-  overflow-y:auto;
-  overflow-x:hidden !important;
-  overflow-x:clip;
+  height:auto;
+  overflow:visible !important;
+  overflow-x:visible !important;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
   box-sizing:border-box;
-  padding-right:.5rem;
 }
 
-.messages-scroll-inner::-webkit-scrollbar:horizontal{
-  height:0;
+.messages-scroll-inner::-webkit-scrollbar{
+  width:0 !important;
+  height:0 !important;
 }
 
-.messages-scroll-area::-webkit-scrollbar:horizontal{
-  height:0;
+.messages-scroll-area::-webkit-scrollbar{
+  width:0 !important;
+  height:0 !important;
 }
 
 .messages-preview-panel{
@@ -2357,7 +2356,8 @@ button {
 }
 
 .messages-scroll-area::-webkit-scrollbar{
-  height:0;
+  width:0 !important;
+  height:0 !important;
 }
 
 .chat-shell{
