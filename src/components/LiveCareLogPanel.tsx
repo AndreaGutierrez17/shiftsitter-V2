@@ -197,6 +197,7 @@ export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps
     <>
       <Button
         variant="outline"
+        data-tour="calendar-live-log"
         className={cn(
           "w-full flex items-center justify-between h-12 rounded-2xl border-slate-200 bg-white hover:bg-slate-50 shadow-sm transition-all px-4",
           isAccepted && "border-emerald-200"
