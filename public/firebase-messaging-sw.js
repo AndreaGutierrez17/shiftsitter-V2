@@ -47,6 +47,15 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil((async () => {
     try {
+      const allClients = await clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+      const hasFocusedClient = allClients.some((client) => client.focused);
+      if (hasFocusedClient) {
+        return;
+      }
+
       const payload = event.data.json();
       await showNormalizedNotification(payload);
     } catch (error) {

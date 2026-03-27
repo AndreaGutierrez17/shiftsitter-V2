@@ -58,7 +58,12 @@ EmojiPicker.displayName = 'EmojiPicker';
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_ATTACHMENT_MB = 8;
 const BLOCKED_DOC_KEYWORDS = ['license', 'licencia', 'id', 'identification', 'passport', 'driver'];
-const REACTION_SET = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
+const REACTION_SET = ['\u{1F44D}', '\u2764\uFE0F', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F64F}'] as const;
+const buildReactionKey = (emoji: string) =>
+  Array.from(emoji)
+    .map((char) => char.codePointAt(0)?.toString(16))
+    .filter((value): value is string => Boolean(value))
+    .join('-');
 
 const validateChatAttachment = (file: File) => {
   const lowerName = file.name.toLowerCase();
@@ -174,6 +179,10 @@ export default function ChatPage() {
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const isNearBottomRef = useRef(true);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const lastMessageCountRef = useRef(0);
   const emojiPickerRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
@@ -211,6 +220,19 @@ export default function ChatPage() {
     setVh();
     window.addEventListener('resize', setVh);
     return () => window.removeEventListener('resize', setVh);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 640px)');
+    const applyLock = () => {
+      const shouldLock = mq.matches;
+      document.documentElement.classList.toggle('chat-body-lock', shouldLock);
+      document.body.classList.toggle('chat-body-lock', shouldLock);
+    };
+    applyLock();
+    mq.addEventListener('change', applyLock);
+    return () => mq.removeEventListener('change', applyLock);
   }, []);
 
   useEffect(() => {
@@ -364,8 +386,26 @@ export default function ChatPage() {
     };
   }, [conversationId, isClosingConversation, user]);
 
+  const handleMessagesScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const threshold = 72;
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottomRef.current = distanceFromBottom <= threshold;
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const lastMessageId = messages.length > 0 ? messages[messages.length - 1]?.id ?? null : null;
+    const isNewMessage = lastMessageId !== null && lastMessageId !== lastMessageIdRef.current;
+    lastMessageIdRef.current = lastMessageId;
+    lastMessageCountRef.current = messages.length;
+    if (!isNewMessage) return;
+    if (!isNearBottomRef.current) return;
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
   }, [messages]);
 
   const markMessagesRead = useCallback(() => {
@@ -758,6 +798,7 @@ export default function ChatPage() {
           const idToken = await user.getIdToken();
           const actorName =
             fullProfiles.current?.name || currentUserProfile?.name || user.displayName || 'A shifter';
+          const reactionKey = buildReactionKey(emoji);
           await fetch('/api/notify', {
             method: 'POST',
             headers: {
@@ -766,7 +807,7 @@ export default function ChatPage() {
             },
             body: JSON.stringify({
               type: 'message',
-              notificationId: `reaction_${message.id}_${emoji}_${user.uid}`,
+              notificationId: `reaction_${message.id}_${reactionKey}_${user.uid}`,
               targetUserIds: [message.senderId],
               title: 'New reaction',
               body: `${actorName} reacted ${emoji} to your message.`,
@@ -1276,7 +1317,11 @@ export default function ChatPage() {
         <div className="chat-security-banner">Messages are private to this conversation.</div>
 
         {/* Messages */}
-        <div className="chat-messages chat-messages--workspace">
+        <div
+          className="chat-messages chat-messages--workspace"
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+        >
           {messages.length === 0 && (
               <div className="text-center my-4">
                   <Button variant="outline" className="ss-pill-btn-outline chat-empty-cta" onClick={() => { setIsAiOpen(true); handleGetIcebreakers(); }}>
