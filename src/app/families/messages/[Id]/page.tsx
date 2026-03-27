@@ -1309,7 +1309,8 @@ export default function ChatPage() {
                       onClick={(event) => event.stopPropagation()}
                     >
                       {REACTION_SET.map((emoji) => {
-                        const reacted = Boolean(user?.uid) && (message.reactions?.[emoji] || []).includes(user.uid);
+                        const currentUserId = user?.uid ?? '';
+                        const reacted = currentUserId.length > 0 && (message.reactions?.[emoji] || []).includes(currentUserId);
                         return (
                           <button
                             key={`${message.id}-quick-${emoji}`}
