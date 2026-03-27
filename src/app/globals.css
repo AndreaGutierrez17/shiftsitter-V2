@@ -1744,6 +1744,12 @@ button {
 }
 
 @media (max-width: 640px){
+  .messages-panel{
+    padding-bottom:12px;
+  }
+  .messages-scroll-area{
+    padding-bottom:12px;
+  }
   .auth-left{padding:4.75rem 1rem 1rem}
   .auth-right{padding:1rem .9rem 1.5rem}
   .auth-card{
@@ -2188,6 +2194,16 @@ button {
 .messages-panel *::-webkit-scrollbar{
   width:0 !important;
   height:0 !important;
+}
+
+.messages-panel{
+  padding-bottom:12px;
+  box-sizing:border-box;
+}
+
+.messages-scroll-area{
+  padding-bottom:12px;
+  box-sizing:border-box;
 }
 
 .messages-sidebar{
