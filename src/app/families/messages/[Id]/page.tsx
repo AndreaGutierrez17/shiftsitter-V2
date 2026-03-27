@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { TouchEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, createElement } from 'react';
+import type { TouchEvent, HTMLAttributes } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Conversation, Message, Shift, UserProfile } from '@/lib/types';
@@ -52,8 +52,8 @@ type AssistantReplyPayload = {
   advice?: string;
   source?: 'ai' | 'fallback';
 };
-const EmojiPicker = (props: React.HTMLAttributes<HTMLElement>) =>
-  React.createElement('emoji-picker', props);
+const EmojiPicker = (props: HTMLAttributes<HTMLElement>) =>
+  createElement('emoji-picker', props);
 const MAX_MESSAGE_LENGTH = 500;
 const MAX_ATTACHMENT_MB = 8;
 const BLOCKED_DOC_KEYWORDS = ['license', 'licencia', 'id', 'identification', 'passport', 'driver'];
