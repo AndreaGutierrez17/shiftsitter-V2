@@ -2204,18 +2204,20 @@ button {
 }
 
 .messages-scroll-area{
-  overflow:visible !important;
+  overflow:hidden !important;
   flex:1;
-  overflow-x:visible !important;
+  overflow-x:hidden !important;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
 }
 
 .messages-scroll-inner{
-  height:auto;
-  overflow:visible !important;
-  overflow-x:visible !important;
+  height:100%;
+  display:block;
+  overflow-y:auto;
+  overflow-x:hidden !important;
+  width:100%;
   max-width:100%;
   min-width:0;
   overscroll-behavior-x:none;
