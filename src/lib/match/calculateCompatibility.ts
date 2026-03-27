@@ -209,25 +209,41 @@ function deriveOffer(profile: MatchProfile): NeedOfferShape {
 }
 
 function estimateTravel(currentUser: MatchProfile, candidate: MatchProfile, myNeed: NeedOfferShape, candidateOffer: NeedOfferShape) {
-  const zipA = myNeed.zipHome || myNeed.zipWork || currentUser.zip;
-  const zipB = candidateOffer.zipHome || candidateOffer.zipWork || candidate.zip;
+  const zipA = (myNeed.zipHome || myNeed.zipWork || currentUser.zip)?.trim();
+  const zipB = (candidateOffer.zipHome || candidateOffer.zipWork || candidate.zip)?.trim();
   const stateMatch = sameState(currentUser.state, candidate.state);
 
-  if (zipA && zipB && zipA === zipB) {
-    return { minutes: 10, distanceKm: 3, locationScore: 100 };
+  if (zipA && zipB) {
+    if (zipA === zipB) {
+      return { minutes: 10, distanceKm: 3, locationScore: 100 };
+    }
+    // 4 digit match (very contiguous, same local PO section)
+    if (zipA.substring(0, 4) === zipB.substring(0, 4)) {
+      return { minutes: 15, distanceKm: 8, locationScore: 90 };
+    }
+    // 3 digit match (same sectional center facility / metro area)
+    if (zipA.substring(0, 3) === zipB.substring(0, 3)) {
+      return { minutes: 25, distanceKm: 20, locationScore: 80 };
+    }
+    // 2 digit match (same broader region / state area)
+    if (zipA.substring(0, 2) === zipB.substring(0, 2)) {
+      return { minutes: 40, distanceKm: 50, locationScore: 65 };
+    }
   }
+
+  // Fallback to states if no ZIP alignment or ZIPs missing
   if (stateMatch === true) {
-    return { minutes: 25, distanceKm: 24, locationScore: zipA && zipB ? 72 : 60 };
+    return { minutes: 45, distanceKm: 60, locationScore: 55 };
   }
   if (stateMatch === false) {
-    return { minutes: 45, distanceKm: 80, locationScore: 25 };
+    return { minutes: null, distanceKm: null, locationScore: 20 };
   }
 
   if (zipA || zipB) {
-    return { minutes: 30, distanceKm: 32, locationScore: 45 };
+    return { minutes: null, distanceKm: null, locationScore: 45 };
   }
 
-  return { minutes: null, distanceKm: null, locationScore: 45 };
+  return { minutes: null, distanceKm: null, locationScore: 40 };
 }
 
 function settingCompatible(needSetting?: SettingPreference, offerSetting?: SettingPreference) {
@@ -294,10 +310,11 @@ export function calculateCompatibility(
   const reverseDayOverlap = overlapPercent(candidateNeed.days, myOffer.days);
   const reverseShiftOverlap = overlapPercent(candidateNeed.shifts, myOffer.shifts);
 
-  const availabilityScore = averagePercent([
-    averagePercent([forwardDayOverlap, forwardShiftOverlap]),
-    averagePercent([reverseDayOverlap, reverseShiftOverlap]),
-  ]);
+  const forwardAvailability = averagePercent([forwardDayOverlap, forwardShiftOverlap]);
+  const reverseAvailability = averagePercent([reverseDayOverlap, reverseShiftOverlap]);
+  
+  // Multiplicative strict reciprocity (Tinder-style)
+  const availabilityScore = Math.round((forwardAvailability / 100) * (reverseAvailability / 100) * 100);
 
   const extrasForward = overlapPercent(myNeed.extrasNeeded, candidateOffer.extrasOffered);
   const extrasReverse = overlapPercent(candidateNeed.extrasNeeded, myOffer.extrasOffered);
@@ -308,12 +325,15 @@ export function calculateCompatibility(
 
   const needsValuesScore = averagePercent([extrasForward, extrasReverse, valuesOverlap]);
 
-  const preferencesScore = averagePercent([
-    smokeCompatibility(myNeed, candidateOffer),
-    petsCompatibility(myNeed, candidateNeed),
-    settingCompatibility(myNeed, candidateOffer),
-    travelCompatibility(travelEstimate.minutes, myNeed, candidateOffer),
-  ]);
+  const smokeScore = smokeCompatibility(myNeed, candidateOffer);
+  const petsScore = petsCompatibility(myNeed, candidateNeed);
+  const settingScore = settingCompatibility(myNeed, candidateOffer);
+  const travelScore = travelCompatibility(travelEstimate.minutes, myNeed, candidateOffer);
+
+  const preferencesScore = averagePercent([smokeScore, petsScore, settingScore, travelScore]);
+
+  // Dealbreakers crash the final score mimicking strict filtering
+  const dealbreakerMultiplier = (smokeScore === 0 || petsScore === 0) ? 0.1 : 1.0;
 
   const locationScore = travelEstimate.locationScore;
 
@@ -322,9 +342,8 @@ export function calculateCompatibility(
   const weightedNeedsValues = needsValuesScore * COMPATIBILITY_WEIGHTS.needsValues;
   const weightedPreferences = preferencesScore * COMPATIBILITY_WEIGHTS.preferences;
 
-  const totalScore = Math.round(
-    clamp(weightedLocation + weightedAvailability + weightedNeedsValues + weightedPreferences)
-  );
+  const totalScoreBase = weightedLocation + weightedAvailability + weightedNeedsValues + weightedPreferences;
+  const totalScore = Math.round(clamp(totalScoreBase * dealbreakerMultiplier));
 
   const detailedBreakdown: DetailedBreakdownItem[] = [
     {

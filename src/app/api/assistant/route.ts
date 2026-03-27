@@ -17,68 +17,34 @@ function buildFallbackAdvice(query: string): string {
   const text = query.toLowerCase();
   const compact = text.replace(/\s+/g, ' ').trim();
 
-  if (
-    compact === 'hi' ||
-    compact === 'hello' ||
-    compact === 'hey' ||
-    compact === 'hola' ||
-    compact === 'hello!' ||
-    compact === 'hi!'
-  ) {
-    return 'Hello. I can help with matching, schedules, care requests, messaging, cancellations, reviews, and the next step after any update. What would you like to work through first?';
+  if (/^(hola|hi|hello|hey|buenas)/.test(compact)) {
+    return '¡Hola! Soy tu asistente de ShiftSitter 💙. Estoy aquí para ayudarte a organizar turnos, mejorar tu perfil o resolver dudas de cuidado. ¿En qué te ayudo hoy?';
   }
 
-  if (
-    text.includes('confirm') ||
-    text.includes('confirmation') ||
-    text.includes('what next') ||
-    text.includes('next step') ||
-    text.includes('after accepting') ||
-    text.includes('after confirmation')
-  ) {
-    return 'After a confirmation, the next step is to align on the practical details: date, time, handoff, routines, and any care notes. Then keep the conversation focused on expectations so both sides know exactly what the shift will look like.';
+  if (compact.includes('confirm') || compact.includes('siguiente') || compact.includes('next')) {
+    return '¡Perfecto! El siguiente paso es ponernos de acuerdo en los detalles prácticos: fecha, hora, rutinas del niño y el momento de entrega. Así todos estarán en la misma página.';
   }
 
-  if (compact.length <= 4) {
-    return 'No problem. If you are just getting started, the safest next step is usually to confirm timing, routines, handoff details, and any care notes. If you want, ask me what to send next and I will help you phrase it clearly.';
+  if (compact.includes('match') || compact.includes('perfil')) {
+    return 'Revisar los perfiles es clave. Fíjate bien en la compatibilidad de horarios, distancias y rutinas de cuidado. ¡Recuerda que la confianza es lo más importante en ShiftSitter!';
   }
 
-  if (text.includes('match') || text.includes('compatible') || text.includes('profile')) {
-    return 'Use the match details to compare schedule overlap, distance, safety alignment, and childcare fit. The strongest profiles are specific about routines, care needs, child ages, and what support they can offer in return.';
+  if (compact.length <= 6) {
+    return '¡Por supuesto! Si estás empezando, te sugiero que vayas al calendario o chatees con una familia para coordinar. ¿Quieres que te ayude a redactar un mensaje inicial?';
   }
 
-  if (text.includes('message') || text.includes('chat') || text.includes('intro') || text.includes('ice') || text.includes('hello')) {
-    return 'Start with something practical: confirm availability, child age, routines, handoff expectations, and how you prefer to coordinate. Keep the first message short and move quickly to care details and timing.';
-  }
-
-  if (text.includes('shift') || text.includes('calendar') || text.includes('schedule')) {
-    return 'Before confirming a shift, make sure both sides agree on date, start time, end time, location, handoff details, and any care notes. If plans change, use the reschedule flow so both sides have a clear record.';
-  }
-
-  if (text.includes('cancel')) {
-    return 'If you need to cancel, communicate early, be direct, and offer a replacement time if possible. Keep the note factual so the other family knows whether to reschedule or make other arrangements.';
-  }
-
-  if (text.includes('review') || text.includes('star') || text.includes('rating')) {
-    return 'A strong review should mention reliability, communication, punctuality, and whether the care expectations matched what was agreed. Keep it specific, fair, and centered on the care exchange.';
-  }
-
-  if (text.includes('safe') || text.includes('trust') || text.includes('verify')) {
-    return 'To build trust, keep verification current, confirm key details in writing before the shift, and make sure both sides understand pickup, drop-off, emergency contacts, and cancellation expectations.';
-  }
-
-  return 'I can help with scheduling, care requests, profile setup, communication, cancellations, reviews, and planning the next step clearly. If your question is broad, I will still help by narrowing it into the most useful next action inside ShiftSitter.';
+  return '¡Claro que sí! Puedo ayudarte con consejos sobre horarios, perfiles, comunicación y cómo usar ShiftSitter de la mejor forma. Cuéntame un poco más de lo que necesitas y lo resolvemos.';
 }
 
 async function callGeminiAssistant(userProfile: string, query: string, apiKey: string): Promise<string | null> {
   const prompt = [
-    'You are ShiftSitter Assistant.',
-    'Provide concise, practical, friendly guidance for childcare coordination, schedules, trust, communication, profile setup, cancellations, reviews, and in-app workflow.',
-    'Always respond in English, even if the user writes in another language.',
-    'If the user sends a short greeting like hello or hi, respond warmly first, then invite a relevant question.',
-    'Treat broad, vague, or simple questions as valid. Helpfully infer the most likely ShiftSitter context and answer in a useful way.',
-    'Keep the conversation open and helpful, but always anchor the answer to ShiftSitter workflows, childcare coordination, expectations, scheduling, messaging, reviews, or trust.',
-    'If the question is clearly outside scope, do not shut the user down. Briefly redirect them to the closest useful ShiftSitter topic in a natural way.',
+    'You are the ShiftSitter Assistant, an incredibly warm, friendly, and expert nanny/caregiver AI guide.',
+    'IMPORTANT: Always answer politely in the EXACT same language the user writes in (e.g. if they say "hola", reply in natural conversational Spanish).',
+    'Provide highly practical but very warm guidance for childcare coordination, schedules, trust, profile setup, messaging, and in-app workflow.',
+    'If the user sends a short greeting like hello or hola, respond warmly first, then invite a relevant question.',
+    'NEVER use cliché introductory phrases like "romper el hielo", "icebreaker", or "to break the ice". Speak naturally and softly.',
+    'Keep the conversation open, empathetic, and helpful, but always anchor the answer to ShiftSitter matching, expectations, scheduling, or safe communication.',
+    'If the question is completely outside scope, DO NOT shut the user down coldly. Briefly and politely redirect them to the closest useful ShiftSitter topic in a very warm, human way.',
     'Avoid flirting, dating language, or broad off-topic life advice.',
     'Do not sound defensive, robotic, or restrictive.',
     '',
@@ -88,11 +54,11 @@ async function callGeminiAssistant(userProfile: string, query: string, apiKey: s
     'Question:',
     query,
     '',
-    'Answer in short helpful paragraphs.',
+    'Answer in short friendly paragraphs, including emojis where suitable.',
   ].join('\n');
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\${encodeURIComponent(apiKey)}`,
     {
       method: 'POST',
       headers: {

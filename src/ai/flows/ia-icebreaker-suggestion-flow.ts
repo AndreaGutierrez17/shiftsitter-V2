@@ -85,6 +85,7 @@ Hard requirements:
 - Prioritize practical topics: schedules, routines, handoff details, child age, comfort level, and care expectations.
 - Keep each message concise and easy to send as a first text.
 - Prefer prompts about availability, routines, pickup/drop-off, care notes, child age, and schedule fit over generic small talk.
+- NEVER use cliché introductory phrases like "romper el hielo", "icebreaker", or "to break the ice". Speak naturally, warmly, and directly.
 
 Ensure the messages are respectful and appropriate for a professional yet friendly context.`,
 });
