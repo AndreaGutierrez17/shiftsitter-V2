@@ -494,6 +494,40 @@ button {
   letter-spacing: 1px;
   animation: fadeInUp 1s ease-in-out;
 }
+
+/* FAQ accordion */
+#faq .accordion-item {
+  background: #fff;
+  border: 1px solid var(--cream-2);
+  border-radius: 14px;
+  overflow: hidden;
+}
+#faq .accordion-item + .accordion-item {
+  margin-top: 0.75rem;
+}
+#faq .accordion-button {
+  background: rgba(47, 196, 182, 0.16);
+  color: #000 !important;
+  font-weight: 800;
+}
+#faq .accordion-button:not(.collapsed) {
+  background: rgba(47, 196, 182, 0.22);
+  color: #000 !important;
+  box-shadow: none;
+}
+#faq .accordion-button:focus {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(47, 196, 182, 0.25);
+}
+#faq .accordion-body {
+  background: #fff;
+  color: #000 !important;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+#faq .accordion-body * {
+  color: #000 !important;
+}
 @keyframes fadeInUp {
   from {
     opacity: 0;
