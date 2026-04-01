@@ -1,10 +1,79 @@
 
 import BootstrapAssets from "@/components/BootstrapAssets";
 
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.shiftsitter.com/#organization",
+      name: "ShiftSitter",
+      url: "https://www.shiftsitter.com/",
+      logo: "https://www.shiftsitter.com/logo-shiftsitter.png",
+      sameAs: [
+        "https://www.instagram.com/shiftsitterofficial?igsh=cm80MG83eDBtcjlw",
+        "https://x.com/ShiftSitterHQ",
+        "https://www.facebook.com/share/17kYbNJrEE/",
+        "https://www.linkedin.com/company/shiftsitter/",
+      ],
+      contactPoint: [
+        {
+          "@type": "ContactPoint",
+          contactType: "customer support",
+          email: "info@shiftsitter.com",
+          availableLanguage: ["en", "es"],
+        },
+      ],
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://www.shiftsitter.com/#website",
+      url: "https://www.shiftsitter.com/",
+      name: "ShiftSitter",
+      publisher: { "@id": "https://www.shiftsitter.com/#organization" },
+      inLanguage: "en",
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://www.shiftsitter.com/#faq",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "How does ShiftSitter work for shift-working families?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Families create profiles, complete verification, and match with nearby parents who share compatible schedules. The platform highlights shared needs and availability so families can set agreements and coordinate reciprocal care.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "What makes ShiftSitter trusted and safe?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "ShiftSitter supports ID verification, background check options, and secure in-app messaging to build trust from day one.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Who is ShiftSitter built for?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "ShiftSitter is built for shift-working families and the teams who support them, making reciprocal childcare easier to organize without the cost of traditional care.",
+          },
+        },
+      ],
+    },
+  ],
+};
+
 export default function HomePage() {
   return (
     <>
       <BootstrapAssets includeJs />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <section className="hero-split">
         <img
           className="hero-split-media"
@@ -175,6 +244,100 @@ export default function HomePage() {
                 className="img-fluid rounded shadow-soft"
               />
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" className="py-5">
+        <div className="container">
+          <h2 className="text-center mb-4 features-title">FAQs</h2>
+          <div className="row g-4">
+            <div className="col-md-4">
+              <div className="card feature-card p-4 h-100">
+                <h3 className="h5">How does ShiftSitter work for shift-working families?</h3>
+                <p className="text-muted-strong mb-0">
+                  Families create profiles, complete verification, and match with nearby parents who
+                  share compatible schedules. The platform highlights shared needs and availability
+                  so families can set agreements and coordinate reciprocal care.
+                </p>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <div className="card feature-card p-4 h-100">
+                <h3 className="h5">What makes ShiftSitter trusted and safe?</h3>
+                <p className="text-muted-strong mb-0">
+                  ShiftSitter supports ID verification, background check options, and secure in-app
+                  messaging to build trust from day one.
+                </p>
+              </div>
+            </div>
+            <div className="col-md-4">
+              <div className="card feature-card p-4 h-100">
+                <h3 className="h5">Who is ShiftSitter built for?</h3>
+                <p className="text-muted-strong mb-0">
+                  ShiftSitter is built for shift-working families and the teams who support them,
+                  making reciprocal childcare easier to organize without the cost of traditional care.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="executive-summary" className="py-5 section-deep">
+        <div className="container">
+          <div className="card shadow-soft border-0 p-4 p-lg-5">
+            <h2 className="mb-3">Executive Summary</h2>
+            <p className="mb-3">
+              This audit for https://www.shiftsitter.com/ scored 84/100. The
+              biggest opportunities are in Security and AEO, where the current
+              issues are limiting discoverability, AI-search visibility, and
+              conversion readiness. The site already shows strength in UX/UI,
+              so fixing the highest-priority items should improve both search
+              performance and the quality of incoming leads.
+            </p>
+
+            <h3 className="h5 mt-4">Top 3 Priority Actions</h3>
+            <ol className="mb-3">
+              <li>
+                <strong>No structured data (Schema.org) (AEO).</strong> Business
+                impact: High impact on conversions. Recommended fix: Add
+                Schema.org markup for FAQPage, HowTo, or Article types.
+              </li>
+              <li>
+                <strong>Missing Content Security Policy (CSP) (Security).</strong>{" "}
+                Business impact: High impact on conversions. Recommended fix:
+                Implement a Content Security Policy header.
+              </li>
+              <li>
+                <strong>Missing canonical tag (SEO).</strong> Business impact:
+                Moderate improvement. Recommended fix: Add a canonical link tag
+                pointing to the preferred URL.
+              </li>
+            </ol>
+
+            <h3 className="h5 mt-4">Quick Wins</h3>
+            <ul className="mb-3">
+              <li>
+                No structured data (Schema.org): Add Schema.org markup for
+                FAQPage, HowTo, or Article types.
+              </li>
+              <li>
+                Missing Content Security Policy (CSP): Implement a Content
+                Security Policy header.
+              </li>
+              <li>
+                Missing canonical tag: Add a canonical link tag pointing to the
+                preferred URL.
+              </li>
+            </ul>
+
+            <h3 className="h5 mt-4">Estimated Improvement Potential</h3>
+            <p className="mb-0">
+              If the current recommendations are implemented, this audit could
+              realistically move from 84/100 to around 100/100, with roughly a
+              16-point upside concentrated in Security and AEO.
+            </p>
           </div>
         </div>
       </section>
