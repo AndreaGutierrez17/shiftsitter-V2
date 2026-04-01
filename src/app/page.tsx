@@ -48,18 +48,34 @@ const structuredData = {
         },
         {
           "@type": "Question",
-          name: "What makes ShiftSitter trusted and safe?",
+          name: "What do I need to sign up and get verified?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "ShiftSitter supports ID verification, background check options, and secure in-app messaging to build trust from day one.",
+            text: "You can create a profile, add household details, and complete identity verification. Some communities may offer optional background checks to strengthen trust.",
           },
         },
         {
           "@type": "Question",
-          name: "Who is ShiftSitter built for?",
+          name: "How are schedules and care swaps coordinated?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "ShiftSitter is built for shift-working families and the teams who support them, making reciprocal childcare easier to organize without the cost of traditional care.",
+            text: "ShiftSitter uses shared availability and a smart calendar to highlight overlaps, so families can propose and confirm care swaps in the app.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Is messaging and data secure?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "The app provides secure in-app messaging so families can communicate without sharing personal contact details until they are ready.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "Can employers support their teams with ShiftSitter?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Yes. Employers can partner with ShiftSitter to give shift-working teams an easier way to find trusted, local reciprocal care.",
           },
         },
       ],
@@ -67,8 +83,9 @@ const structuredData = {
   ],
 };
 
-export default function HomePage() {
-  const nonce = headers().get("x-nonce") ?? undefined;
+export default async function HomePage() {
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
 
   return (
     <>
@@ -255,93 +272,138 @@ export default function HomePage() {
       <section id="faq" className="py-5">
         <div className="container">
           <h2 className="text-center mb-4 features-title">FAQs</h2>
-          <div className="row g-4">
-            <div className="col-md-4">
-              <div className="card feature-card p-4 h-100">
-                <h3 className="h5">How does ShiftSitter work for shift-working families?</h3>
-                <p className="text-muted-strong mb-0">
-                  Families create profiles, complete verification, and match with nearby parents who
-                  share compatible schedules. The platform highlights shared needs and availability
-                  so families can set agreements and coordinate reciprocal care.
-                </p>
+          <div className="accordion shadow-soft" id="faqAccordion">
+            <div className="accordion-item">
+              <h3 className="accordion-header" id="faqHeadingOne">
+                <button
+                  className="accordion-button"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#faqCollapseOne"
+                  aria-expanded="true"
+                  aria-controls="faqCollapseOne"
+                >
+                  How does ShiftSitter work for shift-working families?
+                </button>
+              </h3>
+              <div
+                id="faqCollapseOne"
+                className="accordion-collapse collapse show"
+                aria-labelledby="faqHeadingOne"
+                data-bs-parent="#faqAccordion"
+              >
+                <div className="accordion-body text-muted-strong">
+                  Families create profiles, complete verification, and match with nearby parents
+                  who share compatible schedules. The platform highlights shared needs and
+                  availability so families can set agreements and coordinate reciprocal care.
+                </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <div className="card feature-card p-4 h-100">
-                <h3 className="h5">What makes ShiftSitter trusted and safe?</h3>
-                <p className="text-muted-strong mb-0">
-                  ShiftSitter supports ID verification, background check options, and secure in-app
-                  messaging to build trust from day one.
-                </p>
+
+            <div className="accordion-item">
+              <h3 className="accordion-header" id="faqHeadingTwo">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#faqCollapseTwo"
+                  aria-expanded="false"
+                  aria-controls="faqCollapseTwo"
+                >
+                  What do I need to sign up and get verified?
+                </button>
+              </h3>
+              <div
+                id="faqCollapseTwo"
+                className="accordion-collapse collapse"
+                aria-labelledby="faqHeadingTwo"
+                data-bs-parent="#faqAccordion"
+              >
+                <div className="accordion-body text-muted-strong">
+                  You can create a profile, add household details, and complete identity
+                  verification. Some communities may offer optional background checks to strengthen
+                  trust.
+                </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <div className="card feature-card p-4 h-100">
-                <h3 className="h5">Who is ShiftSitter built for?</h3>
-                <p className="text-muted-strong mb-0">
-                  ShiftSitter is built for shift-working families and the teams who support them,
-                  making reciprocal childcare easier to organize without the cost of traditional care.
-                </p>
+
+            <div className="accordion-item">
+              <h3 className="accordion-header" id="faqHeadingThree">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#faqCollapseThree"
+                  aria-expanded="false"
+                  aria-controls="faqCollapseThree"
+                >
+                  How are schedules and care swaps coordinated?
+                </button>
+              </h3>
+              <div
+                id="faqCollapseThree"
+                className="accordion-collapse collapse"
+                aria-labelledby="faqHeadingThree"
+                data-bs-parent="#faqAccordion"
+              >
+                <div className="accordion-body text-muted-strong">
+                  ShiftSitter uses shared availability and a smart calendar to highlight overlaps,
+                  so families can propose and confirm care swaps in the app.
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <section id="executive-summary" className="py-5 section-deep">
-        <div className="container">
-          <div className="card shadow-soft border-0 p-4 p-lg-5">
-            <h2 className="mb-3">Executive Summary</h2>
-            <p className="mb-3">
-              This audit for https://www.shiftsitter.com/ scored 84/100. The
-              biggest opportunities are in Security and AEO, where the current
-              issues are limiting discoverability, AI-search visibility, and
-              conversion readiness. The site already shows strength in UX/UI,
-              so fixing the highest-priority items should improve both search
-              performance and the quality of incoming leads.
-            </p>
+            <div className="accordion-item">
+              <h3 className="accordion-header" id="faqHeadingFour">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#faqCollapseFour"
+                  aria-expanded="false"
+                  aria-controls="faqCollapseFour"
+                >
+                  Is messaging and data secure?
+                </button>
+              </h3>
+              <div
+                id="faqCollapseFour"
+                className="accordion-collapse collapse"
+                aria-labelledby="faqHeadingFour"
+                data-bs-parent="#faqAccordion"
+              >
+                <div className="accordion-body text-muted-strong">
+                  The app provides secure in-app messaging so families can communicate without
+                  sharing personal contact details until they are ready.
+                </div>
+              </div>
+            </div>
 
-            <h3 className="h5 mt-4">Top 3 Priority Actions</h3>
-            <ol className="mb-3">
-              <li>
-                <strong>No structured data (Schema.org) (AEO).</strong> Business
-                impact: High impact on conversions. Recommended fix: Add
-                Schema.org markup for FAQPage, HowTo, or Article types.
-              </li>
-              <li>
-                <strong>Missing Content Security Policy (CSP) (Security).</strong>{" "}
-                Business impact: High impact on conversions. Recommended fix:
-                Implement a Content Security Policy header.
-              </li>
-              <li>
-                <strong>Missing canonical tag (SEO).</strong> Business impact:
-                Moderate improvement. Recommended fix: Add a canonical link tag
-                pointing to the preferred URL.
-              </li>
-            </ol>
-
-            <h3 className="h5 mt-4">Quick Wins</h3>
-            <ul className="mb-3">
-              <li>
-                No structured data (Schema.org): Add Schema.org markup for
-                FAQPage, HowTo, or Article types.
-              </li>
-              <li>
-                Missing Content Security Policy (CSP): Implement a Content
-                Security Policy header.
-              </li>
-              <li>
-                Missing canonical tag: Add a canonical link tag pointing to the
-                preferred URL.
-              </li>
-            </ul>
-
-            <h3 className="h5 mt-4">Estimated Improvement Potential</h3>
-            <p className="mb-0">
-              If the current recommendations are implemented, this audit could
-              realistically move from 84/100 to around 100/100, with roughly a
-              16-point upside concentrated in Security and AEO.
-            </p>
+            <div className="accordion-item">
+              <h3 className="accordion-header" id="faqHeadingFive">
+                <button
+                  className="accordion-button collapsed"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#faqCollapseFive"
+                  aria-expanded="false"
+                  aria-controls="faqCollapseFive"
+                >
+                  Can employers support their teams with ShiftSitter?
+                </button>
+              </h3>
+              <div
+                id="faqCollapseFive"
+                className="accordion-collapse collapse"
+                aria-labelledby="faqHeadingFive"
+                data-bs-parent="#faqAccordion"
+              >
+                <div className="accordion-body text-muted-strong">
+                  Yes. Employers can partner with ShiftSitter to give shift-working teams an easier
+                  way to find trusted, local reciprocal care.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
