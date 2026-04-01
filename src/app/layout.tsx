@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import Header from "@/components/Header";
 import AppFooter from "@/components/AppFooter";
 import GuidedTour from "@/components/GuidedTour";
@@ -77,9 +78,11 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = headers().get("x-nonce") ?? undefined;
+
   return (
     <html lang="en">
-      <head>
+      <head nonce={nonce}>
         <link
           id="bootstrap-css-scoped"
           rel="stylesheet"

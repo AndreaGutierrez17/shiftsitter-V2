@@ -1,5 +1,6 @@
 
 import BootstrapAssets from "@/components/BootstrapAssets";
+import { headers } from "next/headers";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -67,11 +68,14 @@ const structuredData = {
 };
 
 export default function HomePage() {
+  const nonce = headers().get("x-nonce") ?? undefined;
+
   return (
     <>
       <BootstrapAssets includeJs />
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <section className="hero-split">
