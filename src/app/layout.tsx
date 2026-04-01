@@ -77,8 +77,13 @@ export const viewport: Viewport = {
   themeColor: "#2fc4b6",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const nonce = headers().get("x-nonce") ?? undefined;
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
 
   return (
     <html lang="en">
