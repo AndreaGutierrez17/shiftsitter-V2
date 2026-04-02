@@ -3,13 +3,13 @@ import { NextResponse, type NextRequest } from "next/server";
 const createContentSecurityPolicy = (nonce: string) =>
   [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net`,
+    `script-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://apis.google.com https://www.gstatic.com`,
     `style-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://storage.googleapis.com https://api.dicebear.com https://picsum.photos https://i.pravatar.cc",
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com",
-    "frame-src 'self'",
+    "frame-src 'self' https://accounts.google.com https://*.google.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
