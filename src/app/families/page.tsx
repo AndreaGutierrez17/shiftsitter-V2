@@ -218,6 +218,15 @@ export default function FamiliesPage() {
         await signInWithEmailAndPassword(auth, email, password);
     } catch(e: any) {
        const code = e?.code as string | undefined;
+       console.error("Families login auth error", {
+         code,
+         message: e?.message,
+         name: e?.name,
+         customData: e?.customData,
+         origin: typeof window !== "undefined" ? window.location.origin : "server",
+         authDomain: auth.app.options.authDomain,
+         projectId: auth.app.options.projectId,
+       });
        if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
         setMsg("Invalid email or password. Please check your credentials or sign up.");
       } else if (code === "auth/user-not-found") {

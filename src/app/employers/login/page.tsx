@@ -211,7 +211,16 @@ export default function EmployerLoginPage() {
       }
       await signInWithEmailAndPassword(auth, email, password);
     } catch (e: unknown) {
-      const error = e as { code?: string; message?: string };
+      const error = e as { code?: string; message?: string; customData?: unknown; name?: string };
+      console.error('Employer login auth error', {
+        code: error?.code,
+        message: error?.message,
+        name: error?.name,
+        customData: error?.customData,
+        origin: typeof window !== 'undefined' ? window.location.origin : 'server',
+        authDomain: auth.app.options.authDomain,
+        projectId: auth.app.options.projectId,
+      });
       const code = error?.code;
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
         setMsg('Invalid email or password. Please check your credentials or sign up.');
