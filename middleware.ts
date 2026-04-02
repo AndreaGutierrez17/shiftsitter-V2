@@ -7,7 +7,7 @@ const createContentSecurityPolicy = (nonce: string) =>
     `style-src 'self' 'nonce-${nonce}' https://cdn.jsdelivr.net https://fonts.googleapis.com`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://storage.googleapis.com https://api.dicebear.com https://picsum.photos https://i.pravatar.cc",
-    "font-src 'self' data: https://fonts.gstatic.com",
+    "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
     "connect-src 'self' https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com",
     "frame-src 'self' https://accounts.google.com https://*.google.com",
     "object-src 'none'",
