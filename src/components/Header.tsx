@@ -1,380 +1,871 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { updateDoc, doc, arrayUnion, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
-import { FileText, Loader2, Plus, Sparkles } from 'lucide-react';
-import type { Shift, CareLogEntry, Conversation } from '@/lib/types';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { BadgeCheck, Bell, CheckCheck, ChevronDown, CircleHelp, LogOut, Settings, Shield, Users } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserPresenceHeartbeat } from "@/hooks/useUserPresenceHeartbeat";
+import { signOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase/client";
+import { requestGuidedTourOpen } from "@/lib/guided-tour";
+import { EMPLOYER_NAV_LINKS, NAV_LINKS } from "@/lib/constants";
+import { enableWebPush, disableWebPush } from "@/lib/firebase/push";
+import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import {
+  collection,
+  doc,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 
-interface LiveCareLogPanelProps {
-  shift: Shift;
-  currentUserId: string;
-}
-
-const LOG_OPTIONS = [
-  { emoji: '🍼', label: 'Feeding' },
-  { emoji: '😴', label: 'Nap Started' },
-  { emoji: '🌅', label: 'Woke Up' },
-  { emoji: '💩', label: 'Diaper Change' },
-  { emoji: '⚽', label: 'Playtime' },
-  { emoji: '🩹', label: 'First Aid' },
-  { emoji: '⭐', label: 'General Update' },
+const publicNavLinks = [
+  { href: "/", label: "Home" },
+  { href: "/#how", label: "How it works" },
+  { href: "/#features", label: "Features" },
+  { href: "/#partners", label: "Partners" },
+  { href: "/employers", label: "For employers" },
 ];
 
-export function LiveCareLogPanel({ shift, currentUserId }: LiveCareLogPanelProps) {
-  const { toast } = useToast();
+const INACTIVITY_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = "shiftsitter:last-activity-at";
+const ADMIN_LINK_CACHE_KEY = "shiftsitter:is-admin-link";
+
+
+export default function Header() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { user } = useAuth();
-  const [isMainModalOpen, setIsMainModalOpen] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [selectedEmoji, setSelectedEmoji] = useState(LOG_OPTIONS[0].emoji);
-  const [logNote, setLogNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    title: string;
+    body: string;
+    href: string | null;
+    read?: boolean;
+    readAt: unknown | null;
+    createdAt?: any;
+  }>>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [notifOpenDesktop, setNotifOpenDesktop] = useState(false);
+  const [notifOpenMobile, setNotifOpenMobile] = useState(false);
+  const [userMenuOpenDesktop, setUserMenuOpenDesktop] = useState(false);
+  const [pushStatus, setPushStatus] = useState<"on" | "off" | "blocked">("off");
+  const [isHandlingPush, setIsHandlingPush] = useState(false);
+  const [accountType, setAccountType] = useState<"family" | "employer" | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userAvatarUrl, setUserAvatarUrl] = useState("");
+  const hasRefreshedPushRef = useRef(false);
+  const showAdminLink = Boolean(user && (isAdmin || pathname?.startsWith("/admin")));
+  const showFamilyTourControls = Boolean(user && accountType !== "employer" && pathname?.startsWith("/families"));
+  useUserPresenceHeartbeat(user?.uid);
+  const { toast } = useToast();
 
-  // Both parties can post logs
-  const isParticipant = shift.userIds.includes(currentUserId);
-  const isAccepted = shift.status === 'accepted';
-  const isCompleted = shift.status === 'completed';
+  const navLinks = user ? (accountType === "employer" ? EMPLOYER_NAV_LINKS : NAV_LINKS) : publicNavLinks;
 
-  const parseTime = (timeStr: string) => {
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
-    if (modifier === 'PM' && hours < 12) hours += 12;
-    if (modifier === 'AM' && hours === 12) hours = 0;
-    return { hours, minutes };
-  };
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
 
-  const getShiftDurationHours = () => {
-    const start = parseTime(shift.startTime);
-    const end = parseTime(shift.endTime);
-    let duration = end.hours - start.hours + (end.minutes - start.minutes) / 60;
-    if (duration < 0) duration += 24; // Handle overnight
-    return Math.ceil(duration);
-  };
+  useEffect(() => {
+    if (!user) {
+      setAccountType(null);
+      setIsAdmin(false);
+      setUserAvatarUrl("");
+      return;
+    }
 
-  const durationHours = getShiftDurationHours();
-  const hourSlots = Array.from({ length: durationHours }, (_, i) => i + 1);
+    let cancelled = false;
 
-  const [activeHour, setActiveHour] = useState<number | null>(null);
-  
-  // Format the logs ordered by time
-  const logs = shift.careLogs || [];
-  const sortedLogs = [...logs].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-
-  const handleAddLog = async () => {
-    if (!selectedEmoji || isSubmitting) return;
-    setIsSubmitting(true);
-    
-    try {
-      const option = LOG_OPTIONS.find((o) => o.emoji === selectedEmoji);
-      const newLog = {
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `log-${Date.now()}`,
-        emoji: selectedEmoji,
-        label: option?.label || 'Update',
-        time: new Date().toISOString(),
-        note: logNote.trim() || undefined,
-        hourIndex: activeHour, // Track which hour this belongs to
-        postedBy: currentUserId
-      };
-
-      await updateDoc(doc(db, 'shifts', shift.id), {
-        careLogs: arrayUnion(newLog)
-      });
-      
-      // Notify the other party
-      const otherUserId = shift.userIds.find(id => id !== currentUserId);
-      if (otherUserId && user) {
-        try {
-          const idToken = await user.getIdToken();
-          if (idToken) {
-            fetch('/api/notify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-              body: JSON.stringify({
-                type: 'shift_updated',
-                targetUserIds: [otherUserId],
-                title: 'New Care Log Entry',
-                body: `An update was posted for Hour ${activeHour} of the shift.`,
-                link: '/families/calendar'
-              })
-            });
-          }
-        } catch (e) {
-          console.error('Notify failed', e);
+    void (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setUserAvatarUrl(typeof user.photoURL === "string" ? user.photoURL : "");
+          setAccountType(null);
+          return;
         }
+        const data = snap.data() as { accountType?: string; role?: string; photoURL?: string; photoURLs?: unknown } | undefined;
+        const possiblePhotos = Array.isArray(data?.photoURLs) ? data?.photoURLs : [];
+        const nextPhoto =
+          (typeof possiblePhotos[0] === "string" ? possiblePhotos[0] : "") ||
+          (typeof data?.photoURL === "string" ? data?.photoURL : "") ||
+          (typeof user.photoURL === "string" ? user.photoURL : "");
+        setUserAvatarUrl(nextPhoto);
+        if (data?.accountType === "employer") {
+          setAccountType("employer");
+          return;
+        }
+        if (data?.accountType === "family" || ["parent", "sitter", "reciprocal"].includes(String(data?.role || ""))) {
+          setAccountType("family");
+          return;
+        }
+        setAccountType(null);
+      } catch {
+        setAccountType(null);
       }
+    })();
 
-      toast({ title: 'Log added', description: `Hour ${activeHour} update was posted.` });
-      setIsAdding(false);
-      setLogNote('');
-      setActiveHour(null);
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message || 'Could not add log.' });
-    } finally {
-      setIsSubmitting(false);
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (authLoading) {
+      return;
     }
-  };
 
-  const handleFinalizeShift = async () => {
-    if (isFinalizing) return;
-    setIsFinalizing(true);
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
     try {
-      // 1. Mark shift complete
-      await updateDoc(doc(db, 'shifts', shift.id), {
-        status: 'completed',
-        completedAt: serverTimestamp(),
-      });
+      if (window.localStorage.getItem(ADMIN_LINK_CACHE_KEY) === "1") {
+        setIsAdmin(true);
+      }
+    } catch {
+      // ignore storage issues
+    }
 
-      // 2. Generate summary message
-      const parentId = shift.userIds.find((id) => id !== currentUserId) || '';
-      if (!parentId) throw new Error('Cannot identify parent.');
+    void (async () => {
+      try {
+        if (cancelled) return;
+        const tokenResult = await user.getIdTokenResult();
+        if (cancelled) return;
+        const nextIsAdmin = tokenResult.claims?.role === "admin";
+        setIsAdmin(nextIsAdmin);
+        try {
+          if (nextIsAdmin) window.localStorage.setItem(ADMIN_LINK_CACHE_KEY, "1");
+          else window.localStorage.removeItem(ADMIN_LINK_CACHE_KEY);
+        } catch {
+          // ignore storage issues
+        }
+      } catch {
+        if (!cancelled) setIsAdmin(Boolean(pathname?.startsWith("/admin")));
+      }
+    })();
 
-      // Check if conversation exists
-      const userIds = [currentUserId, parentId].sort();
-      const conversationId = `${userIds[0]}_${userIds[1]}`;
-      const convSnap = await getDoc(doc(db, 'conversations', conversationId));
-      
-      if (!convSnap.exists()) {
-         await setDoc(doc(db, 'conversations', conversationId), {
-           userIds,
-           createdAt: serverTimestamp(),
-           lastMessage: 'Shift Completed & Report Sent',
-           lastMessageAt: serverTimestamp(),
-           lastMessageSenderId: currentUserId,
-           userProfiles: {}
-         }, { merge: true });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user, pathname]);
+
+  useEffect(() => {
+    document.documentElement.style.overflowX = isMenuOpen ? "hidden" : "";
+    document.body.style.overflowX = isMenuOpen ? "hidden" : "";
+
+    return () => {
+      document.documentElement.style.overflowX = "";
+      document.body.style.overflowX = "";
+    };
+  }, [isMenuOpen]);
+
+  const handleNavClick = () => setIsMenuOpen(false);
+
+  const handleOpenTour = () => {
+    requestGuidedTourOpen();
+  };
+
+  const handleSignOut = async () => {
+    try {
+      window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+      window.localStorage.removeItem(ADMIN_LINK_CACHE_KEY);
+    } catch {
+      // ignore storage issues
+    }
+    await signOut(auth);
+    router.push('/');
+  };
+
+  const userMenuName = user?.displayName || user?.email || "Account";
+  const userMenuPhoto = userAvatarUrl || "";
+  const userMenuInitial = userMenuName.trim().charAt(0).toUpperCase();
+
+  const settingsHref = accountType === "employer" ? "/employers/settings" : "/families/profile/edit";
+
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId: number | null = null;
+    let lastPersistedAt = 0;
+
+    const signOutForInactivity = async () => {
+      try {
+        window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+      } catch {
+        // ignore storage issues
+      }
+      await signOut(auth);
+      router.push('/');
+    };
+
+    const scheduleFrom = (baseMs: number) => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      const remaining = Math.max(0, INACTIVITY_TIMEOUT_MS - (Date.now() - baseMs));
+      timeoutId = window.setTimeout(() => {
+        void signOutForInactivity();
+      }, remaining);
+    };
+
+    const persistActivity = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastPersistedAt < 60_000) {
+        return;
+      }
+      lastPersistedAt = now;
+      try {
+        window.localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+      } catch {
+        // ignore storage issues
+      }
+      scheduleFrom(now);
+    };
+
+    try {
+      const raw = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+      const parsed = raw ? Number(raw) : NaN;
+      const initialLastActivity = Number.isFinite(parsed) ? parsed : Date.now();
+
+      if (Date.now() - initialLastActivity >= INACTIVITY_TIMEOUT_MS) {
+        void signOutForInactivity();
+        return;
       }
 
-      // Build the message block
-      const logLines = sortedLogs.map((log) => {
-        const timeStr = format(new Date(log.time), 'h:mm a');
-        const noteStr = log.note ? `\n   "${log.note}"` : '';
-        return `• ${log.emoji} ${timeStr} - ${log.label}${noteStr}`;
-      }).join('\n');
-      
-      const text = `🎉 **Shift Completed!**\nDate: ${shift.date}\nTime: ${shift.startTime} - ${shift.endTime}\n\n**Care Report:**\n${logLines || 'No items logged.'}`;
+      lastPersistedAt = initialLastActivity;
+      window.localStorage.setItem(LAST_ACTIVITY_KEY, String(initialLastActivity));
+      scheduleFrom(initialLastActivity);
+    } catch {
+      persistActivity(true);
+    }
 
-      const newMessageData = {
-        conversationId,
-        senderId: currentUserId,
-        text,
-        createdAt: serverTimestamp(),
-        readBy: [currentUserId],
-      };
+    const onActivity = () => persistActivity();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        persistActivity(true);
+      }
+    };
+    const onFocus = () => persistActivity(true);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== LAST_ACTIVITY_KEY || !event.newValue) return;
+      const next = Number(event.newValue);
+      if (!Number.isFinite(next)) return;
+      lastPersistedAt = next;
+      scheduleFrom(next);
+    };
 
-      const newMsgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg-${Date.now()}`;
-      const newMsgRef = doc(db, `conversations/${conversationId}/messages`, newMsgId);
-      await setDoc(newMsgRef, newMessageData);
+    const events: Array<keyof WindowEventMap> = ["click", "keydown", "scroll", "mousemove", "touchstart"];
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, onActivity, { passive: true });
+    });
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onStorage);
 
-      await updateDoc(doc(db, 'conversations', conversationId), {
-        lastMessage: "Care Report Sent",
-        lastMessageAt: serverTimestamp(),
-        lastMessageSenderId: currentUserId,
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, onActivity);
       });
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [router, user]);
 
-      toast({ title: 'Shift Ended', description: 'Final report has been sent to the chat!' });
-      router.push(`/families/messages/${conversationId}`);
-    } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Error', description: err.message || 'Could not end shift.' });
-    } finally {
-      setIsFinalizing(false);
+  const isNotificationRead = (notification: { read?: boolean; readAt: unknown | null }) =>
+    notification.read === true || Boolean(notification.readAt);
+
+  const markNotificationRead = async (id: string) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, "notifications", user.uid, "items", id), {
+        read: true,
+        readAt: serverTimestamp(),
+      });
+    } catch {
+      // silent
     }
   };
 
-  if (!isAccepted && !isCompleted && logs.length === 0) return null;
+  const markAllNotificationsRead = async () => {
+    if (!user || unreadCount === 0 || isMarkingAllRead) return;
+
+    const unreadIds = notifications
+      .filter((notification) => !isNotificationRead(notification))
+      .map((notification) => notification.id);
+
+    if (unreadIds.length === 0) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const previousNotifications = notifications;
+    const optimisticNotifications = notifications.map((notification) =>
+      unreadIds.includes(notification.id)
+        ? { ...notification, read: true, readAt: new Date() }
+        : notification
+    );
+
+    setIsMarkingAllRead(true);
+    setNotifications(optimisticNotifications);
+    setUnreadCount(0);
+
+    try {
+      const batch = writeBatch(db);
+      unreadIds.forEach((id) => {
+        batch.update(doc(db, "notifications", user.uid, "items", id), {
+            read: true,
+            readAt: serverTimestamp(),
+          });
+      });
+      await batch.commit();
+    } catch {
+      setNotifications(previousNotifications);
+      setUnreadCount(previousNotifications.filter((notification) => !isNotificationRead(notification)).length);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const notificationsQuery = query(
+      collection(db, "notifications", user.uid, "items"),
+      orderBy("createdAt", "desc"),
+      limit(24)
+    );
+
+    const unsubscribe = onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        const nextNotifications = snapshot.docs.map((notificationDoc) => {
+          const data = notificationDoc.data() as {
+            title?: string;
+            body?: string;
+            href?: string | null;
+            read?: boolean;
+            readAt?: unknown | null;
+            createdAt?: any;
+          };
+
+          let stamp = data.createdAt;
+          if (stamp && typeof stamp.toDate === 'function') {
+            stamp = stamp.toDate();
+          }
+
+          return {
+            id: notificationDoc.id,
+            title: data.title || "Notification",
+            body: data.body || "",
+            href: data.href || null,
+            read: data.read ?? false,
+            readAt: data.readAt ?? null,
+            createdAt: stamp ?? null,
+          };
+        });
+
+        setNotifications(nextNotifications);
+        setUnreadCount(nextNotifications.filter((notification) => !isNotificationRead(notification)).length);
+      },
+      () => {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let nextStatus: "on" | "off" | "blocked" = "off";
+    if (Notification.permission === "denied") {
+      nextStatus = "blocked";
+    } else {
+      let optedOut = false;
+      try {
+        optedOut = window.localStorage.getItem("shiftsitter:push-opt-out") === "1";
+      } catch {
+        optedOut = false;
+      }
+      nextStatus = Notification.permission === "granted" && !optedOut ? "on" : "off";
+    }
+    setPushStatus(nextStatus);
+  }, [user]);
+
+  useEffect(() => {
+    hasRefreshedPushRef.current = false;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user || hasRefreshedPushRef.current) return;
+    if (typeof window === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    let optedOut = false;
+    try {
+      optedOut = window.localStorage.getItem("shiftsitter:push-opt-out") === "1";
+    } catch {
+      optedOut = false;
+    }
+    if (optedOut) return;
+
+    hasRefreshedPushRef.current = true;
+    void enableWebPush(user.uid, { allowPrompt: false }).catch(() => {
+      // Silent refresh: ignore failures to avoid noisy errors on unsupported clients.
+    });
+  }, [user]);
+
+  const handleTogglePush = async (nextChecked: boolean) => {
+    if (!user || isHandlingPush) return;
+    setIsHandlingPush(true);
+    try {
+      if (nextChecked) {
+        await enableWebPush(user.uid);
+        setPushStatus("on");
+        toast({
+          title: "Notifications enabled",
+          description: "Notifications are enabled on this device.",
+        });
+      } else {
+        await disableWebPush(user.uid);
+        setPushStatus("off");
+        toast({
+          title: "Notifications disabled",
+          description: "Notifications are disabled on this device.",
+        });
+      }
+    } catch (error: any) {
+      const message = error?.message || "We couldn't update notifications.";
+      toast({
+        variant: "destructive",
+        title: "Couldn't update",
+        description: message,
+      });
+      if (Notification.permission === "denied") {
+        setPushStatus("blocked");
+      }
+    } finally {
+      setIsHandlingPush(false);
+    }
+  };
 
   return (
-    <>
-      <Button
-        variant="outline"
-        data-tour="calendar-live-log"
-        className={cn(
-          "w-full flex items-center justify-between h-12 rounded-2xl border-slate-200 bg-white hover:bg-slate-50 shadow-sm transition-all px-4",
-          isAccepted && "border-emerald-200"
-        )}
-        onClick={() => setIsMainModalOpen(true)}
-      >
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "h-8 w-8 rounded-full flex items-center justify-center",
-            isAccepted ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
-          )}>
-            <FileText className="h-4 w-4" />
+    <header
+      className={`ss-header${isMenuOpen ? " ss-header-open" : ""}`}
+      data-tour={showFamilyTourControls ? "families-nav" : undefined}
+    >
+      <div className="ss-header-inner">
+        <Link href={user ? (accountType === "employer" ? "/employers/dashboard" : "/families/match") : "/"} className="ss-brand" onClick={handleNavClick}>
+          <div className="ss-brand-logo">
+            <img src="/logo-shiftsitter.png" alt="ShiftSitter logo" />
           </div>
-          <div className="text-left">
-            <p className="text-sm font-bold text-slate-700">Care Report</p>
-            <p className="text-[10px] text-slate-400">
-              {logs.length === 0 ? "No reports yet" : `${logs.length} updates today`}
-            </p>
-          </div>
-        </div>
-        <Plus className="h-4 w-4 text-slate-300" />
-      </Button>
+          <span className="ss-brand-text">ShiftSitter</span>
+        </Link>
 
-      <Dialog open={isMainModalOpen} onOpenChange={setIsMainModalOpen}>
-        <DialogContent className="max-w-[500px] p-0 border-none bg-slate-50/95 backdrop-blur-md overflow-hidden rounded-[2.5rem] shadow-2xl">
-          <div className="p-6 pb-4 bg-white border-b border-slate-100">
-            <DialogHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <DialogTitle className="font-headline text-2xl text-[var(--navy)]">Care Report</DialogTitle>
-                  <DialogDescription className="text-slate-500 text-xs">
-                    Shared hourly shift tracking
-                  </DialogDescription>
-                </div>
-                {isAccepted && (
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse">
-                    Live
-                  </Badge>
-                )}
-              </div>
-            </DialogHeader>
-          </div>
+        <nav className="ss-nav ss-nav-desktop">
+          {navLinks.map((link) => (
+            <Link key={link.href} href={link.href} className="ss-nav-link">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
 
-          <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-            {/* Hour Timeline */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {hourSlots.map((hour) => {
-                const hourLogs = logs.filter((l: CareLogEntry) => l.hourIndex === hour);
-                const isDone = hourLogs.length > 0;
-                return (
-                  <button
-                    key={hour}
-                    disabled={!isParticipant || !isAccepted}
-                    onClick={() => {
-                      setActiveHour(hour);
-                      setIsAdding(true);
-                    }}
-                    className={cn(
-                      "flex flex-col items-center justify-center rounded-3xl border-2 p-3 transition-all h-24 relative",
-                      isDone 
-                        ? "border-emerald-100 bg-white text-emerald-700 shadow-sm" 
-                        : "border-dashed border-slate-200 bg-white/50 text-slate-400 hover:border-primary/30 hover:bg-white hover:text-primary shadow-none"
-                    )}
+        <div className="ss-header-actions ss-nav-desktop">
+          {user ? (
+             <>
+              {accountType !== "employer" ? (
+                <>
+                  {showFamilyTourControls ? (
+                    <button
+                    type="button"
+                    className="ss-btn-outline ss-nav-btn"
+                    onClick={handleOpenTour}
+                    aria-label="Open guided tour"
+                    title="Guided tour"
                   >
-                    <span className="text-[10px] font-bold uppercase mb-2 tracking-wider">Hour {hour}</span>
-                    {isDone ? (
-                      <div className="flex -space-x-1 mb-1">
-                        {hourLogs.map((l: CareLogEntry) => (
-                          <span key={l.id} className="text-xl" title={l.label}>{l.emoji}</span>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center">
-                        <Plus className="h-4 w-4 opacity-50" />
-                      </div>
-                    )}
-                    {isDone && (
-                      <div className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm" />
-                    )}
+                    <CircleHelp className="h-4 w-4" />
                   </button>
-                );
-              })}
-            </div>
-
-            {/* Recent Logs List */}
-            {logs.length > 0 && (
-              <div className="space-y-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Recent updates</p>
-                <div className="space-y-2">
-                  {sortedLogs.slice().reverse().map((log: CareLogEntry) => (
-                    <div key={log.id} className="flex items-start gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
-                      <div className="text-2xl bg-slate-50 h-12 w-12 rounded-xl flex items-center justify-center">
-                        {log.emoji}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-700 text-sm">Hour {log.hourIndex}: {log.label}</span>
-                          <span className="text-[10px] text-slate-400 font-medium">{format(new Date(log.time), 'h:mm a')}</span>
+                  ) : null}
+                  <DropdownMenu
+                    open={notifOpenDesktop}
+                    onOpenChange={(open) => {
+                      setNotifOpenDesktop(open);
+                      if (open) {
+                        setUserMenuOpenDesktop(false);
+                      }
+                      if (open) setNotifOpenMobile(false);
+                    }}
+                  >
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="ss-btn-outline ss-nav-btn relative" aria-label="Notifications">
+                        <Bell className="h-4 w-4" />
+                        {unreadCount > 0 ? (
+                          <span className="absolute -right-1 -top-1 min-w-5 rounded-full ss-notif-badge px-1 text-[10px] font-bold leading-5 text-white">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                          </span>
+                        ) : null}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-80 rounded-[var(--radius)] p-1">
+                      <DropdownMenuLabel className="flex items-center justify-between">
+                        <span>Notifications</span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                          onClick={markAllNotificationsRead}
+                          disabled={unreadCount === 0 || isMarkingAllRead}
+                        >
+                          <CheckCheck className="h-3.5 w-3.5" />
+                          {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                        </button>
+                      </DropdownMenuLabel>
+                      <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span>Alerts</span>
+                          {pushStatus === "on" ? (
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                              Enabled
+                            </span>
+                          ) : null}
                         </div>
-                        {log.note && <p className="text-slate-500 mt-1 text-xs italic leading-relaxed">"{log.note}"</p>}
+                        <Switch
+                          checked={pushStatus === "on"}
+                          onCheckedChange={handleTogglePush}
+                          disabled={isHandlingPush || pushStatus === "blocked"}
+                        />
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {isParticipant && isAccepted && (
-              <Button 
-                onClick={handleFinalizeShift} 
-                disabled={isFinalizing} 
-                className="w-full ss-pill-btn h-12 text-sm font-bold shadow-lg shadow-primary/20"
+                      {pushStatus === "blocked" ? (
+                        <div className="px-3 pb-2 text-[11px] text-muted-foreground">
+                          Permission blocked in the browser.
+                        </div>
+                      ) : null}
+                      <DropdownMenuSeparator />
+                      {notifications.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                      ) : (
+                        notifications.slice(0, 8).map((notif) => (
+                          <DropdownMenuItem
+                            key={notif.id}
+                            className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              void markNotificationRead(notif.id);
+                              setNotifOpenDesktop(false);
+                              if (notif.href) router.push(notif.href);
+                            }}
+                          >
+                            <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="truncate text-sm font-semibold">{notif.title}</div>
+                                {notif.createdAt && (
+                                  <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap pt-[2px]">
+                                    {formatDistanceToNow(notif.createdAt as Date, { addSuffix: true })}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                            </div>
+                          </DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              ) : null}
+              <DropdownMenu
+                open={userMenuOpenDesktop}
+                onOpenChange={(open) => {
+                  setUserMenuOpenDesktop(open);
+                  if (open) setNotifOpenDesktop(false);
+                }}
               >
-                {isFinalizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Finalize Shift & Send Report
-              </Button>
-            )}
-          </div>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="ss-user-menu-btn" aria-label="Account menu">
+                    <span className="ss-user-avatar">
+                      {userMenuPhoto ? (
+                        <img
+                          src={userMenuPhoto}
+                          alt="Profile photo"
+                          onError={() => setUserAvatarUrl("")}
+                        />
+                      ) : (
+                        userMenuInitial
+                      )}
+                    </span>
+                    <span className="ss-user-menu-name">{userMenuName}</span>
+                    <ChevronDown className="h-4 w-4 text-primary" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="ss-user-menu w-64">
+                  {showAdminLink ? (
+                    <>
+                      <DropdownMenuLabel className="ss-user-menu-label">Admin panel</DropdownMenuLabel>
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/dashboard")}>
+                        <Shield className="h-4 w-4" />
+                        <span>Admin</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/admin/verification")}>
+                        <BadgeCheck className="h-4 w-4" />
+                        <span>Verification</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  {accountType !== "employer" ? (
+                    <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push("/families/matches")}>
+                      <Users className="h-4 w-4" />
+                      <span>Shifters</span>
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={() => router.push(settingsHref)}>
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="ss-user-menu-item" onSelect={handleSignOut}>
+                    <LogOut className="h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+             </>
+          ) : (
+            <>
+              <Link href="/families" className="ss-btn-outline ss-nav-btn">
+                Log in
+              </Link>
+              <Link href="/families" className="ss-btn ss-nav-btn">
+                Get started
+              </Link>
+            </>
+          )}
+        </div>
 
-          <DialogFooter className="p-4 pt-0">
-            <Button variant="ghost" className="w-full text-slate-400 text-xs" onClick={() => setIsMainModalOpen(false)}>
-              Close Summary
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Item Addition Modal */}
-      <Dialog open={isAdding} onOpenChange={(val) => {
-        setIsAdding(val);
-        if (!val) setActiveHour(null);
-      }}>
-        <DialogContent className="max-w-[400px] p-6 border-none bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="font-headline text-2xl text-[var(--navy)] text-center">Hour {activeHour}</DialogTitle>
-            <DialogDescription className="text-slate-500 text-center text-sm">
-              What happened during this hour?
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid grid-cols-4 gap-3 pt-2">
-            {LOG_OPTIONS.map((opt) => (
-              <button
-                key={opt.emoji}
-                onClick={() => setSelectedEmoji(opt.emoji)}
-                className={cn(
-                  "flex flex-col items-center justify-center rounded-2xl border-2 p-3 text-center transition-all aspect-square",
-                  selectedEmoji === opt.emoji 
-                    ? "border-primary bg-primary/5 text-primary shadow-sm" 
-                    : "border-slate-50 bg-slate-50 text-slate-400 hover:border-slate-100"
-                )}
+        {user ? (
+          <div className="ss-mobile-top-actions">
+            <>
+              {showFamilyTourControls ? (
+                <button
+                type="button"
+                className="ss-btn-outline ss-nav-btn"
+                onClick={handleOpenTour}
+                aria-label="Open guided tour"
+                title="Guided tour"
               >
-                <span className="text-3xl mb-1">{opt.emoji}</span>
-                <span className="text-[9px] font-bold leading-tight uppercase tracking-tighter">{opt.label}</span>
+                <CircleHelp className="h-4 w-4" />
               </button>
-            ))}
+              ) : null}
+              {accountType !== "employer" ? (
+                <DropdownMenu
+                  open={notifOpenMobile}
+                  onOpenChange={(open) => {
+                    setNotifOpenMobile(open);
+                    if (open) {
+                      setNotifOpenDesktop(false);
+                      setIsMenuOpen(false);
+                    }
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="ss-btn-outline ss-nav-btn relative ss-mobile-notif-btn" aria-label="Notifications">
+                      <Bell className="h-4 w-4" />
+                      {unreadCount > 0 ? (
+                        <span className="absolute -right-1 -top-1 min-w-5 rounded-full ss-notif-badge px-1 text-[10px] font-bold leading-5 text-white">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-sm rounded-[var(--radius)] p-1">
+                    <DropdownMenuLabel className="flex items-center justify-between">
+                      <span>Notifications</span>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                        onClick={markAllNotificationsRead}
+                        disabled={unreadCount === 0 || isMarkingAllRead}
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" />
+                        {isMarkingAllRead ? 'Marking...' : 'Mark all read'}
+                      </button>
+                    </DropdownMenuLabel>
+                    <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span>Alerts</span>
+                        {pushStatus === "on" ? (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Enabled
+                          </span>
+                        ) : null}
+                      </div>
+                      <Switch
+                        checked={pushStatus === "on"}
+                        onCheckedChange={handleTogglePush}
+                        disabled={isHandlingPush || pushStatus === "blocked"}
+                      />
+                    </div>
+                    {pushStatus === "blocked" ? (
+                      <div className="px-3 pb-2 text-[11px] text-muted-foreground">
+                        Permission blocked in the browser.
+                      </div>
+                    ) : null}
+                    <DropdownMenuSeparator />
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
+                    ) : (
+                      notifications.slice(0, 8).map((notif) => (
+                        <DropdownMenuItem
+                          key={notif.id}
+                          className={`items-start gap-2 p-3 ${!isNotificationRead(notif) ? 'bg-accent/40' : ''}`}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            void markNotificationRead(notif.id);
+                            setNotifOpenMobile(false);
+                            if (notif.href) router.push(notif.href);
+                          }}
+                        >
+                          <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${!isNotificationRead(notif) ? 'ss-notif-dot' : 'bg-muted'}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="truncate text-sm font-semibold">{notif.title}</div>
+                              {notif.createdAt && (
+                                <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap pt-[2px]">
+                                  {formatDistanceToNow(notif.createdAt as Date, { addSuffix: true })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="line-clamp-2 text-xs text-muted-foreground">{notif.body}</div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </>
           </div>
+        ) : null}
 
-          <div className="mt-6 space-y-2">
-             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Note (Optional)</label>
-             <Input 
-                placeholder="E.g. Drank 4oz of milk..." 
-                value={logNote} 
-                onChange={(e) => setLogNote(e.target.value)} 
-                className="rounded-xl border-slate-100 bg-slate-50 h-11 text-sm focus:ring-primary/20"
-             />
+        <button
+          type="button"
+          className={`ss-menu-toggle${isMenuOpen ? " is-open" : ""}`}
+          aria-expanded={isMenuOpen}
+          aria-label={isMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+          onClick={() => setIsMenuOpen((prev) => !prev)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      </div>
+
+      <div className={`ss-mobile-menu${isMenuOpen ? " is-open" : ""}`} role="navigation">
+        {user ? (
+          <div className="ss-mobile-section">
+            <div className="ss-mobile-section-title">{userMenuName}</div>
           </div>
+        ) : null}
 
-          <DialogFooter className="mt-8 gap-2 sm:gap-0">
-            <Button variant="ghost" onClick={() => setIsAdding(false)} className="rounded-xl">Cancel</Button>
-            <Button onClick={handleAddLog} disabled={isSubmitting} className="rounded-xl ss-pill-btn flex-1 h-11">
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Save Hour
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        {navLinks.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className="ss-mobile-link"
+            onClick={handleNavClick}
+          >
+            {link.label}
+          </Link>
+        ))}
+
+        {user ? (
+          <div className="ss-mobile-section">
+            {accountType !== "employer" ? (
+              <Link href="/families/matches" className="ss-mobile-link" onClick={handleNavClick}>
+                Shifters
+              </Link>
+            ) : null}
+            <Link href={settingsHref} className="ss-mobile-link" onClick={handleNavClick}>
+              Settings
+            </Link>
+            <button
+              type="button"
+              className="ss-mobile-link ss-mobile-link-btn"
+              onClick={() => { handleNavClick(); handleSignOut(); }}
+            >
+              Log out
+            </button>
+          </div>
+        ) : null}
+
+        {user && showAdminLink ? (
+          <div className="ss-mobile-section">
+            <div className="ss-mobile-section-subtitle">Admin panel</div>
+            <Link href="/admin/dashboard" className="ss-mobile-link" onClick={handleNavClick}>
+              Admin
+            </Link>
+            <Link href="/admin/verification" className="ss-mobile-link" onClick={handleNavClick}>
+              Verification
+            </Link>
+          </div>
+        ) : null}
+
+        {user && showFamilyTourControls ? (
+          <div className="ss-mobile-section">
+            <button
+              type="button"
+              onClick={() => {
+                handleNavClick();
+                handleOpenTour();
+              }}
+              className="ss-btn-outline ss-nav-btn w-full"
+            >
+              Guided Tour
+            </button>
+          </div>
+        ) : null}
+
+        <div className="ss-mobile-actions">
+          {user ? null : (
+            <>
+              <Link href="/families" className="ss-btn-outline ss-nav-btn" onClick={handleNavClick}>
+                Log in
+              </Link>
+              <Link href="/families" className="ss-btn ss-nav-btn" onClick={handleNavClick}>
+                Get started
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    </header>
   );
 }
+
