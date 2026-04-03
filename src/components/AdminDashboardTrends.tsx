@@ -1,67 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { Line, LineChart } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
-type TrendPoint = {
+type MetricPoint = {
   label: string;
-  matches: number;
-  messages: number;
-  shifts: number;
+  value: number;
 };
 
-export default function AdminDashboardTrends({
-  data,
+type MetricRow = {
+  label: string;
+  value: string;
+  tone?: "default" | "muted";
+};
+
+export default function AdminMetricCard({
+  title,
+  description,
+  seriesLabel,
+  seriesColor,
+  points,
+  rows,
 }: {
-  data: TrendPoint[];
+  title: string;
+  description: string;
+  seriesLabel: string;
+  seriesColor: string;
+  points: MetricPoint[];
+  rows: MetricRow[];
 }) {
-  const router = useRouter();
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-
-  useEffect(() => {
-    setLastUpdated(Date.now());
-
-    const intervalId = window.setInterval(() => {
-      setLastUpdated(Date.now());
-      router.refresh();
-    }, 30000);
-
-    return () => window.clearInterval(intervalId);
-  }, [router]);
-
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader>
-        <CardTitle>Live Trends</CardTitle>
-        <CardDescription>
-          Auto-refresh every 30 seconds. This is near real-time and updates on each refresh.
-        </CardDescription>
-        <p className="text-xs text-muted-foreground">
-          Last refresh: {lastUpdated == null ? "Syncing..." : new Date(lastUpdated).toLocaleTimeString()}
-        </p>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-5">
         <ChartContainer
-          className="min-h-[280px] w-full"
+          className="h-28 w-full"
           config={{
-            matches: { label: "Matches", color: "#2ec4b6" },
-            messages: { label: "Messages", color: "#1d4ed8" },
-            shifts: { label: "Shifts", color: "#f59e0b" },
+            metric: { label: seriesLabel, color: seriesColor },
           }}
         >
-          <LineChart data={data} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} />
-            <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Line type="monotone" dataKey="matches" stroke="var(--color-matches)" strokeWidth={3} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="messages" stroke="var(--color-messages)" strokeWidth={3} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="shifts" stroke="var(--color-shifts)" strokeWidth={3} dot={{ r: 3 }} />
+          <LineChart data={points} margin={{ left: 4, right: 4, top: 8, bottom: 8 }}>
+            <ChartTooltip
+              content={<ChartTooltipContent labelFormatter={(label) => String(label)} />}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="var(--color-metric)"
+              strokeWidth={3}
+              dot={{ r: 2 }}
+            />
           </LineChart>
         </ChartContainer>
+
+        <div className="space-y-2 text-sm">
+          {rows.map((row) => (
+            <div
+              key={`${title}-${row.label}`}
+              className={`flex items-center justify-between gap-3 ${
+                row.tone === "muted" ? "text-muted-foreground" : ""
+              }`}
+            >
+              <span>{row.label}</span>
+              <span className="font-medium text-foreground">{row.value}</span>
+            </div>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

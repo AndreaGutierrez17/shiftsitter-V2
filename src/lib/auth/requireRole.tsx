@@ -1,97 +1,47 @@
-'use client';
+import { MessageSquare, User, Heart, Calendar, Sparkles } from 'lucide-react';
+import type { UserProfile } from '@/lib/types';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
-import { db } from '@/lib/firebase/client';
+export const APP_NAME = 'ShiftSitter Pro';
+export const FIND_SHIFTERS_LABEL = 'Find Shifters';
+export const BETA_AUTO_VERIFY_USERS = false;
+export const VERIFICATION_COMING_SOON_TITLE = 'Coming Soon';
+export const VERIFICATION_COMING_SOON_MESSAGE =
+  'Verification features will be enabled in a future update.';
+export const VERIFICATION_COMING_SOON_NOTE =
+  'For now, your account will remain active while we complete testing.';
 
-type UserRoleDoc = {
-  accountType?: 'family' | 'employer';
-  role?: string;
-  profileComplete?: boolean;
-};
+type BetaVerificationProfile = Pick<UserProfile, 'isDemo' | 'verificationStatus'> | null | undefined;
 
-const FAMILY_ROLES = new Set(['family', 'parent', 'sitter', 'reciprocal']);
-
-function normalizeRole(data: UserRoleDoc | null): 'family' | 'employer' | null {
-  if (!data) return null;
-  if (data.accountType === 'employer') return 'employer';
-  if (data.accountType === 'family') return 'family';
-  if (typeof data.role === 'string' && FAMILY_ROLES.has(data.role)) return 'family';
-  return null;
+export function isUserVerifiedForBeta(profile: BetaVerificationProfile) {
+  if (!profile) return false;
+  return profile.isDemo || BETA_AUTO_VERIFY_USERS || profile.verificationStatus === 'verified';
 }
 
-export function useRequireRole(expected: 'family' | 'employer') {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const [roleData, setRoleData] = useState<UserRoleDoc | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (authLoading) return;
-
-    if (!user) {
-      router.replace(expected === 'employer' ? '/employers/login' : '/families');
-      return;
-    }
-
-    const unsubscribe = onSnapshot(
-      doc(db, 'users', user.uid),
-      (snapshot) => {
-        setRoleData(snapshot.exists() ? (snapshot.data() as UserRoleDoc) : null);
-      },
-      () => {
-        setRoleData(null);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [authLoading, expected, router, user]);
-
-  const normalizedRole = useMemo(() => normalizeRole(roleData ?? null), [roleData]);
-
-  useEffect(() => {
-    if (authLoading || typeof roleData === 'undefined' || !user) return;
-
-    if (!normalizedRole) {
-      router.replace('/account/setup');
-      return;
-    }
-
-    if (normalizedRole !== expected) {
-      if (normalizedRole === 'employer') {
-        router.replace('/employers/dashboard');
-        return;
-      }
-      router.replace(roleData?.profileComplete ? '/families/match' : '/families/onboarding');
-    }
-  }, [authLoading, expected, normalizedRole, roleData, router, user]);
-
-  return {
-    user,
-    loading: authLoading || typeof roleData === 'undefined',
-    role: normalizedRole,
-    profile: roleData ?? null,
-  };
+export function getVisibleVerificationStatus(
+  status?: UserProfile['verificationStatus']
+): UserProfile['verificationStatus'] {
+  return BETA_AUTO_VERIFY_USERS ? 'verified' : status ?? 'unverified';
 }
 
-export function RequireRole({
-  role,
-  children,
-}: {
-  role: 'family' | 'employer';
-  children: React.ReactNode;
-}) {
-  const state = useRequireRole(role);
+export const NAV_LINKS = [
+  { href: '/families/match', label: FIND_SHIFTERS_LABEL, icon: Heart },
+  { href: '/families/messages', label: 'Messages', icon: MessageSquare },
+  { href: '/families/calendar', label: 'Calendar', icon: Calendar },
+  { href: '/families/assistant', label: 'Assistant', icon: Sparkles },
+  { href: '/families/profile', label: 'Profile', icon: User },
+];
 
-  if (state.loading || !state.user || state.role !== role) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
+export const EMPLOYER_NAV_LINKS = [
+  { href: '/employers/dashboard', label: 'Dashboard', icon: Heart },
+  { href: '/employers/codes', label: 'Codes', icon: MessageSquare },
+  { href: '/employers/settings', label: 'Company Profile', icon: User },
+];
 
-  return <>{children}</>;
-}
+export const ONBOARDING_STEPS = [
+  { id: 'step1', title: 'Role', fields: ['role'] },
+  { id: 'step2', title: 'Basics & Location', fields: ['name', 'age', 'state', 'city', 'zip', 'location'] },
+  { id: 'step3', title: 'What You Need', fields: ['needDays', 'needShifts', 'needChildrenCount', 'needZipWork'] },
+  { id: 'step4', title: 'What You Offer', fields: ['offerDays', 'offerShifts', 'offerHoursPerMonthBucket', 'offerMaxChildrenTotal'] },
+  { id: 'step5', title: 'Preferences & Extras', fields: ['interestSelections', 'interestsOther', 'interests'] },
+  { id: 'step6', title: 'Summary', fields: [] },
+] as const;

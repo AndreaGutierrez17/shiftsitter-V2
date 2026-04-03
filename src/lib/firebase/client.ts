@@ -1,51 +1,19 @@
-﻿import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { Home, MessageSquare, Calendar, User, Heart, Sparkles } from 'lucide-react';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
+export const APP_NAME = 'ShiftSitter Pro';
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-console.log("AUTH DOMAIN:", firebaseConfig.authDomain);
+export const NAV_LINKS = [
+  { href: '/families/match', label: 'Find Shifters', icon: Heart },
+  { href: '/families/messages', label: 'Messages', icon: MessageSquare },
+  { href: '/families/calendar', label: 'Calendar', icon: Calendar },
+  { href: '/families/assistant', label: 'Assistant', icon: Sparkles },
+  { href: '/families/profile', label: 'Profile', icon: User },
+];
 
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-const initFirestorePersistence = async () => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    await enableIndexedDbPersistence(db);
-  } catch {
-    // Ignore persistence errors (unsupported or multiple tabs).
-  }
-};
-
-void initFirestorePersistence();
-
-let messaging: import('firebase/messaging').Messaging | undefined = undefined;
-
-const initMessaging = async () => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const { getMessaging } = await import('firebase/messaging');
-    messaging = getMessaging(app);
-  } catch {
-    // Ignore messaging init errors on unsupported clients.
-    messaging = undefined;
-  }
-};
-
-void initMessaging();
-
-export { app, auth, db, storage, messaging };
+export const ONBOARDING_STEPS = [
+    { id: 'step1', title: 'Your Role', fields: ['role'] },
+    { id: 'step2', title: 'Welcome', fields: ['name', 'age', 'location'] },
+    { id: 'step3', title: 'Your Details', fields: ['numberOfChildren', 'childAge', 'needs', 'workplace'] },
+    { id: 'step4', title: 'Availability & Interests', fields: ['availability', 'interests'] },
+    { id: 'step5', title: 'Profile Photos', fields: [] },
+];

@@ -2,49 +2,100 @@
 
 import { useEffect } from 'react';
 
-type BootstrapAssetsProps = {
-  includeJs?: boolean;
+type ErrorPayload = {
+  type: 'error' | 'unhandledrejection';
+  message: string;
+  stack?: string | null;
+  source?: string | null;
+  line?: number | null;
+  col?: number | null;
+  url?: string | null;
+  userAgent?: string | null;
+  time?: string;
 };
 
-declare global {
-  interface Window {
-    __ssBootstrapCssUsers?: number;
-    __ssBootstrapJsUsers?: number;
+const MAX_FIELD_LENGTH = 2000;
+
+const trimValue = (value: unknown, max = MAX_FIELD_LENGTH) => {
+  if (value == null) return '';
+  try {
+    const asString =
+      typeof value === 'string' ? value : JSON.stringify(value);
+    if (!asString) return String(value);
+    return asString.length > max ? `${asString.slice(0, max)}…` : asString;
+  } catch {
+    const fallback = String(value);
+    return fallback.length > max ? `${fallback.slice(0, max)}…` : fallback;
   }
-}
+};
 
-export default function BootstrapAssets({ includeJs = false }: BootstrapAssetsProps) {
+const postError = (payload: ErrorPayload) => {
+  try {
+    const body = JSON.stringify({
+      ...payload,
+      time: new Date().toISOString(),
+    });
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon('/api/client-error', blob);
+      return;
+    }
+    void fetch('/api/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+    });
+  } catch {
+    // Intentionally ignore logging failures.
+  }
+};
+
+export default function ClientErrorLogger() {
   useEffect(() => {
-    const cssId = 'bootstrap-css-scoped';
-    window.__ssBootstrapCssUsers = (window.__ssBootstrapCssUsers || 0) + 1;
-    if (!document.getElementById(cssId)) {
-      const link = document.createElement('link');
-      link.id = cssId;
-      link.rel = 'stylesheet';
-      link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
-      document.head.appendChild(link);
-    }
+    if (typeof window === 'undefined') return;
+    const windowWithFlag = window as typeof window & { __ssClientErrorLogger?: boolean };
+    if (windowWithFlag.__ssClientErrorLogger) return;
+    windowWithFlag.__ssClientErrorLogger = true;
 
-    if (includeJs) {
-      const jsId = 'bootstrap-js-scoped';
-      window.__ssBootstrapJsUsers = (window.__ssBootstrapJsUsers || 0) + 1;
-      if (!document.getElementById(jsId)) {
-        const script = document.createElement('script');
-        script.id = jsId;
-        script.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js';
-        script.async = true;
-        document.body.appendChild(script);
-      }
-    }
+    const onError = (event: ErrorEvent) => {
+      const error = event.error as Error | undefined;
+      postError({
+        type: 'error',
+        message: trimValue(event.message || error?.message || 'Unknown error'),
+        stack: trimValue(error?.stack || ''),
+        source: trimValue(event.filename || ''),
+        line: typeof event.lineno === 'number' ? event.lineno : null,
+        col: typeof event.colno === 'number' ? event.colno : null,
+        url: trimValue(window.location.href),
+        userAgent: trimValue(navigator.userAgent),
+      });
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason as Error | unknown;
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : trimValue(reason) || 'Unhandled rejection';
+      const stack = reason instanceof Error ? reason.stack : '';
+      postError({
+        type: 'unhandledrejection',
+        message: trimValue(message),
+        stack: trimValue(stack || ''),
+        url: trimValue(window.location.href),
+        userAgent: trimValue(navigator.userAgent),
+      });
+    };
+
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
 
     return () => {
-      // Leave assets in place to avoid DOM mutations that can trip React insertBefore on mobile.
-      window.__ssBootstrapCssUsers = Math.max(0, (window.__ssBootstrapCssUsers || 1) - 1);
-      if (includeJs) {
-        window.__ssBootstrapJsUsers = Math.max(0, (window.__ssBootstrapJsUsers || 1) - 1);
-      }
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
     };
-  }, [includeJs]);
+  }, []);
 
   return null;
 }
