@@ -1,51 +1,61 @@
-﻿import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
+let adminApp: App | null = null;
 
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-console.log("AUTH DOMAIN:", firebaseConfig.authDomain);
-
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-const initFirestorePersistence = async () => {
-  if (typeof window === 'undefined') return;
-
+function parseServiceAccount() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (!raw) return null;
   try {
-    await enableIndexedDbPersistence(db);
+    const parsed = JSON.parse(raw) as {
+      project_id: string;
+      client_email: string;
+      private_key: string;
+    };
+    return {
+      projectId: parsed.project_id,
+      clientEmail: parsed.client_email,
+      privateKey: parsed.private_key?.replace(/\\n/g, '\n'),
+    };
   } catch {
-    // Ignore persistence errors (unsupported or multiple tabs).
+    return null;
   }
-};
+}
 
-void initFirestorePersistence();
-
-let messaging: import('firebase/messaging').Messaging | undefined = undefined;
-
-const initMessaging = async () => {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const { getMessaging } = await import('firebase/messaging');
-    messaging = getMessaging(app);
-  } catch {
-    // Ignore messaging init errors on unsupported clients.
-    messaging = undefined;
+export function getAdminApp() {
+  if (adminApp) return adminApp;
+  if (getApps().length) {
+    adminApp = getApps()[0]!;
+    return adminApp;
   }
-};
 
-void initMessaging();
+  const fromJson = parseServiceAccount();
+  if (fromJson) {
+    adminApp = initializeApp({
+      credential: cert(fromJson),
+    });
+    return adminApp;
+  }
 
-export { app, auth, db, storage, messaging };
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  if (projectId && clientEmail && privateKey) {
+    adminApp = initializeApp({
+      credential: cert({ projectId, clientEmail, privateKey }),
+    });
+    return adminApp;
+  }
+
+  // Fallback for environments with attached Google credentials.
+  adminApp = initializeApp();
+  return adminApp;
+}
+
+export const adminAuth = () => getAuth(getAdminApp());
+export const adminDb = () => getFirestore(getAdminApp());
+export const adminMessaging = () => getMessaging(getAdminApp());
+

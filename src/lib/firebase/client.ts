@@ -1,9 +1,7 @@
-"use client"
-
-import { initializeApp, getApps, getApp } from "firebase/app"
-import { getAuth } from "firebase/auth"
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore"
-import { getStorage } from "firebase/storage"
+﻿import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,38 +10,42 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-}
+};
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp()
+// Initialize Firebase
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+console.log("AUTH DOMAIN:", firebaseConfig.authDomain);
 
-const auth = getAuth(app)
-const db = getFirestore(app)
-const storage = getStorage(app)
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
 const initFirestorePersistence = async () => {
-  if (typeof window === "undefined") return
+  if (typeof window === 'undefined') return;
+
   try {
-    await enableIndexedDbPersistence(db)
+    await enableIndexedDbPersistence(db);
   } catch {
     // Ignore persistence errors (unsupported or multiple tabs).
   }
-}
+};
 
-void initFirestorePersistence()
+void initFirestorePersistence();
 
-let messaging: import("firebase/messaging").Messaging | undefined = undefined
+let messaging: import('firebase/messaging').Messaging | undefined = undefined;
 
 const initMessaging = async () => {
-  if (typeof window === "undefined") return
+  if (typeof window === 'undefined') return;
+
   try {
-    const { getMessaging } = await import("firebase/messaging")
-    messaging = getMessaging(app)
+    const { getMessaging } = await import('firebase/messaging');
+    messaging = getMessaging(app);
   } catch {
     // Ignore messaging init errors on unsupported clients.
-    messaging = undefined
+    messaging = undefined;
   }
-}
+};
 
-void initMessaging()
+void initMessaging();
 
-export { app, auth, db, storage, messaging }
+export { app, auth, db, storage, messaging };

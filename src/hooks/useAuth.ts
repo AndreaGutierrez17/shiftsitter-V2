@@ -1,69 +1,74 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '@/lib/firebase/client';
 
-const PRESENCE_HEARTBEAT_MS = 60_000;
-const MIN_PRESENCE_WRITE_GAP_MS = 45_000;
+type AuthContextType = {
+  user: User | null;
+  loading: boolean;
+};
 
-export function useUserPresenceHeartbeat(uid?: string | null) {
-  const lastPresenceWriteAtRef = useRef(0);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+});
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!uid || typeof window === 'undefined') return;
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    let cancelled = false;
-    let intervalId: number | null = null;
-
-    const persistPresence = async (force = false) => {
-      if (cancelled) return;
-
-      const now = Date.now();
-      if (!force && now - lastPresenceWriteAtRef.current < MIN_PRESENCE_WRITE_GAP_MS) {
-        return;
-      }
-
-      lastPresenceWriteAtRef.current = now;
-
+    const syncAdminSession = async (nextUser: User | null) => {
       try {
-        await updateDoc(doc(db, 'users', uid), {
-          lastSeen: serverTimestamp(),
-        });
+        if (!nextUser) {
+          await fetch('/api/admin/session', {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          return;
+        }
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const token = await nextUser.getIdToken(attempt > 0);
+          const response = await fetch('/api/admin/session', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: 'include',
+          });
+
+          const payload = (await response.json().catch(() => ({}))) as { claimsUpdated?: boolean };
+          if (!response.ok || !payload.claimsUpdated) {
+            return;
+          }
+
+          await wait(750);
+        }
       } catch (error) {
-        console.error('Presence heartbeat failed:', error);
+        console.error('Admin session sync failed:', error);
       }
     };
 
-    const handleVisibilityChange = () => {
-      void persistPresence(true);
-    };
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setLoading(false);
+      void syncAdminSession(user);
+    });
 
-    const handleFocus = () => {
-      void persistPresence(true);
-    };
+    return () => unsubscribe();
+  }, []);
 
-    void persistPresence(true);
+  return React.createElement(AuthContext.Provider, { value: { user, loading } }, children);
+};
 
-    intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void persistPresence();
-      }
-    }, PRESENCE_HEARTBEAT_MS);
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('online', handleFocus);
-    window.addEventListener('pagehide', handleFocus);
-
-    return () => {
-      cancelled = true;
-      if (intervalId) window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('online', handleFocus);
-      window.removeEventListener('pagehide', handleFocus);
-      void persistPresence(true);
-    };
-  }, [uid]);
-}
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

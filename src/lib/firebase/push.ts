@@ -1,156 +1,178 @@
-export type GuidedTourPlacement = 'top' | 'bottom' | 'left' | 'right' | 'center';
+'use client';
 
-type GuidedTourRouteMatcher = RegExp | ((pathname: string) => boolean);
+import { doc, setDoc, serverTimestamp, arrayUnion, arrayRemove, updateDoc, deleteField, getDoc } from 'firebase/firestore';
+import { app, db, messaging } from '@/lib/firebase/client';
 
-export type GuidedTourStep = {
-  id: string;
-  title: string;
-  description: string;
-  route: string;
-  routeMatcher: GuidedTourRouteMatcher;
-  selector?: string;
-  placement?: GuidedTourPlacement;
+const firebasePublicConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-export const GUIDED_TOUR_STORAGE_KEY = 'shiftsitter:guided-tour-state';
-export const GUIDED_TOUR_OPEN_EVENT = 'shiftsitter:guided-tour:open';
-
-const guidedTourPathMatchers = [
-  /^\/families\/match$/,
-  /^\/families\/matches$/,
-  /^\/families\/messages$/,
-  /^\/families\/messages\/[^/]+$/,
-  /^\/families\/calendar$/,
-  /^\/families\/assistant$/,
-  /^\/families\/profile$/,
-  /^\/families\/profile\/edit$/,
-  /^\/families\/profile\/[^/]+$/,
-];
-
-export function isGuidedTourPath(pathname: string) {
-  return guidedTourPathMatchers.some((matcher) => matcher.test(pathname));
+async function getMessagingInstance() {
+  if (messaging) return messaging;
+  try {
+    const { getMessaging } = await import('firebase/messaging');
+    return getMessaging(app);
+  } catch {
+    return undefined;
+  }
 }
 
-export function matchesGuidedTourStep(step: GuidedTourStep, pathname: string) {
-  return typeof step.routeMatcher === 'function'
-    ? step.routeMatcher(pathname)
-    : step.routeMatcher.test(pathname);
+export async function enableWebPush(uid: string, options: { allowPrompt?: boolean } = {}) {
+  const allowPrompt = options.allowPrompt ?? true;
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    throw new Error('This browser does not support push notifications.');
+  }
+  const isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
+  const isStandalone = window.matchMedia?.('(display-mode: standalone)')?.matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const isSecure = window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  if (!isSecure) {
+    throw new Error('Push notifications require HTTPS. Please open ShiftSitter from the secure deployed site.');
+  }
+
+  if (isIOS && !isStandalone) {
+    throw new Error('On iPhone/iPad, add ShiftSitter to your Home Screen and open it from there to enable notifications.');
+  }
+
+  if (!process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
+    throw new Error('NEXT_PUBLIC_FIREBASE_VAPID_KEY is missing.');
+  }
+
+  const messagingInstance = await getMessagingInstance();
+  if (!messagingInstance) {
+    throw new Error('Firebase Messaging is not available in this client.');
+  }
+
+  let permission = Notification.permission;
+  if (permission === 'default' && allowPrompt) {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== 'granted') {
+    throw new Error('Notification permission denied.');
+  }
+
+  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  const readyRegistration = await navigator.serviceWorker.ready;
+  const configMessage = { type: 'FIREBASE_CONFIG', payload: firebasePublicConfig };
+  registration.active?.postMessage(configMessage);
+  registration.waiting?.postMessage(configMessage);
+  registration.installing?.postMessage(configMessage);
+  readyRegistration.active?.postMessage(configMessage);
+  navigator.serviceWorker.controller?.postMessage(configMessage);
+
+  const { getToken } = await import('firebase/messaging');
+  const { onMessage } = await import('firebase/messaging');
+  const token = await getToken(messagingInstance, {
+    vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+    serviceWorkerRegistration: registration,
+  });
+
+  if (!token) {
+    throw new Error('Could not get FCM token.');
+  }
+
+  await setDoc(
+    doc(db, 'fcm_tokens', uid),
+    {
+      uid,
+      tokens: arrayUnion(token),
+      updatedAt: serverTimestamp(),
+      platform: 'web',
+    },
+    { merge: true }
+  );
+
+  // Backward compatibility for existing reads.
+  await setDoc(doc(db, 'users', uid), { fcmToken: token }, { merge: true });
+
+  try {
+    window.localStorage.setItem('shiftsitter:push-token', token);
+    window.localStorage.removeItem('shiftsitter:push-opt-out');
+  } catch {
+    // ignore storage issues
+  }
+
+  const windowWithFlag = window as typeof window & { __shiftSitterForegroundPushBound?: boolean };
+  if (!windowWithFlag.__shiftSitterForegroundPushBound) {
+    onMessage(messagingInstance, (payload) => {
+      console.log('Received foreground message (handled in app):', payload);
+    });
+    windowWithFlag.__shiftSitterForegroundPushBound = true;
+  }
+
+  return token;
 }
 
-export function requestGuidedTourOpen() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(GUIDED_TOUR_OPEN_EVENT));
-}
+export async function disableWebPush(uid: string) {
+  if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+    throw new Error('This browser does not support push notifications.');
+  }
 
-export const GUIDED_TOUR_STEPS: GuidedTourStep[] = [
-  {
-    id: 'navigation',
-    title: 'Main navigation',
-    description:
-      'Use this header to move between Find Shifters, conversations, calendar, assistance, and your profile. You can also reopen this tour here whenever you need a quick refresher.',
-    route: '/families/match',
-    routeMatcher: isGuidedTourPath,
-    selector: '[data-tour="families-nav"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'discovery',
-    title: 'Find compatible shifters',
-    description:
-      'Review profiles aligned with your location, schedule, and care needs. Each card helps you decide more clearly before sending a connection request.',
-    route: '/families/match',
-    routeMatcher: /^\/families\/match$/,
-    selector: '[data-tour="match-feed"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'match-actions',
-    title: 'Choose how to move forward',
-    description:
-      'Use these actions to pass on a profile or show interest. This keeps your search focused and helps you follow up only with families that truly fit your needs.',
-    route: '/families/match',
-    routeMatcher: /^\/families\/match$/,
-    selector: '[data-tour="match-actions"]',
-    placement: 'top',
-  },
-  {
-    id: 'matches',
-    title: 'Track your matches',
-    description:
-      'This view helps you review pending requests, active connections, and quick links to profiles, chats, or agreed shifts. It acts as the control center for each relationship inside the platform.',
-    route: '/families/matches',
-    routeMatcher: /^\/families\/matches$/,
-    selector: '[data-tour="matches-center"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'messages',
-    title: 'Message with confidence',
-    description:
-      'Once a match is confirmed, this space keeps your conversations organized and easier to manage. Use it to continue agreements before scheduling care.',
-    route: '/families/messages',
-    routeMatcher: /^\/families\/messages$/,
-    selector: '[data-tour="messages-center"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'assistant',
-    title: 'ShiftSitter AI assistant',
-    description:
-      'Use the AI assistant for quick guidance on scheduling, communication, and setting expectations before you confirm a shift.',
-    route: '/families/assistant',
-    routeMatcher: /^\/families\/assistant$/,
-    selector: '[data-tour="assistant-center"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'calendar',
-    title: 'Manage shifts and availability',
-    description:
-      'The calendar brings together proposals, approvals, changes, and upcoming arrangements with your matches. It gives you a clear view of what is already confirmed.',
-    route: '/families/calendar',
-    routeMatcher: /^\/families\/calendar$/,
-    selector: '[data-tour="calendar-center"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'live-care-log',
-    title: 'Hourly Care Report',
-    description:
-      'Once a shift starts, use this section to create an hourly report. Both the parent and the sitter can add and edit updates in real-time for each hour of the shift.',
-    route: '/families/calendar',
-    routeMatcher: /^\/families\/calendar$/,
-    selector: '[data-tour="calendar-live-log"]',
-    placement: 'top',
-  },
-  {
-    id: 'profile',
-    title: 'Keep your profile strong',
-    description:
-      'Other families use this space to get to know you better. Keeping it clear, current, and complete improves trust and the quality of the matches you receive.',
-    route: '/families/profile',
-    routeMatcher: (pathname) =>
-      pathname === '/families/profile' ||
-      (pathname !== '/families/profile/edit' && /^\/families\/profile\/[^/]+$/.test(pathname)),
-    selector: '[data-tour="profile-overview"]',
-    placement: 'bottom',
-  },
-  {
-    id: 'verification',
-    title: 'Verification updates',
-    description:
-      'Upload your verification documents here to keep your profile trusted, credible, and secure.',
-    route: '/families/profile/edit',
-    routeMatcher: /^\/families\/profile\/edit$/,
-    selector: '[data-tour="profile-verification"]',
-    placement: 'left',
-  },
-  {
-    id: 'welcome',
-    title: 'All set',
-    description: 'All set. You can now start using the platform with confidence.',
-    route: '/families/profile/edit',
-    routeMatcher: /^\/families\/profile\/edit$/,
-    placement: 'center',
-  },
-];
+  const messagingInstance = await getMessagingInstance();
+  if (!messagingInstance) {
+    throw new Error('Firebase Messaging is not available in this client.');
+  }
+
+  let token = '';
+  try {
+    token = window.localStorage.getItem('shiftsitter:push-token') || '';
+  } catch {
+    token = '';
+  }
+
+  if (!token && Notification.permission === 'granted') {
+    try {
+      const registration =
+        (await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js')) ||
+        (await navigator.serviceWorker.ready);
+      const { getToken } = await import('firebase/messaging');
+      token = await getToken(messagingInstance, {
+        vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: registration,
+      });
+    } catch {
+      token = '';
+    }
+  }
+
+  if (token) {
+    try {
+      const { deleteToken } = await import('firebase/messaging');
+      await deleteToken(messagingInstance);
+    } catch {
+      // ignore deleteToken failures
+    }
+
+    try {
+      await updateDoc(doc(db, 'fcm_tokens', uid), {
+        tokens: arrayRemove(token),
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      // ignore missing doc
+    }
+
+    try {
+      const userRef = doc(db, 'users', uid);
+      const userSnap = await getDoc(userRef);
+      const data = userSnap.exists() ? (userSnap.data() as { fcmToken?: string }) : null;
+      if (data?.fcmToken === token) {
+        await updateDoc(userRef, { fcmToken: deleteField() });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    window.localStorage.setItem('shiftsitter:push-opt-out', '1');
+    window.localStorage.removeItem('shiftsitter:push-token');
+  } catch {
+    // ignore
+  }
+}

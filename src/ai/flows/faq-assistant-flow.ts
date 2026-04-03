@@ -4,97 +4,54 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const UserProfileSchema = z.object({
-  id: z.string().describe('The unique identifier of the user.'),
-  name: z.string().describe('The name of the user.'),
-  location: z.string().describe('The general location of the user (e.g., "Baltimore, MD").'),
-  childAge: z
-    .number()
-    .optional()
-    .describe('The age of the child if the user is a parent.'),
-  availability: z.string().describe('User\'s availability for shifts.'),
-  needs: z.string().describe('Specific childcare needs if the user is a parent.'),
-  interests: z.array(z.string()).describe('A list of user interests or hobbies.'),
-  workplace: z.string().describe('The user\'s workplace or profession.'),
+const FaqAssistantInputSchema = z.object({
+  userProfile: z.string().describe("A text summary of the current user's profile."),
+  query: z.string().describe('The question the user is asking.'),
 });
+export type FaqAssistantInput = z.infer<typeof FaqAssistantInputSchema>;
 
-const AiIcebreakerSuggestionInputSchema = z.object({
-  currentUserProfile: UserProfileSchema.describe(
-    'The profile of the current user who needs icebreaker suggestions.'
-  ),
-  matchedUserProfile: UserProfileSchema.describe(
-    'The profile of the user the current user has just matched with.'
-  ),
+const FaqAssistantOutputSchema = z.object({
+  advice: z.string().describe('The generated advice or answer for the user.'),
 });
-export type AiIcebreakerSuggestionInput = z.infer<
-  typeof AiIcebreakerSuggestionInputSchema
->;
+export type FaqAssistantOutput = z.infer<typeof FaqAssistantOutputSchema>;
 
-const AiIcebreakerSuggestionOutputSchema = z.object({
-  icebreakerMessages:
-    z.array(z.string()).describe('A list of personalized icebreaker messages for the matched user.'),
-  tips: z.array(z.string()).describe('A list of helpful tips for starting a conversation.'),
-});
-export type AiIcebreakerSuggestionOutput = z.infer<
-  typeof AiIcebreakerSuggestionOutputSchema
->;
-
-export async function aiIcebreakerSuggestion(
-  input: AiIcebreakerSuggestionInput
-): Promise<AiIcebreakerSuggestionOutput> {
-  return aiIcebreakerSuggestionFlow(input);
+export async function faqAssistant(
+  input: FaqAssistantInput
+): Promise<FaqAssistantOutput> {
+  return faqAssistantFlow(input);
 }
 
 const prompt = ai.definePrompt({
-  name: 'aiIcebreakerSuggestionPrompt',
-  input: {schema: AiIcebreakerSuggestionInputSchema},
-  output: {schema: AiIcebreakerSuggestionOutputSchema},
-  prompt: `You are an AI assistant designed to help users start conversations after a new match on ShiftSitter Pro.
-Your goal is to generate personalized icebreaker messages and helpful tips based on the profiles of the two matched users.
+  name: 'faqAssistantPrompt',
+  input: {schema: FaqAssistantInputSchema},
+  output: {schema: FaqAssistantOutputSchema},
+  prompt: `You are the ShiftSitter Assistant, an AI guide for a childcare exchange app called ShiftSitter Pro. Your goal is to provide helpful, safe, and practical advice to users.
 
-Here is the current user's profile (the one who needs the suggestions):
-Name: {{{currentUserProfile.name}}}
-Location: {{{currentUserProfile.location}}}
-Availability: {{{currentUserProfile.availability}}}
-Interests: {{#each currentUserProfile.interests}}- {{{this}}}
-{{/each}}
-{{#if currentUserProfile.childAge}}Child's Age: {{{currentUserProfile.childAge}}}
-{{/if}}
-{{#if currentUserProfile.needs}}Needs: {{{currentUserProfile.needs}}}
-{{/if}}
-Workplace: {{{currentUserProfile.workplace}}}
+You should answer questions related to:
+- App functionality: How to use the matching, scheduling, and messaging features.
+- Safety: Best practices for meeting someone for the first time, arranging care, and what to discuss beforehand.
+- Best Practices: Tips for creating a good profile, what to include in a reciprocal care agreement, and how to handle cancellations fairly.
+- Childcare coordination: shift planning, routines, handoff expectations, backup planning, and reciprocal care etiquette.
 
-Here is the profile of the user they just matched with:
-Name: {{{matchedUserProfile.name}}}
-Location: {{{matchedUserProfile.location}}}
-Availability: {{{matchedUserProfile.availability}}}
-Interests: {{#each matchedUserProfile.interests}}- {{{this}}}
-{{/each}}
-{{#if matchedUserProfile.childAge}}Child's Age: {{{matchedUserProfile.childAge}}}
-{{/if}}
-{{#if matchedUserProfile.needs}}Needs: {{{matchedUserProfile.needs}}}
-{{/if}}
-Workplace: {{{matchedUserProfile.workplace}}}
+Do not behave like a general-purpose chatbot, but always remain incredibly warm, empathetic, and friendly. If the user asks for something unrelated to ShiftSitter, childcare coordination, trust, scheduling, reviews, cancellations, or safe communication inside this app:
+- Politely and warmly explain that your expertise is dedicated exclusively to helping families and sitters on ShiftSitter.
+- Gently redirect them to an in-scope topic (e.g., "I'd love to help you arrange your next shift or coordinate with another family instead!").
 
-Based on these profiles, generate:
-1.  Three personalized message starters that the current user can send to their match. They must sound clearly like childcare coordination inside ShiftSitter, not like a dating app. They should make specific references to shared interests, complementary availability, routines, childcare needs, or reciprocal support mentioned in their profiles.
-2.  Three helpful tips for starting and maintaining a productive conversation in a childcare matching app.
+Here is the profile of the user asking the question:
+{{{userProfile}}}
 
-Hard requirements:
-- No flirting, romance, compliments on appearance, or date-like phrasing.
-- Prioritize practical topics: schedules, routines, handoff details, child age, comfort level, and care expectations.
-- Keep each message concise and easy to send as a first text.
-- Prefer prompts about availability, routines, pickup/drop-off, care notes, child age, and schedule fit over generic small talk.
-- NEVER use cliché introductory phrases like "romper el hielo", "icebreaker", or "to break the ice". Speak naturally, warmly, and directly.
+Here is the user's question:
+"{{{query}}}"
 
-Ensure the messages are respectful and appropriate for a professional yet friendly context.`,
+Keep the answer practical, concise, and grounded in the ShiftSitter context. Be very warm, friendly, empathetic, and encouraging in your tone, like an expert nanny or a supportive parent. Avoid flirting, dating language, or off-topic life advice. Structure your response in short helpful paragraphs with a friendly greeting.
+`,
 });
 
-const aiIcebreakerSuggestionFlow = ai.defineFlow(
+const faqAssistantFlow = ai.defineFlow(
   {
-    name: 'aiIcebreakerSuggestionFlow',
-    inputSchema: AiIcebreakerSuggestionInputSchema,
-    outputSchema: AiIcebreakerSuggestionOutputSchema,
+    name: 'faqAssistantFlow',
+    inputSchema: FaqAssistantInputSchema,
+    outputSchema: FaqAssistantOutputSchema,
   },
   async input => {
     const {output} = await prompt(input);
